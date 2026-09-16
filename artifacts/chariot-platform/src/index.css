@@ -1,0 +1,1139 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+@layer theme, base, components, utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+/* ejected from shadcn@4.21.0 */
+@theme inline {
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(
+        --radix-accordion-content-height,
+        var(--accordion-panel-height, auto)
+      );
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(
+        --radix-accordion-content-height,
+        var(--accordion-panel-height, auto)
+      );
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+/* Custom variants */
+@custom-variant data-open {
+  &:where([data-state="open"]),
+  &:where([data-open]:not([data-open="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-closed {
+  &:where([data-state="closed"]),
+  &:where([data-closed]:not([data-closed="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-checked {
+  &:where([data-state="checked"]),
+  &:where([data-checked]:not([data-checked="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-unchecked {
+  &:where([data-state="unchecked"]),
+  &:where([data-unchecked]:not([data-unchecked="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-selected {
+  &:where([data-selected="true"]) {
+    @slot;
+  }
+}
+
+@custom-variant data-disabled {
+  &:where([data-disabled="true"]),
+  &:where([data-disabled]:not([data-disabled="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-active {
+  &:where([data-state="active"]),
+  &:where([data-active]:not([data-active="false"])) {
+    @slot;
+  }
+}
+
+@custom-variant data-horizontal {
+  &:where([data-orientation="horizontal"]) {
+    @slot;
+  }
+}
+
+@custom-variant data-vertical {
+  &:where([data-orientation="vertical"]) {
+    @slot;
+  }
+}
+
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Used by the ejected shadcn MessageScroller (scrollbar-none while autoscrolling,
+   scrollbar-gutter-stable to stop the transcript shifting as the bar appears). */
+@utility scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+
+/* The stock MessageScroller viewport switches to scrollbar-none while it autoscrolls.
+   scrollbar-width:none also discards the stable gutter, so the transcript reflows
+   10–17px wider and back on every autoscroll (each send / poll) — a visible shake.
+   Keep the thin bar during autoscroll so the width never changes. Unlayered on purpose
+   so it beats the utility. */
+[data-slot="message-scroller-viewport"][data-autoscrolling] {
+  scrollbar-width: thin;
+}
+
+/* Full-height workspace pages (messages, tasks). Pads all four sides by the same
+   amount: the normal gutter, or — once the viewport is wider than
+   --container-page — whatever gutter centres a --container-page-wide card, so the
+   top/bottom gaps grow with the left/right ones instead of staying fixed.
+   (Percentage padding resolves against the container's *width* on every side.) */
+@utility p-frame {
+  padding: max(--spacing(6), calc((100% - var(--container-page)) / 2));
+}
+
+/* scroll-fade */
+@property --scroll-fade-t {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --scroll-fade-b {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --scroll-fade-s {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --scroll-fade-e {
+  syntax: "<length-percentage>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --scroll-fade-mask {
+  syntax: "*";
+  inherits: false;
+}
+
+@theme inline {
+  @keyframes scroll-fade-reveal-t {
+    from {
+      --scroll-fade-t: 0px;
+    }
+    to {
+      --scroll-fade-t: var(--_scroll-fade-size-t, var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10))));
+    }
+  }
+  @keyframes scroll-fade-reveal-b {
+    from {
+      --scroll-fade-b: var(--_scroll-fade-size-b, var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10))));
+    }
+    to {
+      --scroll-fade-b: 0px;
+    }
+  }
+  @keyframes scroll-fade-reveal-s {
+    from {
+      --scroll-fade-s: 0px;
+    }
+    to {
+      --scroll-fade-s: var(--_scroll-fade-size-s, var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10))));
+    }
+  }
+  @keyframes scroll-fade-reveal-e {
+    from {
+      --scroll-fade-e: var(--_scroll-fade-size-e, var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10))));
+    }
+    to {
+      --scroll-fade-e: 0px;
+    }
+  }
+}
+
+@utility scroll-fade {
+  --_scroll-fade-size-t: var(
+    --scroll-fade-t-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --_scroll-fade-size-b: var(
+    --scroll-fade-b-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --scroll-fade-block: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--scroll-fade-t, 0px),
+    #000 calc(100% - var(--scroll-fade-b, 0px)),
+    transparent 100%
+  );
+  -webkit-mask-image: var(--scroll-fade-mask, var(--scroll-fade-block));
+  mask-image: var(--scroll-fade-mask, var(--scroll-fade-block));
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  @supports (animation-timeline: scroll()) {
+    animation:
+      scroll-fade-reveal-t 1ms ease-in-out,
+      scroll-fade-reveal-b 1ms ease-in-out;
+    animation-timeline: scroll(self y), scroll(self y);
+    animation-range:
+      0 var(--scroll-fade-reveal, calc(var(--spacing) * 24)),
+      calc(100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))) 100%;
+    animation-fill-mode: both;
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    --scroll-fade-t: var(--_scroll-fade-size-t);
+    --scroll-fade-b: var(--_scroll-fade-size-b);
+  }
+}
+
+@utility scroll-fade-y {
+  --_scroll-fade-size-t: var(
+    --scroll-fade-t-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --_scroll-fade-size-b: var(
+    --scroll-fade-b-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --scroll-fade-block: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--scroll-fade-t, 0px),
+    #000 calc(100% - var(--scroll-fade-b, 0px)),
+    transparent 100%
+  );
+  -webkit-mask-image: var(--scroll-fade-mask, var(--scroll-fade-block));
+  mask-image: var(--scroll-fade-mask, var(--scroll-fade-block));
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  @supports (animation-timeline: scroll()) {
+    animation:
+      scroll-fade-reveal-t 1ms ease-in-out,
+      scroll-fade-reveal-b 1ms ease-in-out;
+    animation-timeline: scroll(self y), scroll(self y);
+    animation-range:
+      0 var(--scroll-fade-reveal, calc(var(--spacing) * 24)),
+      calc(100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))) 100%;
+    animation-fill-mode: both;
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    --scroll-fade-t: var(--_scroll-fade-size-t);
+    --scroll-fade-b: var(--_scroll-fade-size-b);
+  }
+}
+
+@utility scroll-fade-x {
+  --_scroll-fade-size-s: var(
+    --scroll-fade-s-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --_scroll-fade-size-e: var(
+    --scroll-fade-e-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --scroll-fade-inline: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--scroll-fade-s, 0px),
+    #000 calc(100% - var(--scroll-fade-e, 0px)),
+    transparent 100%
+  );
+  &:where([dir="rtl"], [dir="rtl"] *) {
+    --scroll-fade-inline: linear-gradient(
+      to left,
+      transparent 0,
+      #000 var(--scroll-fade-s, 0px),
+      #000 calc(100% - var(--scroll-fade-e, 0px)),
+      transparent 100%
+    );
+  }
+  -webkit-mask-image: var(--scroll-fade-mask, var(--scroll-fade-inline));
+  mask-image: var(--scroll-fade-mask, var(--scroll-fade-inline));
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  @supports (animation-timeline: scroll()) {
+    animation:
+      scroll-fade-reveal-s 1ms ease-in-out,
+      scroll-fade-reveal-e 1ms ease-in-out;
+    animation-timeline: scroll(self inline), scroll(self inline);
+    animation-range:
+      0 var(--scroll-fade-reveal, calc(var(--spacing) * 24)),
+      calc(100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))) 100%;
+    animation-fill-mode: both;
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    --scroll-fade-s: var(--_scroll-fade-size-s);
+    --scroll-fade-e: var(--_scroll-fade-size-e);
+  }
+}
+
+@utility scroll-fade-t {
+  --_scroll-fade-size-t: var(
+    --scroll-fade-t-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --scroll-fade-mask: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--scroll-fade-t, 0px),
+    #000 100%
+  );
+  -webkit-mask-image: var(--scroll-fade-mask);
+  mask-image: var(--scroll-fade-mask);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  @supports (animation-timeline: scroll()) {
+    animation: scroll-fade-reveal-t 1ms ease-in-out;
+    animation-timeline: scroll(self y);
+    animation-range: 0 var(--scroll-fade-reveal, calc(var(--spacing) * 24));
+    animation-fill-mode: both;
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    --scroll-fade-t: var(--_scroll-fade-size-t);
+  }
+}
+
+@utility scroll-fade-b {
+  --_scroll-fade-size-b: var(
+    --scroll-fade-b-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --scroll-fade-mask: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 calc(100% - var(--scroll-fade-b, 0px)),
+    transparent 100%
+  );
+  -webkit-mask-image: var(--scroll-fade-mask);
+  mask-image: var(--scroll-fade-mask);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  @supports (animation-timeline: scroll()) {
+    animation: scroll-fade-reveal-b 1ms ease-in-out;
+    animation-timeline: scroll(self y);
+    animation-range: calc(
+        100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))
+      )
+      100%;
+    animation-fill-mode: both;
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    --scroll-fade-b: var(--_scroll-fade-size-b);
+  }
+}
+
+@utility scroll-fade-l {
+  --_scroll-fade-size-s: var(
+    --scroll-fade-s-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --scroll-fade-mask: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--scroll-fade-s, 0px),
+    #000 100%
+  );
+  -webkit-mask-image: var(--scroll-fade-mask);
+  mask-image: var(--scroll-fade-mask);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  @supports (animation-timeline: scroll()) {
+    animation: scroll-fade-reveal-s 1ms ease-in-out;
+    animation-timeline: scroll(self x);
+    animation-range: 0 var(--scroll-fade-reveal, calc(var(--spacing) * 24));
+    animation-fill-mode: both;
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    --scroll-fade-s: var(--_scroll-fade-size-s);
+  }
+}
+
+@utility scroll-fade-r {
+  --_scroll-fade-size-e: var(
+    --scroll-fade-e-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --scroll-fade-mask: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - var(--scroll-fade-e, 0px)),
+    transparent 100%
+  );
+  -webkit-mask-image: var(--scroll-fade-mask);
+  mask-image: var(--scroll-fade-mask);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  @supports (animation-timeline: scroll()) {
+    animation: scroll-fade-reveal-e 1ms ease-in-out;
+    animation-timeline: scroll(self x);
+    animation-range: calc(
+        100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))
+      )
+      100%;
+    animation-fill-mode: both;
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    --scroll-fade-e: var(--_scroll-fade-size-e);
+  }
+}
+
+@utility scroll-fade-s {
+  --_scroll-fade-size-s: var(
+    --scroll-fade-s-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --scroll-fade-mask: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--scroll-fade-s, 0px),
+    #000 100%
+  );
+  &:where([dir="rtl"], [dir="rtl"] *) {
+    --scroll-fade-mask: linear-gradient(
+      to left,
+      transparent 0,
+      #000 var(--scroll-fade-s, 0px),
+      #000 100%
+    );
+  }
+  -webkit-mask-image: var(--scroll-fade-mask);
+  mask-image: var(--scroll-fade-mask);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  @supports (animation-timeline: scroll()) {
+    animation: scroll-fade-reveal-s 1ms ease-in-out;
+    animation-timeline: scroll(self inline);
+    animation-range: 0 var(--scroll-fade-reveal, calc(var(--spacing) * 24));
+    animation-fill-mode: both;
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    --scroll-fade-s: var(--_scroll-fade-size-s);
+  }
+}
+
+@utility scroll-fade-e {
+  --_scroll-fade-size-e: var(
+    --scroll-fade-e-size,
+    var(--scroll-fade-size, min(12%, calc(var(--spacing) * 10)))
+  );
+  --scroll-fade-mask: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(100% - var(--scroll-fade-e, 0px)),
+    transparent 100%
+  );
+  &:where([dir="rtl"], [dir="rtl"] *) {
+    --scroll-fade-mask: linear-gradient(
+      to left,
+      #000 0,
+      #000 calc(100% - var(--scroll-fade-e, 0px)),
+      transparent 100%
+    );
+  }
+  -webkit-mask-image: var(--scroll-fade-mask);
+  mask-image: var(--scroll-fade-mask);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  @supports (animation-timeline: scroll()) {
+    animation: scroll-fade-reveal-e 1ms ease-in-out;
+    animation-timeline: scroll(self inline);
+    animation-range: calc(
+        100% - var(--scroll-fade-reveal, calc(var(--spacing) * 24))
+      )
+      100%;
+    animation-fill-mode: both;
+  }
+
+  @supports not (animation-timeline: scroll()) {
+    --scroll-fade-e: var(--_scroll-fade-size-e);
+  }
+}
+
+@utility scroll-fade-* {
+  --scroll-fade-size: calc(var(--spacing) * --value(integer));
+  --scroll-fade-size: --value([length], [percentage]);
+}
+
+@utility scroll-fade-t-* {
+  --scroll-fade-t-size: calc(var(--spacing) * --value(integer));
+  --scroll-fade-t-size: --value([length], [percentage]);
+}
+
+@utility scroll-fade-b-* {
+  --scroll-fade-b-size: calc(var(--spacing) * --value(integer));
+  --scroll-fade-b-size: --value([length], [percentage]);
+}
+
+@utility scroll-fade-s-* {
+  --scroll-fade-s-size: calc(var(--spacing) * --value(integer));
+  --scroll-fade-s-size: --value([length], [percentage]);
+}
+
+@utility scroll-fade-e-* {
+  --scroll-fade-e-size: calc(var(--spacing) * --value(integer));
+  --scroll-fade-e-size: --value([length], [percentage]);
+}
+
+@utility scroll-fade-none {
+  --scroll-fade-mask: none;
+}
+
+/* shimmer */
+@property --shimmer-angle {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: 20deg;
+}
+@property --shimmer-image {
+  syntax: "*";
+  inherits: false;
+}
+@property --shimmer-text-fill {
+  syntax: "*";
+  inherits: false;
+}
+
+@theme inline {
+  @keyframes tw-shimmer {
+    from {
+      background-position: 100% 0;
+    }
+    to {
+      background-position: 0 0;
+    }
+  }
+}
+
+@utility shimmer {
+  --_spread: var(--shimmer-spread, calc(3ch + 40px));
+  --_base: currentColor;
+  --_highlight: var(
+    --shimmer-color,
+    oklch(from currentColor l c h / calc(alpha* 0.2))
+  );
+
+  background-image: var(
+    --shimmer-image,
+    linear-gradient(
+      calc(90deg + var(--shimmer-angle)),
+      var(--_base) calc(50% - var(--_spread)),
+      color-mix(in oklch, var(--_highlight), var(--_base) 50%)
+        calc(50% - var(--_spread) * 0.5),
+      var(--_highlight) 50%,
+      color-mix(in oklch, var(--_highlight), var(--_base) 50%)
+        calc(50% + var(--_spread) * 0.5),
+      var(--_base) calc(50% + var(--_spread))
+    )
+  );
+  background-repeat: no-repeat;
+  background-size: calc(200% + var(--_spread) * 2) 100%;
+  background-position: 0 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: var(--shimmer-text-fill, transparent);
+  animation: tw-shimmer var(--shimmer-duration, 2s) linear infinite;
+
+  @variant dark {
+    --_highlight: var(
+      --shimmer-color,
+      oklch(from currentColor max(0.8, calc(l + 0.4)) c h / calc(alpha + 0.4))
+    );
+  }
+
+  &:where([dir="rtl"], [dir="rtl"] *) {
+    animation-direction: reverse;
+  }
+}
+
+@utility shimmer-once {
+  animation-iteration-count: 1;
+}
+
+@utility shimmer-reverse {
+  animation-direction: reverse;
+}
+
+@utility shimmer-none {
+  --shimmer-image: none;
+  --shimmer-text-fill: currentColor;
+}
+
+@utility shimmer-color-* {
+  --shimmer-color: --value(--color, [color]);
+  --shimmer-color: color-mix(
+    in oklch,
+    --value(--color, [color]) calc(--modifier(integer) * 1%),
+    transparent
+  );
+}
+
+@utility shimmer-duration-* {
+  --shimmer-duration: calc(--value(integer) * 1ms);
+}
+
+@utility shimmer-spread-* {
+  --shimmer-spread: calc(var(--spacing) * --value(integer));
+  --shimmer-spread: --value([length], [percentage]);
+}
+
+@utility shimmer-angle-* {
+  --shimmer-angle: calc(--value(integer) * 1deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-page: hsl(var(--page));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover-border: hsl(var(--popover-border));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-border: var(--primary-border);
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-secondary-border: var(--secondary-border);
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-muted-border: var(--muted-border);
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent-border: var(--accent-border);
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-destructive-border: var(--destructive-border);
+
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-primary-border: var(--sidebar-primary-border);
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-accent-border: var(--sidebar-accent-border);
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  /* Pipeline stage colours: one distinct hue per case stage, in pipeline order. */
+  --color-stage-0: hsl(var(--stage-0));
+  --color-stage-1: hsl(var(--stage-1));
+  --color-stage-2: hsl(var(--stage-2));
+  --color-stage-3: hsl(var(--stage-3));
+  --color-stage-4: hsl(var(--stage-4));
+  --color-stage-5: hsl(var(--stage-5));
+  --color-stage-6: hsl(var(--stage-6));
+  --color-stage-7: hsl(var(--stage-7));
+  --color-stage-foreground: hsl(var(--stage-foreground));
+
+  --font-sans: var(--app-font-sans);
+
+  /* Page content width cap. Every routed page wraps its content in
+     `max-w-page mx-auto`; change the number here, not in the pages. */
+  --container-page: 100rem;
+
+  /* One corner radius for the whole system: every Tailwind radius step resolves
+     to --radius. It is large enough that every control (buttons, inputs, badges,
+     tabs, chips) renders as a full pill, while cards, dialogs and sheets keep
+     rectangular content behind big rounded corners. Change --radius below, not these. */
+  --radius-xs: var(--radius);
+  --radius-sm: var(--radius);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+  --radius-2xl: var(--radius);
+  --radius-3xl: var(--radius);
+  --radius-4xl: var(--radius);
+}
+
+/* LIGHT MODE */
+:root {
+  --button-outline: rgba(0, 0, 0, 0.1);
+  --badge-outline: rgba(0, 0, 0, 0.05);
+
+  --opaque-button-border-intensity: -8;
+
+  --elevate-1: rgba(0, 0, 0, 0.03);
+  --elevate-2: rgba(0, 0, 0, 0.08);
+
+  /* Chariot Brand: Teal and Copper */
+  --background: 0 0% 99%;
+  /* Page canvas behind the content. Kept separate from --background, which shadcn
+     also uses as the surface colour of switches, tabs, popovers, etc. */
+  --page: 0 0% 94%;
+  --foreground: 168 50% 10%;
+
+  --border: 168 15% 90%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 168 50% 10%;
+  --card-border: 168 15% 90%;
+
+  --sidebar: 168 20% 97%;
+  --sidebar-foreground: 168 50% 15%;
+  --sidebar-border: 168 15% 90%;
+  --sidebar-primary: 168 85% 16%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 168 15% 92%;
+  --sidebar-accent-foreground: 168 85% 16%;
+  --sidebar-ring: 168 85% 16%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 168 50% 10%;
+  --popover-border: 168 15% 90%;
+
+  /* Teal Logo Color */
+  --primary: 168 85% 16%;
+  --primary-foreground: 0 0% 100%;
+
+  /* Copper Logo Color */
+  --secondary: 25 64% 47%;
+  --secondary-foreground: 0 0% 100%;
+
+  --muted: 168 15% 94%;
+  --muted-foreground: 168 10% 40%;
+  --accent: 168 15% 94%;
+  --accent-foreground: 168 85% 16%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --input: 168 15% 85%;
+  --ring: 168 85% 16%;
+
+  --chart-1: 168 85% 16%;
+  --chart-2: 25 64% 47%;
+  --chart-3: 168 30% 40%;
+  --chart-4: 25 30% 60%;
+  --chart-5: 168 60% 80%;
+
+  /* Pipeline stage colours (light). Solid fills readable with white text. */
+  --stage-0: 275 50% 48%; /* Advice & approval - violet */
+  --stage-1: 215 65% 46%; /* Submission details - blue */
+  --stage-2: 190 80% 30%; /* Submission - cyan */
+  --stage-3: 40 90% 34%; /* Underwriting - gold */
+  --stage-4: 340 65% 44%; /* Stress test - rose */
+  --stage-5: 250 55% 52%; /* Lender offer - indigo */
+  --stage-6: 20 75% 44%; /* Invoice & payment - copper */
+  --stage-7: 145 65% 28%; /* Completion - green */
+  --stage-foreground: 0 0% 100%;
+
+  --app-font-sans: "Plus Jakarta Sans", sans-serif;
+
+  /* Fully rounded system. 24px = pill on anything up to 48px tall (all controls);
+     larger surfaces get 24px corners. A literal 9999px turns tall cards into ovals. */
+  --radius: 1.5rem;
+
+  --shadow-2xs: 0px 2px 0px 0px hsl(168 85% 16% / 0.05);
+  --shadow-xs: 0px 2px 0px 0px hsl(168 85% 16% / 0.05);
+  --shadow-sm:
+    0px 2px 0px 0px hsl(168 85% 16% / 0.02),
+    0px 1px 2px -1px hsl(168 85% 16% / 0.05);
+  --shadow:
+    0px 2px 0px 0px hsl(168 85% 16% / 0.02),
+    0px 1px 2px -1px hsl(168 85% 16% / 0.05);
+  --shadow-md:
+    0px 2px 0px 0px hsl(168 85% 16% / 0.02),
+    0px 2px 4px -1px hsl(168 85% 16% / 0.05);
+  --shadow-lg:
+    0px 2px 0px 0px hsl(168 85% 16% / 0.02),
+    0px 4px 6px -1px hsl(168 85% 16% / 0.05);
+  --shadow-xl:
+    0px 2px 0px 0px hsl(168 85% 16% / 0.02),
+    0px 8px 10px -1px hsl(168 85% 16% / 0.05);
+  --shadow-2xl: 0px 2px 0px 0px hsl(168 85% 16% / 0.05);
+
+  --tracking-normal: -0.01em;
+  --spacing: 0.25rem;
+
+  --sidebar-primary-border: hsl(
+    from hsl(var(--sidebar-primary)) h s
+      calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
+  --sidebar-accent-border: hsl(
+    from hsl(var(--sidebar-accent)) h s
+      calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
+  --primary-border: hsl(
+    from hsl(var(--primary)) h s
+      calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
+  --secondary-border: hsl(
+    from hsl(var(--secondary)) h s
+      calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
+  --muted-border: hsl(
+    from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) /
+      alpha
+  );
+  --accent-border: hsl(
+    from hsl(var(--accent)) h s
+      calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
+  --destructive-border: hsl(
+    from hsl(var(--destructive)) h s
+      calc(l + var(--opaque-button-border-intensity)) / alpha
+  );
+}
+
+.dark {
+  --background: 168 50% 5%;
+  --page: 168 50% 5%;
+  --foreground: 0 0% 98%;
+
+  --border: 168 20% 20%;
+
+  --card: 168 40% 8%;
+  --card-foreground: 0 0% 98%;
+  --card-border: 168 20% 20%;
+
+  --sidebar: 168 40% 7%;
+  --sidebar-foreground: 0 0% 98%;
+  --sidebar-border: 168 20% 20%;
+  --sidebar-primary: 168 60% 40%;
+  --sidebar-primary-foreground: 168 50% 5%;
+  --sidebar-accent: 168 30% 15%;
+  --sidebar-accent-foreground: 168 60% 40%;
+  --sidebar-ring: 168 60% 40%;
+
+  --popover: 168 40% 8%;
+  --popover-foreground: 0 0% 98%;
+  --popover-border: 168 20% 20%;
+
+  --primary: 168 60% 40%;
+  --primary-foreground: 168 85% 10%;
+
+  --secondary: 25 60% 55%;
+  --secondary-foreground: 25 85% 10%;
+
+  --muted: 168 30% 15%;
+  --muted-foreground: 168 20% 65%;
+
+  --accent: 168 30% 15%;
+  --accent-foreground: 168 60% 40%;
+
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 98%;
+
+  --input: 168 30% 20%;
+  --ring: 168 60% 40%;
+
+  --chart-1: 168 60% 40%;
+  --chart-2: 25 60% 55%;
+  --chart-3: 168 40% 60%;
+  --chart-4: 25 40% 70%;
+  --chart-5: 168 20% 80%;
+
+  /* Pipeline stage colours (dark): lifted a touch so they read on dark cards. */
+  --stage-0: 275 50% 58%;
+  --stage-1: 215 60% 54%;
+  --stage-2: 190 65% 40%;
+  --stage-3: 40 80% 42%;
+  --stage-4: 340 60% 54%;
+  --stage-5: 250 55% 60%;
+  --stage-6: 20 70% 52%;
+  --stage-7: 145 55% 38%;
+  --stage-foreground: 0 0% 100%;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground tracking-normal selection:bg-primary/20;
+  }
+}
+
+/* Hover + click feedback for every clickable element, mirroring the shadcn Button
+   (`cursor: pointer` from the docs, ghost/outline `hover:bg-muted hover:text-foreground`,
+   link `hover:underline`, `transition-all`, `active:not-aria-[haspopup]:translate-y-px`).
+   Component utilities (e.g. a Button variant's own hover:bg-*) still win over these base rules. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  :where(
+    button,
+    a[href],
+    [role="button"],
+    [role="link"],
+    [role="tab"],
+    [role="menuitem"],
+    [role="menuitemcheckbox"],
+    [role="menuitemradio"],
+    [role="option"],
+    [role="checkbox"],
+    [role="radio"],
+    [role="switch"],
+    [role="combobox"],
+    summary,
+    .cursor-pointer
+  ) {
+    transition-property:
+      color, background-color, border-color, text-decoration-color, translate;
+    transition-timing-function: var(--default-transition-timing-function);
+    transition-duration: var(--default-transition-duration);
+  }
+
+  /* Ghost/outline hover (nova: hover:bg-muted hover:text-foreground, aria-expanded:bg-muted) */
+  :where(
+      button,
+      [role="button"],
+      [role="link"],
+      [role="tab"],
+      [role="menuitem"],
+      [role="menuitemcheckbox"],
+      [role="menuitemradio"],
+      [role="option"],
+      [role="checkbox"],
+      [role="radio"],
+      [role="switch"],
+      [role="combobox"],
+      summary,
+      .cursor-pointer
+    ):not(:disabled, [aria-disabled="true"], [data-disabled]):is(
+      :hover,
+      [aria-expanded="true"]
+    ) {
+    background-color: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+
+  /* Link hover for plain text links (shadcn components rendered as <a> carry data-slot and keep their own hover) */
+  a[href]:not([data-slot], [role]):hover {
+    text-decoration-line: underline;
+    text-underline-offset: 4px;
+  }
+
+  /* Press feedback */
+  :where(
+      button,
+      a[href],
+      [role="button"],
+      [role="link"],
+      [role="tab"],
+      [role="menuitem"],
+      [role="menuitemcheckbox"],
+      [role="menuitemradio"],
+      [role="option"],
+      [role="checkbox"],
+      [role="radio"],
+      [role="switch"],
+      [role="combobox"],
+      summary,
+      .cursor-pointer
+    ):not(
+      :disabled,
+      [aria-disabled="true"],
+      [data-disabled],
+      [aria-haspopup]
+    ):active {
+    translate: 0 1px;
+  }
+}
+
+/* Segmented controls (stock ui/tabs.tsx + ui/switch.tsx, styled via data-slot hooks so the components stay on the registry).
+   Unlayered so these win over the utilities the components apply.
+   - Tabs list (default variant): stock bg-muted is the same lightness as the page canvas, so the bar disappeared.
+     Darker bar; the active trigger keeps its stock bg-background pill and smaller radius.
+   - Switch unchecked track: stock bg-input (85%) is near-invisible on white cards and the gray page. */
+:root:not(.dark) [data-slot="tabs-list"][data-variant="default"] {
+  background-color: hsl(168 10% 86%);
+}
+:root:not(.dark) [data-slot="switch"][data-state="unchecked"] {
+  background-color: hsl(168 10% 56%);
+}
+
+/* Stock ui/ components that hardcode a pixel radius instead of a token. Pulled onto
+   --radius here (unlayered, via their hooks) so they match the rest of the system
+   without editing the registry files.
+   - Checkbox: stock rounded-[4px].
+   - Chart tooltip indicator + legend swatch: stock rounded-[2px]. */
+[data-slot="checkbox"],
+[data-chart] .rounded-\[2px\] {
+  border-radius: var(--radius);
+}
+
+/* Tables (stock ui/table.tsx) sit flush inside rounded cards - cases, property, clients,
+   lenders, users, invoices. Stock cells are px-2, which puts the first/last column right
+   against the corner curve; inset the outer columns so content clears it. */
+[data-slot="table"] th:first-child,
+[data-slot="table"] td:first-child {
+  padding-left: 1rem;
+}
+[data-slot="table"] th:last-child,
+[data-slot="table"] td:last-child {
+  padding-right: 1rem;
+}
+
+/* Light frosted backdrop behind every pop-up overlay */
+[data-slot="dialog-overlay"],
+[data-slot="alert-dialog-overlay"],
+[data-slot="sheet-overlay"],
+[data-slot="drawer-overlay"] {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Minimalist scrollbars, site-wide: one thin rounded thumb on a transparent track, no
+   arrow buttons, no corner box. Chromium/WebKit take the ::-webkit-scrollbar rules;
+   Firefox (no ::-webkit-scrollbar) gets the standard properties instead. The split
+   matters: setting scrollbar-width/scrollbar-color in Chromium would switch off the
+   pseudo-element styling and bring the arrows back. */
+:root {
+  --scrollbar-size: 6px;
+  --scrollbar-thumb: hsl(var(--muted-foreground) / 0.3);
+  --scrollbar-thumb-hover: hsl(var(--muted-foreground) / 0.5);
+}
+
+::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+}
+
+/* Radix ScrollArea (stock ui/scroll-area.tsx) draws its own bar; bring it in line with
+   the native one. Unlayered so it beats the component's w-2.5 / p-px / bg-border utilities. */
+[data-slot="scroll-area-scrollbar"] {
+  padding: 0;
+  border: 0;
+}
+[data-slot="scroll-area-scrollbar"][data-orientation="vertical"] {
+  width: var(--scrollbar-size);
+}
+[data-slot="scroll-area-scrollbar"][data-orientation="horizontal"] {
+  height: var(--scrollbar-size);
+}
+[data-slot="scroll-area-thumb"] {
+  background-color: var(--scrollbar-thumb);
+}
+[data-slot="scroll-area-scrollbar"]:hover [data-slot="scroll-area-thumb"] {
+  background-color: var(--scrollbar-thumb-hover);
+}

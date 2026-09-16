@@ -1,0 +1,4199 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 1.0.0
+  description: Chariot Financial Solutions case management API
+servers:
+  - url: /api
+tags:
+  - name: health
+  - name: auth
+  - name: dashboard
+  - name: clients
+  - name: cases
+  - name: tasks
+  - name: lenders
+  - name: communications
+  - name: search
+  - name: places
+  - name: assistant
+paths:
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LoginInput"}
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuthUser"}
+        "401":
+          description: Invalid credentials
+  /auth/staff-profiles:
+    get:
+      operationId: listStaffProfiles
+      tags: [auth]
+      responses:
+        "200":
+          description: Staff profiles for the PIN-login picker
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/StaffProfile"}}
+  /auth/login/pin:
+    post:
+      operationId: pinLogin
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PinLoginInput"}
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuthUser"}
+        "401":
+          description: Invalid PIN
+        "423":
+          description: Account temporarily locked after repeated failed PIN attempts
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      responses:
+        "204":
+          description: Signed out
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuthUser"}
+        "401":
+          description: Not signed in
+  /auth/activate:
+    post:
+      operationId: activatePortal
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PortalActivationInput"}
+      responses:
+        "200":
+          description: Portal account activated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AuthUser"}
+        "400":
+          description: Invalid, expired, or used token
+  /auth/password/forgot:
+    post:
+      operationId: forgotPassword
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ForgotPasswordInput"}
+      responses:
+        "204":
+          description: If an account exists for that email, a reset link was sent
+  /auth/password/reset:
+    post:
+      operationId: resetPassword
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ResetPasswordInput"}
+      responses:
+        "204":
+          description: Password reset
+        "400":
+          description: Invalid, expired, or used token
+  /auth/password/change:
+    post:
+      operationId: changePassword
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ChangePasswordInput"}
+      responses:
+        "204":
+          description: Password changed
+        "401":
+          description: Not signed in
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/HealthStatus"}
+  /portal/cases:
+    get:
+      operationId: listPortalCases
+      tags: [cases]
+      responses:
+        "200":
+          description: Current client's cases (no fee or internal figures) with anything waiting for their approval
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/PortalCase"}}
+  /portal/approvals/{id}/respond:
+    post:
+      operationId: respondPortalApproval
+      tags: [portal]
+      description: The signed-in client approves, or asks to discuss, advice or submission details sent to them.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PortalApprovalInput"}
+      responses:
+        "200":
+          description: Recorded
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientApproval"}
+        "409":
+          description: Already answered or expired
+  /approvals/{token}:
+    post:
+      operationId: respondApprovalByToken
+      tags: [portal]
+      description: One-click answer from the email link. No session; the token is the credential and can be used once.
+      parameters:
+        - {name: token, in: path, required: true, schema: {type: string, minLength: 32, maxLength: 200}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PublicApprovalInput"}
+      responses:
+        "200":
+          description: Recorded (or already recorded)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PublicApprovalResult"}
+        "404":
+          description: Unknown or expired link
+  /portal/documents:
+    get:
+      operationId: listPortalDocuments
+      tags: [clients]
+      responses:
+        "200":
+          description: Current client's documents
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/Document"}}
+  /portal/properties:
+    get:
+      operationId: listPortalProperties
+      tags: [clients]
+      responses:
+        "200":
+          description: Properties linked to the current client
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/Property"}}
+  /portal/properties/{id}:
+    patch:
+      operationId: updatePortalProperty
+      tags: [clients]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PortalPropertyInput"}
+      responses:
+        "200":
+          description: Updated client property
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Property"}
+        "404":
+          description: Property not found for the current client
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      responses:
+        "200":
+          description: Operational summary
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Dashboard"}
+  /activities:
+    get:
+      operationId: listActivities
+      tags: [dashboard]
+      parameters:
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 1, default: 1}
+        - name: pageSize
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 25, default: 25}
+        - name: propertyId
+          in: query
+          schema: {type: integer}
+      responses:
+        "200":
+          description: Paginated activity feed
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ActivityPage"}
+  /search:
+    get:
+      operationId: globalSearch
+      tags: [search]
+      description: |
+        Site-wide search across every record type the signed-in staff user can see.
+        Every whitespace-separated term must match somewhere in a record (any text,
+        number or date field, cast to text), so "smith bridging" finds the case whose
+        client is Smith and whose matter type is bridging. Results come back grouped
+        by record type, each group capped at `limit` and carrying its total match count.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: {type: string, minLength: 2, maxLength: 200}
+        - name: types
+          in: query
+          required: false
+          description: Comma-separated subset of record types to search; omit for all
+          schema: {type: string, maxLength: 200}
+        - name: limit
+          in: query
+          required: false
+          description: Maximum hits per record type
+          schema: {type: integer, minimum: 1, maximum: 50}
+      responses:
+        "200":
+          description: Matching records grouped by type
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/GlobalSearchResults"}
+        "400":
+          description: Query too short or invalid
+  /staff:
+    get:
+      operationId: listStaff
+      tags: [auth]
+      responses:
+        "200":
+          description: Active staff users
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/StaffUser"}}
+  /clients:
+    get:
+      operationId: listClients
+      tags: [clients]
+      parameters:
+        - name: lifecycle
+          in: query
+          required: false
+          description: Filter by lifecycle; "open" = enquiry + onboarding + active, "closed" = declined + lost.
+          schema: {type: string, enum: [enquiry, onboarding, active, declined, lost, open, closed]}
+      responses:
+        "200":
+          description: Clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Client"}
+    post:
+      operationId: createClient
+      tags: [clients]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ClientInput"}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Client"}
+  /clients/extract:
+    post:
+      operationId: extractClientEnquiry
+      tags: [clients]
+      description: Read a pasted enquiry email and suggest client, property and enquiry fields plus possible existing-client matches. Nothing is written.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ExtractEnquiryInput"}
+      responses:
+        "200":
+          description: Suggested fields and matches
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExtractEnquiryOutput"}
+  /clients/matches:
+    post:
+      operationId: findClientMatches
+      tags: [clients]
+      description: Possible existing clients for the given contact details (duplicate check before creating an enquiry).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ClientMatchQuery"}
+      responses:
+        "200":
+          description: Matches
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientMatchList"}
+  /clients/inbound:
+    post:
+      operationId: inboundClientEnquiry
+      tags: [clients]
+      description: Forward-in webhook. Authenticated with the x-enquiry-inbound-secret header, not a session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/InboundEnquiryInput"}
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/InboundEnquiryOutput"}
+        "401":
+          description: Bad secret
+        "503":
+          description: Inbound enquiries are not configured
+  /clients/{id}/accept:
+    post:
+      operationId: acceptClientEnquiry
+      tags: [clients]
+      description: Accept an enquiry - sends the welcome/portal email and creates the advanced-information tasks. Re-issues the welcome email when the previous delivery failed.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Accepted client
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientDetail"}
+        "409":
+          description: Client is not at the enquiry stage
+  /clients/{id}/decline:
+    post:
+      operationId: declineClientEnquiry
+      tags: [clients]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DeclineClientInput"}
+      responses:
+        "200":
+          description: Closed client
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientDetail"}
+        "409":
+          description: Client cannot be closed from its current lifecycle
+  /clients/{id}/reopen:
+    post:
+      operationId: reopenClientEnquiry
+      tags: [clients]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Reopened client
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientDetail"}
+        "409":
+          description: Client is not closed
+  /clients/{id}/repeat-enquiry:
+    post:
+      operationId: recordRepeatEnquiry
+      tags: [clients]
+      description: A new enquiry from an existing client - stores the email, creates the property if one was found and tasks the case default assignee.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RepeatEnquiryInput"}
+      responses:
+        "200":
+          description: Updated client
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RepeatEnquiryOutput"}
+  /clients/bulk:
+    post:
+      operationId: bulkUpdateClients
+      tags: [clients]
+      description: Reassign several clients at once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BulkClientUpdate"}
+      responses:
+        "200":
+          description: Updated clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Client"}
+  /clients/{id}/timeline:
+    get:
+      operationId: getClientTimeline
+      tags: [clients]
+      description: Everything that happened on this relationship, newest first - activities, logged interactions, tasks, documents, cases and portal emails.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Timeline
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/ClientTimelineItem"}
+  /clients/{id}/interactions:
+    get:
+      operationId: listClientInteractions
+      tags: [clients]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Logged interactions, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/ClientInteraction"}
+    post:
+      operationId: createClientInteraction
+      tags: [clients]
+      description: Log a call, email, meeting or note. Updates the client's last-contacted time and, when given, the next follow-up date.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ClientInteractionInput"}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientInteraction"}
+  /clients/{id}/interactions/{interactionId}:
+    patch:
+      operationId: updateClientInteraction
+      tags: [clients]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: interactionId, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ClientInteractionUpdate"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientInteraction"}
+        "403":
+          description: Only the author or an admin can edit an interaction
+    delete:
+      operationId: deleteClientInteraction
+      tags: [clients]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: interactionId, in: path, required: true, schema: {type: integer}}
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: Only the author or an admin can delete an interaction
+  /companies-house/search:
+    get:
+      operationId: searchCompaniesHouse
+      tags: [clients]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+      responses:
+        "200":
+          description: Matching companies from Companies House
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompaniesHouseSearchResults"
+        "503":
+          description: Companies House search is not configured
+  /places/autocomplete:
+    get:
+      operationId: autocompletePlaces
+      tags: [places]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: sessionToken
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        "200":
+          description: Address suggestions from Google Places
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceAutocompleteResults"
+        "503":
+          description: Google Places lookup is not configured
+  /places/details:
+    get:
+      operationId: getPlaceAddress
+      tags: [places]
+      parameters:
+        - name: placeId
+          in: query
+          required: true
+          schema: {type: string, minLength: 1}
+        - name: sessionToken
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        "200":
+          description: Full address for a Google place
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceAddress"
+        "404":
+          description: Place not found
+        "503":
+          description: Google Places lookup is not configured
+  /clients/{id}:
+    get:
+      operationId: getClient
+      tags: [clients]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Client detail
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientDetail"}
+    patch:
+      operationId: updateClient
+      tags: [clients]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateClientInfoBody"}
+      responses:
+        "200":
+          description: Updated client
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientDetail"}
+  /clients/{id}/onboarding/{key}:
+    patch:
+      operationId: updateClientOnboardingItem
+      tags: [clients]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: key, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/OnboardingItemUpdate"}
+      responses:
+        "200":
+          description: Updated onboarding summary
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OnboardingSummary"}
+  /portal/onboarding:
+    get:
+      operationId: getPortalOnboarding
+      tags: [portal]
+      responses:
+        "200":
+          description: Client onboarding summary
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OnboardingSummary"}
+  /portal/onboarding/{key}:
+    patch:
+      operationId: updatePortalOnboardingItem
+      tags: [portal]
+      parameters:
+        - {name: key, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/OnboardingItemUpdate"}
+      responses:
+        "200":
+          description: Updated onboarding summary
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/OnboardingSummary"}
+  /cases:
+    get:
+      operationId: listCases
+      tags: [cases]
+      parameters:
+        - name: archived
+          in: query
+          required: false
+          schema: {type: boolean}
+          description: When true, return only archived cases. Defaults to active (non-archived) cases.
+      responses:
+        "200":
+          description: Cases
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Case"}
+    post:
+      operationId: createCase
+      tags: [cases]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CaseInput"}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Case"}
+  /cases/{id}:
+    get:
+      operationId: getCase
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Case detail
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseDetail"}
+    patch:
+      operationId: updateCase
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CaseUpdate"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Case"}
+  /cases/{id}/submissions:
+    post:
+      operationId: createCaseSubmission
+      tags: [cases]
+      description: Submit the case to another lender. The first submission on a case becomes primary.
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CaseSubmissionInput"}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseSubmission"}
+        "409":
+          description: Already submitted to this lender
+  /cases/{id}/submissions/{submissionId}:
+    patch:
+      operationId: updateCaseSubmission
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - name: submissionId
+          in: path
+          required: true
+          schema: {type: integer}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CaseSubmissionUpdate"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseSubmission"}
+    delete:
+      operationId: deleteCaseSubmission
+      tags: [cases]
+      description: Remove a submission that has nothing recorded against it yet. Use PATCH status=withdrawn otherwise.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - name: submissionId
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        "204": {description: Deleted}
+        "409": {description: Submission has tracking recorded; withdraw it instead}
+  /cases/{id}/stress-test:
+    get:
+      operationId: getCaseStressTest
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Stress test attached to the case (created on first access)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseStressTest"}
+    patch:
+      operationId: updateCaseStressTest
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateCaseStressTestInput"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseStressTest"}
+  /cases/{id}/stress-test/apply-property-value:
+    post:
+      operationId: applyCaseStressTestPropertyValue
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Updated case with the stress-test property value applied
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Case"}
+        "409":
+          description: The saved stress test does not pass
+  /cases/{id}/lender-offer:
+    get:
+      operationId: getCaseLenderOfferReview
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Lender offer review state
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LenderOfferReviewResponse"}
+    post:
+      operationId: reviewCaseLenderOffer
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LenderOfferReviewInput"}
+      responses:
+        "200":
+          description: Lender offer review result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LenderOfferReviewResponse"}
+        "400":
+          description: Invalid offer review
+        "404":
+          description: Case or offer document not found
+  /cases/{id}/lender-offer/extract:
+    post:
+      operationId: extractCaseLenderOfferDetails
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LenderOfferExtractionInput"}
+      responses:
+        "200":
+          description: Details extracted from the lender offer document
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LenderOfferExtractionResponse"}
+        "404":
+          description: Case or lender offer document not found
+        "503":
+          description: OpenRouter extraction is not configured
+  /cases/{id}/completion/prepare:
+    post:
+      operationId: prepareCaseCompletion
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Lender offer summary and completion values prepared for review
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CompletionPreparationResponse"}
+        "404":
+          description: Case or lender offer document not found
+        "409":
+          description: Case is not at the Completion stage
+        "503":
+          description: OpenRouter extraction is not configured
+  /cases/{id}/valuation:
+    post:
+      operationId: setCaseValuationCompleted
+      summary: Confirm (or reopen) that the case's valuation took place; syncs the calendar event and follow-up task.
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CaseValuationInput"}
+      responses:
+        "200":
+          description: Updated case
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Case"}
+        "404":
+          description: Case not found
+        "409":
+          description: The case has no valuation date
+  /cases/{id}/advance:
+    post:
+      operationId: advanceCase
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AdvanceInput"}
+      responses:
+        "200":
+          description: Advanced
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseDetail"}
+        "409":
+          description: Current stage requirements incomplete
+  /cases/{id}/service-level/confirm:
+    post:
+      operationId: confirmCaseServiceLevel
+      tags: [cases]
+      description: Administrator only. The adviser confirms the service level the case runs at (scope step 5).
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Case with the confirmation recorded
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseDetail"}
+  /cases/{id}/advice:
+    get:
+      operationId: getCaseAdvice
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: The advice draft and every version sent to the client
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseAdviceState"}
+    put:
+      operationId: updateCaseAdvice
+      tags: [cases]
+      description: Administrator only. Saves the advice draft.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CaseAdviceInput"}
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseAdviceState"}
+  /cases/{id}/advice/send:
+    post:
+      operationId: sendCaseAdvice
+      tags: [cases]
+      description: Administrator only. Snapshots the advice, emails it with Approve / Further discussion buttons, and waits for the client.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseAdviceState"}
+        "409":
+          description: Service level not confirmed, advice incomplete, or this service level does not send advice
+  /cases/{id}/advice/extract:
+    post:
+      operationId: extractCaseInstruction
+      tags: [cases]
+      description: Read the client's own instruction (lender, product, rate, term, amount) out of a pasted email. Nothing is saved.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ExtractInstructionInput"}
+      responses:
+        "200":
+          description: Suggested fields
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExtractInstructionOutput"}
+  /cases/{id}/approvals/{approvalId}/record:
+    post:
+      operationId: recordCaseApproval
+      tags: [cases]
+      description: Staff record an answer the client gave by phone or in a reply email.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: approvalId, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RecordApprovalInput"}
+      responses:
+        "200":
+          description: Recorded
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientApproval"}
+  /cases/{id}/submission-details:
+    get:
+      operationId: getCaseSubmissionDetails
+      tags: [cases]
+      description: The structured details pack that will be submitted, what is still missing, and the client's confirmation state.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Submission details
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SubmissionDetailsState"}
+  /cases/{id}/submission-details/send:
+    post:
+      operationId: sendCaseSubmissionDetails
+      tags: [cases]
+      description: Snapshots the pack and asks the client to confirm it (email button + portal).
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SubmissionDetailsState"}
+        "409":
+          description: The pack still has missing fields
+  /cases/{id}/prefill-from-previous:
+    post:
+      operationId: prefillCaseFromPrevious
+      tags: [cases]
+      description: Copies still-empty details from the client's most recent other case.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: What was copied
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PrefillResult"}
+        "404":
+          description: The client has no previous case
+  /cases/{id}/requirements:
+    post:
+      operationId: addCaseRequirement
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AddRequirementInput"}
+      responses:
+        "201":
+          description: Requirement added to the case's current stage, auto-assigned a round
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Requirement"}
+  /cases/{id}/requirements/{reqId}:
+    patch:
+      operationId: updateCaseRequirement
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - name: reqId
+          in: path
+          required: true
+          schema: {type: integer}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateRequirementInput"}
+      responses:
+        "200":
+          description: Requirement updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Requirement"}
+  /cases/{id}/underwriting/extract:
+    post:
+      operationId: extractUnderwritingRequirements
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ExtractUnderwritingInput"}
+      responses:
+        "200":
+          description: Suggested requirements extracted from the pasted bank email (placeholder heuristic, not real AI yet)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ExtractUnderwritingOutput"}
+  /cases/{id}/underwriting/rounds:
+    post:
+      operationId: addUnderwritingRound
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AddUnderwritingRoundInput"}
+      responses:
+        "201":
+          description: Confirmed requirements added as a new (or current, if still open) underwriting round
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseDetail"}
+  /cases/{id}/archive:
+    post:
+      operationId: archiveCase
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Case archived
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Case"}
+  /cases/{id}/restore:
+    post:
+      operationId: restoreCase
+      tags: [cases]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Case restored from the archive
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Case"}
+  /settings/email-templates/{key}:
+    get:
+      operationId: getEmailTemplate
+      tags: [settings]
+      parameters:
+        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email, details_confirmation]}}
+      responses:
+        "200":
+          description: The template's editable text (stored, or the built-in default)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EmailTemplate"}
+    put:
+      operationId: updateEmailTemplate
+      tags: [settings]
+      description: Administrator only. Saves the subject, heading and body text; the branded layout is fixed.
+      parameters:
+        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email, details_confirmation]}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EmailTemplateInput"}
+      responses:
+        "200":
+          description: Saved template
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EmailTemplate"}
+    delete:
+      operationId: resetEmailTemplate
+      tags: [settings]
+      description: Administrator only. Removes the stored text so the built-in default is used again.
+      parameters:
+        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email, details_confirmation]}}
+      responses:
+        "200":
+          description: The default template
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EmailTemplate"}
+  /settings/email-templates/{key}/preview:
+    post:
+      operationId: previewEmailTemplate
+      tags: [settings]
+      description: Render unsaved text inside the branded shell, with a real client's details when clientId is given.
+      parameters:
+        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email, details_confirmation]}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EmailTemplatePreviewInput"}
+      responses:
+        "200":
+          description: Rendered preview
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EmailTemplatePreview"}
+  /settings/terms-of-business:
+    get:
+      operationId: getTermsOfBusiness
+      tags: [settings]
+      responses:
+        "200":
+          description: The firm-wide Terms of Business document currently published (null when none)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TermsOfBusinessState"}
+    put:
+      operationId: uploadTermsOfBusiness
+      tags: [settings]
+      description: Administrator only. Replaces the firm-wide Terms of Business PDF; the version increments. Send the file bytes with x-filename and x-content-type headers.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        "200":
+          description: Published
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TermsOfBusinessState"}
+  /settings/terms-of-business/document:
+    get:
+      operationId: viewTermsOfBusiness
+      tags: [settings]
+      responses:
+        "200":
+          description: The PDF, inline
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+        "404":
+          description: No document published
+  /clients/{id}/terms-of-business/accept:
+    post:
+      operationId: acceptClientTerms
+      tags: [clients]
+      description: Staff record that the client accepted the Terms of Business outside the portal (signed copy received, or agreed by phone).
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AcceptTermsInput"}
+      responses:
+        "200":
+          description: Client with the acceptance recorded
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ClientDetail"}
+  /portal/terms-of-business:
+    get:
+      operationId: getPortalTermsOfBusiness
+      tags: [portal]
+      responses:
+        "200":
+          description: The current Terms of Business document and whether the signed-in client has accepted it
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [document, acceptance]
+                properties:
+                  document:
+                    allOf: [{$ref: "#/components/schemas/TermsOfBusinessDocument"}]
+                    nullable: true
+                  acceptance:
+                    allOf: [{$ref: "#/components/schemas/TermsAcceptance"}]
+                    nullable: true
+  /portal/terms-of-business/document:
+    get:
+      operationId: viewPortalTermsOfBusiness
+      tags: [portal]
+      responses:
+        "200":
+          description: The PDF, inline
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+        "404":
+          description: No document published
+  /portal/terms-of-business/accept:
+    post:
+      operationId: acceptPortalTermsOfBusiness
+      tags: [portal]
+      description: The signed-in client accepts the current Terms of Business.
+      responses:
+        "200":
+          description: Recorded
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TermsAcceptance"}
+        "409":
+          description: No document is published
+  /settings/stage-thresholds:
+    get:
+      operationId: listStageThresholds
+      tags: [settings]
+      responses:
+        "200":
+          description: Flagging threshold (in days) configured for every pipeline stage
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/StageThreshold"}
+  /settings/stage-thresholds/{stageIndex}:
+    patch:
+      operationId: updateStageThreshold
+      tags: [settings]
+      parameters:
+        - name: stageIndex
+          in: path
+          required: true
+          schema: {type: integer}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateStageThresholdInput"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StageThreshold"}
+  /settings/default-assignees:
+    get:
+      operationId: listDefaultAssignees
+      tags: [settings]
+      responses:
+        "200":
+          description: Default assignee configured for every section (Add flow, pipeline stages, Submission steps)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/DefaultAssignee"}
+  /settings/default-assignees/{section}:
+    patch:
+      operationId: updateDefaultAssignee
+      tags: [settings]
+      parameters:
+        - name: section
+          in: path
+          required: true
+          schema: {type: string, enum: [client, property, case, stage_0, stage_1, stage_2, stage_3, stage_4, stage_5, stage_6, stage_7, submission_lender, submission_dip, submission_case_number, submission_portfolio, submission_fee, submission_valuation_date, submission_decision]}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateDefaultAssigneeInput"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DefaultAssignee"}
+  /settings/users:
+    get:
+      operationId: listUsers
+      tags: [settings]
+      description: Every staff account, active or deactivated, with its sign-in status. Administrator only.
+      responses:
+        "200":
+          description: Staff accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/StaffAccount"}
+    post:
+      operationId: createUser
+      tags: [settings]
+      description: Create a staff account and email the person a link to set their password. Administrator only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateUserInput"}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StaffAccount"}
+        "409":
+          description: Email already in use
+  /settings/users/{id}:
+    patch:
+      operationId: updateUser
+      tags: [settings]
+      description: Change a staff account's name, role, PIN or active flag. Administrator only.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateUserInput"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StaffAccount"}
+  /settings/users/{id}/invite:
+    post:
+      operationId: resendUserInvite
+      tags: [settings]
+      description: Send a fresh set-password link to a staff account. Administrator only.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Invitation sent
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/StaffAccount"}
+  /tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      responses:
+        "200":
+          description: Tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Task"}
+    post:
+      operationId: createTask
+      tags: [tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TaskInput"}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+  /tasks/bulk:
+    post:
+      operationId: bulkUpdateTasks
+      tags: [tasks]
+      description: Apply the same change (status, priority, assignee, due date) to several tasks at once. Returns the updated tasks.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TaskBulkUpdate"}
+      responses:
+        "200":
+          description: Updated tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Task"}
+  /tasks/bulk-delete:
+    post:
+      operationId: bulkDeleteTasks
+      tags: [tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TaskIdList"}
+      responses: {"204": {description: Deleted}}
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Task with checklist and comments, content: {application/json: {schema: {$ref: "#/components/schemas/TaskDetail"}}}}}
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TaskUpdate"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"204": {description: Deleted}}
+  /tasks/{id}/checklist:
+    post:
+      operationId: createTaskChecklistItem
+      tags: [tasks]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TaskChecklistItemInput"}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TaskChecklistItem"}
+  /tasks/{id}/checklist/{itemId}:
+    patch:
+      operationId: updateTaskChecklistItem
+      tags: [tasks]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: itemId, in: path, required: true, schema: {type: integer}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TaskChecklistItemUpdate"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TaskChecklistItem"}
+    delete:
+      operationId: deleteTaskChecklistItem
+      tags: [tasks]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: itemId, in: path, required: true, schema: {type: integer}}
+      responses: {"204": {description: Deleted}}
+  /tasks/{id}/comments:
+    post:
+      operationId: createTaskComment
+      tags: [tasks]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TaskCommentInput"}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TaskComment"}
+  /tasks/{id}/comments/{commentId}:
+    delete:
+      operationId: deleteTaskComment
+      tags: [tasks]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - {name: commentId, in: path, required: true, schema: {type: integer}}
+      responses: {"204": {description: Deleted}}
+  /properties:
+    get:
+      operationId: listProperties
+      tags: [clients]
+      responses: {"200": {description: Properties, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/PropertyListItem"}}}}}}
+    post:
+      operationId: createProperty
+      tags: [clients]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PropertyInput"}}}}
+      responses: {"201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/Property"}}}}}
+  /properties/import:
+    post:
+      operationId: importProperties
+      tags: [clients]
+      description: Bulk-create properties for one client (CSV import). Creates a single review task for the assignee rather than one per property.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PropertyImportInput"}}}}
+      responses: {"201": {description: Created properties, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Property"}}}}}}
+  /properties/{id}:
+    get:
+      operationId: getProperty
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Property detail, content: {application/json: {schema: {$ref: "#/components/schemas/PropertyDetail"}}}}}
+    patch:
+      operationId: updateProperty
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PropertyInput"}}}}
+      responses: {"200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/Property"}}}}}
+    delete:
+      operationId: deleteProperty
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"204": {description: Deleted}, "409": {description: Referenced by a case}}
+  /properties/{id}/valuations:
+    get:
+      operationId: listPropertyValuations
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: Valuation history, most recent first
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/PropertyValuation"}}
+    post:
+      operationId: createPropertyValuation
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PropertyValuationInput"}}}}
+      responses: {"201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/PropertyValuation"}}}}}
+  /lenders:
+    get:
+      operationId: listLenders
+      tags: [lenders]
+      responses:
+        "200":
+          description: Lenders
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Lender"}
+    post:
+      operationId: createLender
+      tags: [lenders]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LenderInput"}}}}
+      responses: {"201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/Lender"}}}}}
+  /lenders/{id}:
+    get:
+      operationId: getLender
+      tags: [lenders]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Lender detail, content: {application/json: {schema: {$ref: "#/components/schemas/LenderDetail"}}}}}
+    patch:
+      operationId: updateLender
+      tags: [lenders]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LenderInput"}}}}
+      responses: {"200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/Lender"}}}}}
+    delete:
+      operationId: archiveLender
+      tags: [lenders]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"204": {description: Archived}}
+  /lenders/{id}/contacts:
+    get:
+      operationId: listLenderContacts
+      tags: [lenders]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Contacts, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/LenderContact"}}}}}}
+    post:
+      operationId: createLenderContact
+      tags: [lenders]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LenderContactInput"}}}}
+      responses: {"201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/LenderContact"}}}}}
+  /lenders/{id}/contacts/{contactId}:
+    patch:
+      operationId: updateLenderContact
+      tags: [lenders]
+      parameters: [{$ref: "#/components/parameters/Id"}, {name: contactId, in: path, required: true, schema: {type: integer}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/LenderContactInput"}}}}
+      responses: {"200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/LenderContact"}}}}}
+    delete:
+      operationId: deleteLenderContact
+      tags: [lenders]
+      parameters: [{$ref: "#/components/parameters/Id"}, {name: contactId, in: path, required: true, schema: {type: integer}}]
+      responses: {"204": {description: Deleted}}
+  /calendar:
+    get:
+      operationId: listCalendarEvents
+      tags: [dashboard]
+      responses:
+        "200":
+          description: Calendar events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/CalendarEvent"}
+    post:
+      operationId: createCalendarEvent
+      tags: [dashboard]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CalendarEventInput"}}}}
+      responses: {"201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/CalendarEvent"}}}}}
+  /calendar/{id}:
+    get:
+      operationId: getCalendarEvent
+      tags: [dashboard]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Event, content: {application/json: {schema: {$ref: "#/components/schemas/CalendarEvent"}}}}}
+    patch:
+      operationId: updateCalendarEvent
+      tags: [dashboard]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CalendarEventInput"}}}}
+      responses: {"200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/CalendarEvent"}}}}}
+    delete:
+      operationId: deleteCalendarEvent
+      tags: [dashboard]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"204": {description: Deleted}}
+  /calendar/{id}/complete:
+    post:
+      operationId: completeCalendarEvent
+      tags: [dashboard]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CalendarCompleteInput"}}}}
+      responses: {"200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/CalendarEvent"}}}}}
+  /chat/cases/{id}:
+    get:
+      operationId: getCaseChat
+      tags: [communications]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Conversation, content: {application/json: {schema: {$ref: "#/components/schemas/CaseChat"}}}}}
+  /chat/cases/{id}/messages:
+    post:
+      operationId: sendCaseChatMessage
+      tags: [communications]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/ChatMessageInput"}}}}
+      responses: {"201": {description: Sent, content: {application/json: {schema: {$ref: "#/components/schemas/Message"}}}}}
+  /chat/attachments:
+    post:
+      operationId: uploadChatAttachment
+      tags: [communications]
+      responses: {"201": {description: Uploaded, content: {application/json: {schema: {$ref: "#/components/schemas/MessageAttachment"}}}}}
+  /chat/attachments/{id}/download:
+    get:
+      operationId: downloadChatAttachment
+      tags: [communications]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Attachment bytes}}
+  /chat/messages/{id}/reactions:
+    post:
+      operationId: toggleMessageReaction
+      tags: [communications]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/MessageReactionInput"}}}}
+      responses: {"200": {description: Updated reactions for the message, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/MessageReaction"}}}}}}
+  /chat/threads:
+    get:
+      operationId: listChatThreads
+      tags: [communications]
+      responses:
+        "200":
+          description: Case chat thread summaries
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/ChatThread"}}
+  /chat/inbox:
+    get:
+      operationId: listInbox
+      tags: [communications]
+      responses:
+        "200":
+          description: Every chat thread the current staff user can see — case chats, direct and group conversations — with case context, read state and the user's inbox preferences
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/InboxThread"}}
+  /chat/search:
+    get:
+      operationId: searchChatMessages
+      tags: [communications]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: {type: string, minLength: 2, maxLength: 200}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 100}
+      responses:
+        "200":
+          description: Messages matching the query across every thread the user can see, newest first
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/ChatSearchResult"}}
+  /chat/threads/{kind}/{id}/preferences:
+    patch:
+      operationId: updateThreadPreferences
+      tags: [communications]
+      parameters:
+        - {$ref: "#/components/parameters/ThreadKind"}
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ThreadPreferencesInput"}
+      responses:
+        "200":
+          description: Updated preferences for the current user on this thread
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ThreadPreferences"}
+  /chat/threads/{kind}/{id}/read:
+    post:
+      operationId: setThreadRead
+      tags: [communications]
+      parameters:
+        - {$ref: "#/components/parameters/ThreadKind"}
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ThreadReadInput"}
+      responses:
+        "204": {description: Read cursor moved}
+  /conversations:
+    get:
+      operationId: listMyConversations
+      tags: [communications]
+      responses:
+        "200":
+          description: Conversations the current staff user participates in, across all cases
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/ConversationSummary"}}
+    post:
+      operationId: createConversation
+      tags: [communications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateCaseConversationInput"}
+      responses:
+        "201":
+          description: Conversation created or returned, not attached to any case
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseConversation"}
+  /conversations/{id}:
+    get:
+      operationId: getConversation
+      tags: [communications]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: Conversation detail
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseConversation"}
+    patch:
+      operationId: updateConversation
+      tags: [communications]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/UpdateConversationInput"}
+      responses:
+        "200":
+          description: Conversation updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseConversation"}
+  /cases/{id}/conversations:
+    get:
+      operationId: listCaseConversations
+      tags: [communications]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses:
+        "200":
+          description: Conversations visible to the current staff user
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: "#/components/schemas/CaseConversation"}}
+    post:
+      operationId: createCaseConversation
+      tags: [communications]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateCaseConversationInput"}
+      responses:
+        "201":
+          description: Conversation created or returned
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseConversation"}
+  /conversations/{id}/messages:
+    post:
+      operationId: sendConversationMessage
+      tags: [communications]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ChatMessageInput"}
+      responses:
+        "201":
+          description: Message sent
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ConversationMessage"}
+  /messages:
+    get:
+      operationId: listMessages
+      tags: [communications]
+      responses:
+        "200":
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Message"}
+    post:
+      operationId: createMessage
+      tags: [communications]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MessageInput"}
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Message"}
+  /assistant/status:
+    get:
+      operationId: getAssistantStatus
+      tags: [assistant]
+      responses:
+        "200":
+          description: Whether the in-app assistant is configured and which models it uses
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AssistantStatus"}
+  /assistant/chat:
+    post:
+      operationId: assistantChat
+      tags: [assistant]
+      description: |
+        Runs one assistant turn and streams it back as server-sent events (`data: <AssistantEvent JSON>` lines).
+        The browser owns the transcript and sends the whole conversation each turn; write proposals the user
+        approved or declined are passed back in `approvals` keyed by tool-call id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AssistantChatRequest"}
+      responses:
+        "200":
+          description: Event stream of assistant events (text, tool_call, tool_result, proposal, transcript, error, done)
+          content:
+            text/event-stream:
+              schema: {type: string}
+        "503":
+          description: Assistant not configured
+  /integrations/status:
+    get:
+      operationId: getIntegrationStatus
+      tags: [dashboard]
+      responses:
+        "200":
+          description: Integration activation state
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/IntegrationStatus"}
+  /documents:
+    get:
+      operationId: listDocuments
+      tags: [clients]
+      parameters:
+        - {name: clientId, in: query, schema: {type: integer}}
+        - {name: caseId, in: query, schema: {type: integer}}
+        - {name: propertyId, in: query, schema: {type: integer}}
+        - {name: category, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string}}
+      responses: {"200": {description: Documents, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Document"}}}}}}
+    post:
+      operationId: createDocumentMetadata
+      tags: [clients]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/DocumentInput"}}}}
+      responses: {"201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/Document"}}}}}
+  /documents/upload:
+    post:
+      operationId: uploadDocument
+      tags: [clients]
+      responses: {"201": {description: Uploaded, content: {application/json: {schema: {$ref: "#/components/schemas/Document"}}}}}
+  /documents/{id}:
+    patch:
+      operationId: updateDocument
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/DocumentUpdate"}}}}
+      responses: {"200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/Document"}}}}}
+    delete:
+      operationId: deleteDocument
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"204": {description: Deleted}}
+  /documents/{id}/download:
+    get:
+      operationId: downloadDocument
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Document bytes}}
+  /portal/documents/upload:
+    post:
+      operationId: uploadPortalDocument
+      tags: [clients]
+      responses: {"201": {description: Uploaded, content: {application/json: {schema: {$ref: "#/components/schemas/Document"}}}}}
+  /portal/documents/{id}/download:
+    get:
+      operationId: downloadPortalDocument
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Document bytes}}
+  /invoices:
+    get:
+      operationId: listInvoices
+      tags: [clients]
+      responses: {"200": {description: Invoices, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Invoice"}}}}}}
+    post:
+      operationId: createInvoice
+      tags: [clients]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/InvoiceInput"}}}}
+      responses: {"201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/InvoiceDetail"}}}}}
+  /invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Invoice, content: {application/json: {schema: {$ref: "#/components/schemas/InvoiceDetail"}}}}}
+    patch:
+      operationId: updateInvoice
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/InvoiceInput"}}}}
+      responses: {"200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/InvoiceDetail"}}}}}
+  /invoices/{id}/issue:
+    post:
+      operationId: issueInvoice
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Issued, content: {application/json: {schema: {$ref: "#/components/schemas/InvoiceDetail"}}}}}
+  /invoices/{id}/void:
+    post:
+      operationId: voidInvoice
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/VoidInvoiceInput"}}}}
+      responses: {"200": {description: Voided, content: {application/json: {schema: {$ref: "#/components/schemas/InvoiceDetail"}}}}}
+  /invoices/{id}/payments:
+    get:
+      operationId: listInvoicePayments
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Payments, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/InvoicePayment"}}}}}}
+    post:
+      operationId: recordInvoicePayment
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PaymentInput"}}}}
+      responses: {"201": {description: Recorded, content: {application/json: {schema: {$ref: "#/components/schemas/InvoicePayment"}}}}}
+  /invoices/{id}/payments/{paymentId}:
+    delete:
+      operationId: deleteInvoicePayment
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}, {name: paymentId, in: path, required: true, schema: {type: integer}}]
+      responses: {"204": {description: Removed}}
+  /renewals:
+    get:
+      operationId: listRenewals
+      tags: [cases]
+      responses: {"200": {description: Renewals, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Renewal"}}}}}}
+    post:
+      operationId: createRenewal
+      tags: [cases]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RenewalInput"}}}}
+      responses: {"201": {description: Created, content: {application/json: {schema: {$ref: "#/components/schemas/Renewal"}}}}}
+  /renewals/{id}:
+    get:
+      operationId: getRenewal
+      tags: [cases]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Renewal, content: {application/json: {schema: {$ref: "#/components/schemas/Renewal"}}}}}
+    patch:
+      operationId: updateRenewal
+      tags: [cases]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RenewalInput"}}}}
+      responses: {"200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/Renewal"}}}}}
+    delete:
+      operationId: deleteRenewal
+      tags: [cases]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"204": {description: Deleted}}
+  /renewals/{id}/status:
+    post:
+      operationId: updateRenewalStatus
+      tags: [cases]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/RenewalStatusInput"}}}}
+      responses: {"200": {description: Updated, content: {application/json: {schema: {$ref: "#/components/schemas/Renewal"}}}}}
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: {type: integer}
+    ThreadKind:
+      name: kind
+      in: path
+      required: true
+      schema: {type: string, enum: [case, conversation]}
+  schemas:
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email}
+        password: {type: string, minLength: 8, maxLength: 200}
+    PortalActivationInput:
+      type: object
+      required: [token, password]
+      properties:
+        token: {type: string, minLength: 32, maxLength: 200}
+        password: {type: string, minLength: 8, maxLength: 200}
+    ForgotPasswordInput:
+      type: object
+      required: [email]
+      properties:
+        email: {type: string, format: email}
+    ResetPasswordInput:
+      type: object
+      required: [token, password]
+      properties:
+        token: {type: string, minLength: 32, maxLength: 200}
+        password: {type: string, minLength: 8, maxLength: 200}
+    ChangePasswordInput:
+      type: object
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: {type: string, minLength: 8, maxLength: 200}
+        newPassword: {type: string, minLength: 8, maxLength: 200}
+    AuthUser:
+      type: object
+      required: [id, displayName, email, role, mustChangePassword]
+      properties:
+        id: {type: integer}
+        displayName: {type: string}
+        email: {type: string, format: email}
+        role: {type: string, enum: [broker_ceo, case_manager, completions_manager, adviser, client]}
+        mustChangePassword: {type: boolean}
+    StaffUser:
+      type: object
+      required: [id, displayName, email, role]
+      properties:
+        id: {type: integer}
+        displayName: {type: string}
+        email: {type: string, format: email}
+        role: {type: string, enum: [broker_ceo, case_manager, completions_manager, adviser]}
+    StaffProfile:
+      description: Public-safe staff directory entry used by the PIN-login profile picker. No email or other sensitive data.
+      type: object
+      required: [id, displayName, role]
+      properties:
+        id: {type: integer}
+        displayName: {type: string}
+        role: {type: string, enum: [broker_ceo, case_manager, completions_manager, adviser]}
+    PinLoginInput:
+      type: object
+      required: [userId, pin]
+      properties:
+        userId: {type: integer}
+        pin: {type: string, minLength: 4, maxLength: 8}
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string}
+    Dashboard:
+      type: object
+      required: [activeCases, urgentTasks, awaitingClient, awaitingAcceptance, completionsThisMonth, pipelineValue, totalProcFee, totalBrokerFee, totalRevenue, stageCounts, recentActivity]
+      properties:
+        activeCases: {type: integer}
+        awaitingAcceptance: {type: integer, description: Enquiries waiting to be accepted or declined.}
+        urgentTasks: {type: integer}
+        awaitingClient: {type: integer}
+        completionsThisMonth: {type: integer}
+        pipelineValue: {type: number}
+        totalProcFee: {type: number}
+        totalBrokerFee: {type: number}
+        totalRevenue: {type: number}
+        stageCounts:
+          type: array
+          items: {$ref: "#/components/schemas/StageCount"}
+        recentActivity:
+          type: array
+          items: {$ref: "#/components/schemas/Activity"}
+    StageCount:
+      type: object
+      required: [stage, count]
+      properties:
+        stage: {type: string}
+        count: {type: integer}
+    Activity:
+      type: object
+      required: [id, title, detail, actorName, occurredAt]
+      properties:
+        id: {type: integer}
+        title: {type: string}
+        detail: {type: string}
+        actorName: {type: string}
+        occurredAt: {type: string, format: date-time}
+    ActivityListItem:
+      type: object
+      required: [id, title, detail, actorName, occurredAt, caseId, caseReference]
+      properties:
+        id: {type: integer}
+        title: {type: string}
+        detail: {type: string}
+        actorName: {type: string}
+        occurredAt: {type: string, format: date-time}
+        caseId: {type: integer, nullable: true}
+        caseReference: {type: string, nullable: true}
+        entityType:
+          type: string
+          nullable: true
+          enum: [client, property, invoice, renewal, document]
+          description: The record this activity is about, when it is not (only) a case.
+        entityId: {type: integer, nullable: true}
+    ActivityPage:
+      type: object
+      required: [items, page, pageSize, total, hasMore]
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/ActivityListItem"}
+        page: {type: integer}
+        pageSize: {type: integer}
+        total: {type: integer}
+        hasMore: {type: boolean}
+    ClientLifecycle:
+      type: string
+      enum: [enquiry, onboarding, active, declined, lost]
+    ClientSource:
+      type: string
+      enum: [email, phone, website, referral, introducer, existing_client, other]
+    EnquiryType:
+      type: string
+      enum: [purchase, remortgage, refinance, bridging, development, commercial, other]
+    ClientAssignee:
+      type: object
+      required: [id, displayName]
+      properties:
+        id: {type: integer}
+        displayName: {type: string}
+    WelcomeDelivery:
+      type: object
+      required: [status]
+      properties:
+        status: {type: string, enum: [pending, sent, disabled, failed]}
+        error: {type: string, nullable: true}
+        deliveredAt: {type: string, format: date-time, nullable: true}
+    Client:
+      type: object
+      required: [id, name, email, phone, companyName, onboardingStatus, createdAt, lifecycle, stale, enquiryReceivedAt, openCases, loanTotal, openTasks, termsOfBusiness, onboardingCompletedAt]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        email: {type: string}
+        phone: {type: string}
+        companyName: {type: string}
+        onboardingStatus: {type: string, enum: [not_started, in_progress, complete]}
+        createdAt: {type: string, format: date-time}
+        lifecycle: {$ref: "#/components/schemas/ClientLifecycle"}
+        source: {type: string, enum: [email, phone, website, referral, introducer, existing_client, other], nullable: true}
+        introducerName: {type: string, nullable: true}
+        introducerContact: {type: string, nullable: true}
+        assignee:
+          allOf: [{$ref: "#/components/schemas/ClientAssignee"}]
+          nullable: true
+        enquiryType: {type: string, enum: [purchase, remortgage, refinance, bridging, development, commercial, other], nullable: true}
+        enquirySummary: {type: string, nullable: true}
+        enquiryTimescale: {type: string, nullable: true}
+        enquiryEmailText: {type: string, nullable: true}
+        enquiryEmailSubject: {type: string, nullable: true}
+        enquiryEmailFrom: {type: string, nullable: true}
+        enquiryReceivedAt: {type: string, format: date-time}
+        acceptedAt: {type: string, format: date-time, nullable: true}
+        closedAt: {type: string, format: date-time, nullable: true}
+        outcomeReason: {type: string, nullable: true}
+        stale:
+          type: boolean
+          description: True for an enquiry that has waited for acceptance longer than the stale threshold.
+        welcomeDelivery:
+          allOf: [{$ref: "#/components/schemas/WelcomeDelivery"}]
+          nullable: true
+        termsOfBusiness:
+          allOf: [{$ref: "#/components/schemas/TermsAcceptance"}]
+          nullable: true
+        onboardingCompletedAt: {type: string, format: date-time, nullable: true}
+        openCases: {type: integer, description: Cases that are not completed or archived.}
+        loanTotal: {type: number, description: Sum of loan amounts across open cases.}
+        openTasks: {type: integer}
+        lastActivityAt: {type: string, format: date-time, nullable: true}
+        lastContactedAt: {type: string, format: date-time, nullable: true, description: Most recent logged interaction.}
+        nextFollowUpAt: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true}
+        title: {type: string, nullable: true}
+        dateOfBirth: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true}
+        nationality: {type: string, nullable: true}
+        maritalStatus: {type: string, nullable: true}
+        dependants: {type: integer, nullable: true}
+        currentAddress: {type: string, nullable: true}
+        currentAddressCity: {type: string, nullable: true}
+        currentAddressPostcode: {type: string, nullable: true}
+        previousAddress: {type: string, nullable: true}
+        previousAddressCity: {type: string, nullable: true}
+        previousAddressPostcode: {type: string, nullable: true}
+        alternativePhone: {type: string, nullable: true}
+        employmentStatus: {type: string, nullable: true}
+        employerName: {type: string, nullable: true}
+        jobTitle: {type: string, nullable: true}
+        annualIncome: {type: number, nullable: true}
+        otherIncome: {type: number, nullable: true}
+        monthlyCommitments: {type: number, nullable: true}
+        creditHistoryNotes: {type: string, nullable: true}
+        companyNumber: {type: string, nullable: true}
+        companyRegisteredAddress: {type: string, nullable: true}
+        companyRegisteredCity: {type: string, nullable: true}
+        companyRegisteredPostcode: {type: string, nullable: true}
+        notes: {type: string, nullable: true}
+    CompaniesHouseCompany:
+      type: object
+      required: [companyNumber, name, status]
+      properties:
+        companyNumber: {type: string}
+        name: {type: string}
+        status: {type: string}
+        address: {type: ["string", "null"]}
+    CompaniesHouseSearchResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: {$ref: "#/components/schemas/CompaniesHouseCompany"}
+    PlaceSuggestion:
+      type: object
+      required: [placeId, description, mainText, secondaryText]
+      properties:
+        placeId: {type: string}
+        description: {type: string}
+        mainText: {type: string}
+        secondaryText: {type: string}
+    PlaceAutocompleteResults:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items: {$ref: "#/components/schemas/PlaceSuggestion"}
+    PlaceAddress:
+      type: object
+      required: [placeId, formattedAddress, line1, line2, city, county, postcode, country, countryCode, latitude, longitude]
+      properties:
+        placeId: {type: string}
+        formattedAddress: {type: string}
+        line1: {type: ["string", "null"]}
+        line2: {type: ["string", "null"]}
+        city: {type: ["string", "null"]}
+        county: {type: ["string", "null"]}
+        postcode: {type: ["string", "null"]}
+        country: {type: ["string", "null"]}
+        countryCode: {type: ["string", "null"]}
+        latitude: {type: ["number", "null"]}
+        longitude: {type: ["number", "null"]}
+    UpdateClientInfoBody:
+      type: object
+      description: Every field is optional - omitted fields keep their current value.
+      properties:
+        name: {type: string, minLength: 1}
+        email: {type: string, format: email}
+        phone: {type: string}
+        companyName: {type: string}
+        nextFollowUpAt: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true}
+        title: {type: string, nullable: true}
+        dateOfBirth: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true}
+        nationality: {type: string, nullable: true}
+        maritalStatus: {type: string, nullable: true}
+        dependants: {type: integer, minimum: 0, nullable: true}
+        currentAddress: {type: string, nullable: true}
+        currentAddressCity: {type: string, nullable: true}
+        currentAddressPostcode: {type: string, nullable: true}
+        previousAddress: {type: string, nullable: true}
+        previousAddressCity: {type: string, nullable: true}
+        previousAddressPostcode: {type: string, nullable: true}
+        alternativePhone: {type: string, nullable: true}
+        employmentStatus: {type: string, nullable: true}
+        employerName: {type: string, nullable: true}
+        jobTitle: {type: string, nullable: true}
+        annualIncome: {type: number, minimum: 0, nullable: true}
+        otherIncome: {type: number, minimum: 0, nullable: true}
+        monthlyCommitments: {type: number, minimum: 0, nullable: true}
+        creditHistoryNotes: {type: string, nullable: true}
+        companyNumber: {type: string, nullable: true}
+        companyRegisteredAddress: {type: string, nullable: true}
+        companyRegisteredCity: {type: string, nullable: true}
+        companyRegisteredPostcode: {type: string, nullable: true}
+        notes: {type: string, nullable: true}
+        source: {type: string, enum: [email, phone, website, referral, introducer, existing_client, other], nullable: true}
+        introducerName: {type: string, nullable: true}
+        introducerContact: {type: string, nullable: true}
+        assignedUserId: {type: integer, nullable: true}
+        enquiryType: {type: string, enum: [purchase, remortgage, refinance, bridging, development, commercial, other], nullable: true}
+        enquirySummary: {type: string, nullable: true}
+        enquiryTimescale: {type: string, nullable: true}
+    ClientInput:
+      type: object
+      required: [name, email]
+      properties:
+        name: {type: string, minLength: 1}
+        email: {type: string, format: email}
+        phone: {type: string}
+        companyName: {type: string}
+        assignedUserId:
+          description: Staff user who should receive the onboarding task. Omit to use the configured default assignee.
+          type: ["integer", "null"]
+        title: {type: string, nullable: true}
+        dateOfBirth: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true}
+        nationality: {type: string, nullable: true}
+        maritalStatus: {type: string, nullable: true}
+        dependants: {type: integer, minimum: 0, nullable: true}
+        currentAddress: {type: string, nullable: true}
+        currentAddressCity: {type: string, nullable: true}
+        currentAddressPostcode: {type: string, nullable: true}
+        previousAddress: {type: string, nullable: true}
+        previousAddressCity: {type: string, nullable: true}
+        previousAddressPostcode: {type: string, nullable: true}
+        alternativePhone: {type: string, nullable: true}
+        employmentStatus: {type: string, nullable: true}
+        employerName: {type: string, nullable: true}
+        jobTitle: {type: string, nullable: true}
+        annualIncome: {type: number, minimum: 0, nullable: true}
+        otherIncome: {type: number, minimum: 0, nullable: true}
+        monthlyCommitments: {type: number, minimum: 0, nullable: true}
+        creditHistoryNotes: {type: string, nullable: true}
+        companyNumber: {type: string, nullable: true}
+        companyRegisteredAddress: {type: string, nullable: true}
+        companyRegisteredCity: {type: string, nullable: true}
+        companyRegisteredPostcode: {type: string, nullable: true}
+        notes: {type: string, nullable: true}
+        source: {type: string, enum: [email, phone, website, referral, introducer, existing_client, other], nullable: true}
+        introducerName: {type: string, nullable: true}
+        introducerContact: {type: string, nullable: true}
+        enquiryType: {type: string, enum: [purchase, remortgage, refinance, bridging, development, commercial, other], nullable: true}
+        enquirySummary: {type: string, nullable: true}
+        enquiryTimescale: {type: string, nullable: true}
+        enquiryEmailText: {type: string, nullable: true}
+        enquiryEmailSubject: {type: string, nullable: true}
+        enquiryEmailFrom: {type: string, nullable: true}
+        enquiryExtracted:
+          type: object
+          nullable: true
+          additionalProperties: true
+        enquiryExtractionModel: {type: string, nullable: true}
+        property:
+          type: ["object", "null"]
+          properties:
+            address: {type: string}
+            matterType: {type: string}
+            value: {type: number}
+            loanAmount: {type: number}
+            rent: {type: number}
+            gdv: {type: number}
+    ExtractEnquiryInput:
+      type: object
+      required: [emailText]
+      properties:
+        emailText: {type: string, minLength: 1, maxLength: 40000}
+        subject: {type: string}
+        from: {type: string}
+    ExtractedEnquiry:
+      type: object
+      required: [client, property, enquiry]
+      properties:
+        client:
+          type: object
+          properties:
+            name: {type: string, nullable: true}
+            email: {type: string, nullable: true}
+            phone: {type: string, nullable: true}
+            companyName: {type: string, nullable: true}
+            companyNumber: {type: string, nullable: true}
+        property:
+          type: object
+          properties:
+            address: {type: string, nullable: true}
+            value: {type: number, nullable: true}
+            loanAmount: {type: number, nullable: true}
+            rent: {type: number, nullable: true}
+            matterType: {type: string, nullable: true}
+        enquiry:
+          type: object
+          properties:
+            type: {type: string, enum: [purchase, remortgage, refinance, bridging, development, commercial, other], nullable: true}
+            timescale: {type: string, nullable: true}
+            summary: {type: string, nullable: true}
+    ExtractEnquiryOutput:
+      type: object
+      required: [extracted, model, matches]
+      properties:
+        extracted: {$ref: "#/components/schemas/ExtractedEnquiry"}
+        model: {type: string, nullable: true, description: AI model used, or null when the heuristic fallback ran.}
+        matches:
+          type: array
+          items: {$ref: "#/components/schemas/ClientMatch"}
+    ClientMatchQuery:
+      type: object
+      properties:
+        email: {type: string, nullable: true}
+        phone: {type: string, nullable: true}
+        companyNumber: {type: string, nullable: true}
+        name: {type: string, nullable: true}
+    ClientMatch:
+      type: object
+      required: [client, reason]
+      properties:
+        client: {$ref: "#/components/schemas/Client"}
+        reason: {type: string, enum: [email, company_number, phone, name]}
+    ClientMatchList:
+      type: object
+      required: [matches]
+      properties:
+        matches:
+          type: array
+          items: {$ref: "#/components/schemas/ClientMatch"}
+    InboundEnquiryInput:
+      type: object
+      required: [text]
+      properties:
+        from: {type: string}
+        subject: {type: string}
+        text: {type: string, minLength: 1, maxLength: 40000}
+    InboundEnquiryOutput:
+      type: object
+      required: [outcome, clientId]
+      properties:
+        outcome: {type: string, enum: [created, repeat]}
+        clientId: {type: integer}
+    DeclineClientInput:
+      type: object
+      required: [status, reason]
+      properties:
+        status: {type: string, enum: [declined, lost]}
+        reason: {type: string, minLength: 1}
+    BulkClientUpdate:
+      type: object
+      required: [ids]
+      properties:
+        ids: {type: array, items: {type: integer}, minItems: 1, maxItems: 200}
+        assignedUserId: {type: integer, nullable: true}
+    InteractionKind:
+      type: string
+      enum: [call, email, meeting, note]
+    ClientInteraction:
+      type: object
+      required: [id, clientId, caseId, kind, summary, occurredAt, createdByUserId, createdByName, createdAt]
+      properties:
+        id: {type: integer}
+        clientId: {type: integer}
+        caseId: {type: integer, nullable: true}
+        kind: {$ref: "#/components/schemas/InteractionKind"}
+        summary: {type: string}
+        occurredAt: {type: string, format: date-time}
+        createdByUserId: {type: integer, nullable: true}
+        createdByName: {type: string}
+        createdAt: {type: string, format: date-time}
+    ClientInteractionInput:
+      type: object
+      required: [kind, summary]
+      properties:
+        kind: {$ref: "#/components/schemas/InteractionKind"}
+        summary: {type: string, minLength: 1, maxLength: 4000}
+        occurredAt: {type: string, format: date-time}
+        caseId: {type: integer, nullable: true}
+        nextFollowUpAt:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          nullable: true
+          description: Sets the client's next follow-up date. Omit to leave it unchanged; null clears it.
+    ClientInteractionUpdate:
+      type: object
+      properties:
+        kind: {$ref: "#/components/schemas/InteractionKind"}
+        summary: {type: string, minLength: 1, maxLength: 4000}
+    ClientTimelineItem:
+      type: object
+      required: [id, kind, title, detail, actorName, occurredAt, href]
+      properties:
+        id: {type: string}
+        kind: {type: string, enum: [activity, interaction, task, document, case, email]}
+        title: {type: string}
+        detail: {type: string}
+        actorName: {type: string}
+        occurredAt: {type: string, format: date-time}
+        href: {type: string, nullable: true}
+        interactionKind:
+          allOf: [{$ref: "#/components/schemas/InteractionKind"}]
+          nullable: true
+    RepeatEnquiryInput:
+      type: object
+      properties:
+        emailText: {type: string, nullable: true}
+        subject: {type: string, nullable: true}
+        from: {type: string, nullable: true}
+        extracted:
+          allOf: [{$ref: "#/components/schemas/ExtractedEnquiry"}]
+          nullable: true
+    RepeatEnquiryOutput:
+      type: object
+      required: [clientId, propertyId]
+      properties:
+        clientId: {type: integer}
+        propertyId: {type: integer, nullable: true}
+    TermsAcceptance:
+      type: object
+      required: [acceptedAt, via, version, note, acceptedBy]
+      properties:
+        acceptedAt: {type: string, format: date-time}
+        via: {type: string, enum: [portal, signed_upload, staff]}
+        version: {type: integer, nullable: true}
+        note: {type: string, nullable: true}
+        acceptedBy: {type: string, nullable: true, description: Staff member who recorded it, when not accepted by the client in the portal.}
+    TermsOfBusinessDocument:
+      type: object
+      required: [filename, contentType, byteSize, version, uploadedAt, uploadedBy]
+      properties:
+        filename: {type: string}
+        contentType: {type: string}
+        byteSize: {type: integer}
+        version: {type: integer}
+        uploadedAt: {type: string, format: date-time}
+        uploadedBy: {type: string, nullable: true}
+    TermsOfBusinessState:
+      type: object
+      required: [document]
+      properties:
+        document:
+          allOf: [{$ref: "#/components/schemas/TermsOfBusinessDocument"}]
+          nullable: true
+    AcceptTermsInput:
+      type: object
+      required: [via]
+      properties:
+        via: {type: string, enum: [signed_upload, staff]}
+        note: {type: string}
+    ExtractInstructionInput:
+      type: object
+      required: [emailText]
+      properties:
+        emailText: {type: string, minLength: 1, maxLength: 40000}
+    ExtractInstructionOutput:
+      type: object
+      required: [extracted, model]
+      properties:
+        model: {type: string, nullable: true}
+        extracted:
+          type: object
+          required: [lenderId, lenderName, product, ratePct, termYears, loanAmount, summary]
+          properties:
+            lenderId: {type: integer, nullable: true}
+            lenderName: {type: string, nullable: true}
+            product: {type: string, nullable: true}
+            ratePct: {type: number, nullable: true}
+            termYears: {type: integer, nullable: true}
+            loanAmount: {type: number, nullable: true}
+            summary: {type: string, nullable: true}
+    ClientDetail:
+      allOf:
+        - {$ref: "#/components/schemas/Client"}
+        - type: object
+          required: [documents, properties, cases, onboarding]
+          properties:
+            onboarding: {$ref: "#/components/schemas/OnboardingSummary"}
+            documents:
+              type: array
+              items: {$ref: "#/components/schemas/Document"}
+            properties:
+              type: array
+              items: {$ref: "#/components/schemas/Property"}
+            cases:
+              type: array
+              items: {$ref: "#/components/schemas/Case"}
+    OnboardingItem:
+      type: object
+      required: [key, label, kind, status, updatedAt, detail]
+      properties:
+        detail:
+          description: Extra status text, e.g. how and when the Terms of Business were accepted.
+          type: string
+          nullable: true
+        key: {type: string}
+        label: {type: string}
+        kind: {type: string, enum: [field, date, textarea, document]}
+        value: {type: ["string", "null"]}
+        status: {type: string, enum: [required, complete, not_applicable]}
+        updatedAt: {type: string, format: date-time}
+    OnboardingSummary:
+      type: object
+      required: [status, completed, total, items]
+      properties:
+        status: {type: string, enum: [not_started, in_progress, complete]}
+        completed: {type: integer}
+        total: {type: integer}
+        items: {type: array, items: {$ref: "#/components/schemas/OnboardingItem"}}
+    OnboardingItemUpdate:
+      type: object
+      properties:
+        value: {type: ["string", "null"]}
+        status: {type: string, enum: [required, complete, not_applicable]}
+    Property:
+      type: object
+      required: [id, address, matterType, value, loanAmount]
+      properties:
+        id: {type: integer}
+        clientId: {type: ["integer", "null"]}
+        address: {type: string}
+        city: {type: string, nullable: true}
+        postcode: {type: string, nullable: true}
+        matterType: {type: string}
+        value: {type: number}
+        loanAmount: {type: number}
+        rent: {type: ["number", "null"]}
+        gdv: {type: ["number", "null"]}
+        propertyType: {type: string, nullable: true}
+        tenure: {type: string, nullable: true}
+        leaseYearsRemaining: {type: integer, nullable: true}
+        bedrooms: {type: integer, nullable: true}
+        yearBuilt: {type: integer, nullable: true}
+        epcRating: {type: string, nullable: true}
+        occupancy: {type: string, nullable: true}
+        tenancyType: {type: string, nullable: true}
+        purchasePrice: {type: number, nullable: true}
+        purchaseDate: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true}
+        currentLender: {type: string, nullable: true}
+        currentRatePct: {type: number, nullable: true}
+        currentBalance: {type: number, nullable: true}
+        currentRateEndDate: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true}
+        notes: {type: string, nullable: true}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    PropertyInput:
+      type: object
+      required: [address, matterType, value, loanAmount]
+      properties:
+        clientId: {type: ["integer", "null"]}
+        address: {type: string, minLength: 1}
+        city: {type: string, nullable: true}
+        postcode: {type: string, nullable: true}
+        matterType: {type: string, minLength: 1}
+        value: {type: number, minimum: 0}
+        loanAmount: {type: number, minimum: 0}
+        rent: {type: ["number", "null"]}
+        gdv: {type: ["number", "null"]}
+        assignedUserId:
+          description: Staff user who should receive the review task on create. Ignored on update. Omit to use the configured default assignee.
+          type: ["integer", "null"]
+        propertyType: {type: string, nullable: true}
+        tenure: {type: string, nullable: true}
+        leaseYearsRemaining: {type: integer, minimum: 0, nullable: true}
+        bedrooms: {type: integer, minimum: 0, nullable: true}
+        yearBuilt: {type: integer, minimum: 1000, nullable: true}
+        epcRating: {type: string, nullable: true}
+        occupancy: {type: string, nullable: true}
+        tenancyType: {type: string, nullable: true}
+        purchasePrice: {type: number, minimum: 0, nullable: true}
+        purchaseDate: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true}
+        currentLender: {type: string, nullable: true}
+        currentRatePct: {type: number, minimum: 0, maximum: 100, nullable: true}
+        currentBalance: {type: number, minimum: 0, nullable: true}
+        currentRateEndDate: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true}
+        notes: {type: string, nullable: true}
+    PropertyImportInput:
+      type: object
+      required: [clientId, properties]
+      properties:
+        clientId: {type: integer}
+        assignedUserId:
+          description: Staff user who should receive the single review task. Omit to use the configured default assignee.
+          type: ["integer", "null"]
+        properties:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: {$ref: "#/components/schemas/PropertyInput"}
+    PortalPropertyInput:
+      type: object
+      required: [address, matterType, value, loanAmount]
+      properties:
+        address: {type: string, minLength: 1}
+        city: {type: string, nullable: true}
+        postcode: {type: string, nullable: true}
+        matterType: {type: string, minLength: 1}
+        value: {type: number, minimum: 0}
+        loanAmount: {type: number, minimum: 0}
+        rent: {type: ["number", "null"]}
+        gdv: {type: ["number", "null"]}
+    PropertyDetail:
+      allOf:
+        - {$ref: "#/components/schemas/Property"}
+        - type: object
+          required: [clientName, cases]
+          properties:
+            clientName: {type: string, nullable: true}
+            cases: {type: array, items: {$ref: "#/components/schemas/Case"}}
+    PropertyValuation:
+      type: object
+      required: [id, propertyId, amount, valuedAt, source, caseId, notes, recordedByUserId, recordedByName, createdAt]
+      properties:
+        id: {type: integer}
+        propertyId: {type: integer}
+        amount: {type: number}
+        valuedAt: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$'}
+        source: {type: string, description: "case_valuation | manual | estimate"}
+        caseId: {type: ["integer", "null"]}
+        caseReference: {type: ["string", "null"]}
+        notes: {type: string}
+        recordedByUserId: {type: ["integer", "null"]}
+        recordedByName: {type: ["string", "null"]}
+        createdAt: {type: string, format: date-time}
+    PropertyValuationInput:
+      type: object
+      required: [amount, valuedAt]
+      properties:
+        amount: {type: number, minimum: 0}
+        valuedAt: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$'}
+        source: {type: string, description: "case_valuation | manual | estimate", default: manual}
+        notes: {type: string}
+    PropertyActiveCase:
+      type: object
+      required: [id, reference, status, stage]
+      properties:
+        id: {type: integer}
+        reference: {type: string}
+        status: {type: string}
+        stage: {type: string}
+    PropertyListItem:
+      allOf:
+        - {$ref: "#/components/schemas/Property"}
+        - type: object
+          required: [clientName, activeCases]
+          properties:
+            clientName: {type: string}
+            activeCases: {type: array, items: {$ref: "#/components/schemas/PropertyActiveCase"}}
+    CaseSubmissionStatus:
+      type: string
+      enum: [active, withdrawn, declined, offered]
+    CaseSubmission:
+      type: object
+      required: [id, caseId, lenderId, lenderName, status, isPrimary, lenderCaseNumber, dipDocument, applicationFeeConfirmed, valuationDate, valuationCompletedAt, bankDecisionRequested, notes, closedAt, closeReason, createdAt]
+      properties:
+        id: {type: integer}
+        caseId: {type: integer}
+        lenderId: {type: integer}
+        lenderName: {type: string}
+        status: {$ref: "#/components/schemas/CaseSubmissionStatus"}
+        isPrimary: {type: boolean}
+        lenderCaseNumber: {type: ["string", "null"]}
+        dipDocument: {allOf: [{$ref: "#/components/schemas/CaseDipDocument"}], nullable: true}
+        applicationFeeConfirmed: {type: boolean}
+        valuationDate: {type: ["string", "null"], format: date-time}
+        valuationCompletedAt: {type: ["string", "null"], format: date-time}
+        bankDecisionRequested: {type: boolean}
+        notes: {type: string}
+        closedAt: {type: ["string", "null"], format: date-time}
+        closeReason: {type: ["string", "null"]}
+        createdAt: {type: string, format: date-time}
+    CaseSubmissionInput:
+      type: object
+      required: [lenderId]
+      properties:
+        lenderId: {type: integer}
+    CaseSubmissionUpdate:
+      type: object
+      properties:
+        lenderCaseNumber: {type: ["string", "null"]}
+        applicationFeeConfirmed: {type: boolean}
+        valuationDate: {type: ["string", "null"], format: date-time}
+        valuationCompletedAt: {type: ["string", "null"], format: date-time}
+        bankDecisionRequested: {type: boolean}
+        notes: {type: string}
+        status: {$ref: "#/components/schemas/CaseSubmissionStatus"}
+        closeReason: {type: ["string", "null"]}
+        isPrimary:
+          description: Set true to make this the submission the case follows. Only an active submission can be primary.
+          type: boolean
+    CaseDipDocument:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+    LenderOfferDocument:
+      type: object
+      required: [id, name]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+    LenderOfferReviewInput:
+      type: object
+      required: [documentId, offerAddress, offerClientName, offerPropertyValue]
+      properties:
+        documentId: {type: integer}
+        offerAddress: {type: string}
+        offerClientName: {type: string}
+        offerPropertyValue: {type: number}
+    LenderOfferReviewResponse:
+      type: object
+      required: [document, expectedAddress, expectedClientName, expectedPropertyValue, offerAddress, offerClientName, offerPropertyValue, addressMatches, nameMatches, valueMatches, allMatched, reviewedAt]
+      properties:
+        document: {allOf: [{$ref: "#/components/schemas/LenderOfferDocument"}], nullable: true}
+        expectedAddress: {type: string}
+        expectedClientName: {type: string}
+        expectedPropertyValue: {type: number}
+        offerAddress: {type: string, nullable: true}
+        offerClientName: {type: string, nullable: true}
+        offerPropertyValue: {type: number, nullable: true}
+        addressMatches: {type: boolean}
+        nameMatches: {type: boolean}
+        valueMatches: {type: boolean}
+        allMatched: {type: boolean}
+        reviewedAt: {type: string, format: date-time, nullable: true}
+    LenderOfferExtractionInput:
+      type: object
+      required: [documentId]
+      properties:
+        documentId: {type: integer}
+    LenderOfferExtractionResponse:
+      type: object
+      required: [offerAddress, offerClientName, offerPropertyValue]
+      properties:
+        offerAddress: {type: string}
+        offerClientName: {type: string}
+        offerPropertyValue: {type: number}
+        model: {type: string, nullable: true}
+    CompletionPreparationResponse:
+      type: object
+      required: [summary, renewalType, rateEndDate, completionDate, model]
+      properties:
+        summary: {type: string}
+        renewalType: {type: string, enum: [fixed_rate, bridging]}
+        rateEndDate: {type: string, format: date, nullable: true}
+        completionDate: {type: string, format: date, nullable: true}
+        model: {type: string, nullable: true}
+    UnderwritingRound:
+      type: object
+      required: [round, emailText, createdAt]
+      properties:
+        round: {type: integer}
+        emailText: {type: string}
+        createdAt: {type: string, format: date-time}
+    Case:
+      type: object
+      required: [id, reference, clientId, clientName, propertyAddress, propertyValue, matterType, serviceType, serviceLevelConfirmedAt, serviceLevelConfirmedBy, brokerFeeBasis, brokerFeeFlat, stage, stageIndex, stageDays, stageFlagged, status, loanAmount, assignedTo, updatedAt, skippedStageIndexes, procFeePct, brokerFeePct, procFee, brokerFee, revenue, archivedAt, lenderId, lenderName, caseNumber, dipDocument, valuationDate, valuationCompletedAt, valuationAmount, expectedCompletionDate, applicationFeeConfirmed, bankDecisionRequested, underwritingCleared, underwritingRounds]
+      properties:
+        id: {type: integer}
+        reference: {type: string}
+        clientId: {type: integer}
+        clientName: {type: string}
+        propertyId: {type: integer, nullable: true}
+        propertyAddress: {type: string}
+        propertyValue: {type: number}
+        rent: {type: number, nullable: true}
+        gdv: {type: number, nullable: true}
+        matterType: {type: string}
+        serviceType: {$ref: "#/components/schemas/ServiceType"}
+        serviceLevelConfirmedAt: {type: string, format: date-time, nullable: true}
+        serviceLevelConfirmedBy: {type: string, nullable: true}
+        stage: {type: string}
+        stageIndex: {type: integer}
+        stageDays: {type: integer}
+        stageThresholdDays: {type: integer, nullable: true}
+        stageFlagged: {type: boolean}
+        status: {type: string}
+        loanAmount: {type: number}
+        assignedTo: {type: string}
+        updatedAt: {type: string, format: date-time}
+        skippedStageIndexes: {type: array, items: {type: integer}}
+        procFeePct: {type: number}
+        brokerFeePct: {type: number}
+        brokerFeeBasis: {type: string, enum: [percent, flat]}
+        brokerFeeFlat: {type: number, nullable: true}
+        procFee: {type: number}
+        brokerFee: {type: number}
+        revenue: {type: number}
+        archivedAt: {type: string, format: date-time, nullable: true}
+        lenderId: {type: integer, nullable: true}
+        lenderName: {type: string, nullable: true}
+        caseNumber: {type: string, nullable: true}
+        dipDocument: {allOf: [{$ref: "#/components/schemas/CaseDipDocument"}], nullable: true}
+        valuationDate: {type: string, format: date-time, nullable: true}
+        valuationCompletedAt:
+          description: When staff confirmed the valuation took place; null until confirmed.
+          type: string
+          format: date-time
+          nullable: true
+        valuationAmount:
+          description: The lender's valuation figure, recorded when the valuation is confirmed; null until then.
+          type: number
+          nullable: true
+        expectedCompletionDate:
+          description: Day the mortgage is expected to complete. Mirrored to the calendar and a follow-up task.
+          type: string
+          format: date-time
+          nullable: true
+        applicationFeeConfirmed: {type: boolean}
+        bankDecisionRequested: {type: boolean}
+        underwritingCleared: {type: boolean}
+        underwritingRounds: {type: array, items: {$ref: "#/components/schemas/UnderwritingRound"}}
+    CaseInput:
+      type: object
+      required: [clientId, propertyId, serviceType, loanAmount, propertyValue]
+      properties:
+        clientId: {type: integer}
+        propertyId: {type: integer}
+        serviceType: {$ref: "#/components/schemas/ServiceType"}
+        loanAmount: {type: number}
+        propertyValue: {type: number}
+        rent: {type: number}
+        gdv: {type: number}
+        assignedTo:
+          description: Display name of the case owner. Derived from assignedUserId (or the default assignee) when omitted.
+          type: string
+        assignedUserId:
+          description: Staff user who owns the case and receives the submission-details task. Omit to use the configured default assignee.
+          type: ["integer", "null"]
+        lenderId: {type: integer}
+        procFeePct: {type: number}
+        brokerFeePct: {type: number}
+        brokerFeeBasis: {type: string, enum: [percent, flat]}
+        brokerFeeFlat: {type: number, nullable: true}
+    CaseUpdate:
+      type: object
+      properties:
+        assignedTo: {type: string}
+        assignedUserId:
+          description: Reassign the case to this staff user; assignedTo is derived from their display name.
+          type: integer
+        status: {type: string}
+        lenderId: {type: integer}
+        caseNumber: {type: string}
+        draftNotes: {type: string}
+        serviceType: {$ref: "#/components/schemas/ServiceType"}
+        loanAmount: {type: number, minimum: 0}
+        propertyValue: {type: number, minimum: 0}
+        rent: {type: number, nullable: true}
+        gdv: {type: number, nullable: true}
+        procFeePct: {type: number}
+        brokerFeePct: {type: number}
+        brokerFeeBasis: {type: string, enum: [percent, flat]}
+        brokerFeeFlat: {type: number, nullable: true}
+        valuationDate: {type: string, format: date-time, nullable: true}
+        expectedCompletionDate: {type: string, format: date-time, nullable: true}
+        applicationFeeConfirmed: {type: boolean}
+        bankDecisionRequested: {type: boolean}
+        underwritingCleared: {type: boolean}
+    CaseValuationInput:
+      type: object
+      required: [completed]
+      properties:
+        completed:
+          description: true once the valuation has taken place; false to reopen it.
+          type: boolean
+        amount:
+          description: The valuation figure. When confirming, it replaces the case and property value and feeds the stress test.
+          type: number
+          minimum: 1
+    AdvanceInput:
+      type: object
+      required: [completedRequirementIds]
+      properties:
+        completedRequirementIds:
+          type: array
+          items: {type: integer}
+        override:
+          description: Administrator only - move on without the client's confirmation of the submission details.
+          type: boolean
+        overrideReason: {type: string}
+        completion:
+          allOf:
+            - {$ref: "#/components/schemas/CompletionInput"}
+          nullable: true
+    CompletionInput:
+      type: object
+      required: [renewalType, rateEndDate, completionDate, offerSummary]
+      properties:
+        renewalType: {type: string, enum: [fixed_rate, bridging]}
+        rateEndDate: {type: string, format: date, nullable: true}
+        completionDate: {type: string, format: date, nullable: true}
+        offerSummary: {type: string}
+    ServiceType:
+      type: string
+      enum: [full_advice, light_advice, execution_only]
+    ClientApproval:
+      type: object
+      required: [id, caseId, kind, version, sentAt, expiresAt, deliveryStatus, deliveryError, response, respondedAt, respondedVia, note, snapshot, sentBy]
+      properties:
+        id: {type: integer}
+        caseId: {type: integer}
+        kind: {type: string, enum: [advice, submission_details]}
+        version: {type: integer}
+        sentAt: {type: string, format: date-time}
+        expiresAt: {type: string, format: date-time}
+        sentBy: {type: string, nullable: true}
+        deliveryStatus: {type: string, enum: [pending, sent, disabled, failed]}
+        deliveryError: {type: string, nullable: true}
+        response: {type: string, enum: [approved, discuss], nullable: true}
+        respondedAt: {type: string, format: date-time, nullable: true}
+        respondedVia: {type: string, enum: [email, portal, staff], nullable: true}
+        note: {type: string, nullable: true}
+        snapshot:
+          description: What the client was shown - an AdviceSnapshot or a SubmissionPack.
+          type: object
+          additionalProperties: true
+    CaseAdvice:
+      type: object
+      required: [caseId, lenderId, lenderName, product, ratePct, termYears, monthlyPayment, arrangementFee, summary, reasoning, updatedAt, updatedBy, source, instructionEmailText]
+      properties:
+        source: {type: string, enum: [adviser, client_email, staff], nullable: true}
+        instructionEmailText: {type: string, nullable: true}
+        caseId: {type: integer}
+        lenderId: {type: integer, nullable: true}
+        lenderName: {type: string, nullable: true}
+        product: {type: string, nullable: true}
+        ratePct: {type: number, nullable: true}
+        termYears: {type: integer, nullable: true}
+        monthlyPayment: {type: number, nullable: true}
+        arrangementFee: {type: number, nullable: true}
+        summary: {type: string, nullable: true}
+        reasoning: {type: string, nullable: true}
+        updatedAt: {type: string, format: date-time, nullable: true}
+        updatedBy: {type: string, nullable: true}
+    CaseAdviceInput:
+      type: object
+      properties:
+        source: {type: string, enum: [adviser, client_email, staff], nullable: true}
+        instructionEmailText: {type: string, nullable: true}
+        lenderId: {type: integer, nullable: true}
+        product: {type: string, nullable: true}
+        ratePct: {type: number, minimum: 0, nullable: true}
+        termYears: {type: integer, minimum: 0, nullable: true}
+        monthlyPayment: {type: number, minimum: 0, nullable: true}
+        arrangementFee: {type: number, minimum: 0, nullable: true}
+        summary: {type: string, nullable: true}
+        reasoning: {type: string, nullable: true}
+    CaseAdviceState:
+      type: object
+      required: [advice, approvals, latest, needsAdvice, mode, serviceLevelConfirmedAt, serviceLevelConfirmedBy, readyToSend, missing, instructionRecorded, termsOfBusiness]
+      properties:
+        mode:
+          description: advice = the adviser writes and sends a recommendation; instruction = the client's own instruction (execution only), confirmed with the submission details.
+          type: string
+          enum: [advice, instruction]
+        instructionRecorded: {type: boolean}
+        termsOfBusiness:
+          allOf: [{$ref: "#/components/schemas/TermsAcceptance"}]
+          nullable: true
+        advice: {$ref: "#/components/schemas/CaseAdvice"}
+        approvals:
+          type: array
+          items: {$ref: "#/components/schemas/ClientApproval"}
+        latest:
+          allOf: [{$ref: "#/components/schemas/ClientApproval"}]
+          nullable: true
+        needsAdvice: {type: boolean, description: Whether this service level sends written advice.}
+        serviceLevelConfirmedAt: {type: string, format: date-time, nullable: true}
+        serviceLevelConfirmedBy: {type: string, nullable: true}
+        readyToSend: {type: boolean}
+        missing:
+          type: array
+          items: {type: string}
+          description: What still stops the advice being sent.
+    RecordApprovalInput:
+      type: object
+      required: [response]
+      properties:
+        response: {type: string, enum: [approved, discuss]}
+        note: {type: string}
+    PortalApprovalInput:
+      type: object
+      required: [response]
+      properties:
+        response: {type: string, enum: [approved, discuss]}
+        note: {type: string}
+    PublicApprovalInput:
+      type: object
+      required: [response]
+      properties:
+        response: {type: string, enum: [approved, discuss]}
+    PublicApprovalResult:
+      type: object
+      required: [status, kind, firstName]
+      properties:
+        status: {type: string, enum: [recorded, already_recorded]}
+        kind: {type: string, enum: [advice, submission_details]}
+        firstName: {type: string}
+    SubmissionField:
+      type: object
+      required: [key, label, value, source, missing]
+      properties:
+        key: {type: string}
+        label: {type: string}
+        value: {type: string, nullable: true}
+        source: {type: string, enum: [client, property, case, advice]}
+        missing: {type: boolean}
+    SubmissionSection:
+      type: object
+      required: [key, title, fields]
+      properties:
+        key: {type: string}
+        title: {type: string}
+        fields:
+          type: array
+          items: {$ref: "#/components/schemas/SubmissionField"}
+    SubmissionPack:
+      type: object
+      required: [sections, missing]
+      properties:
+        sections:
+          type: array
+          items: {$ref: "#/components/schemas/SubmissionSection"}
+        missing:
+          type: array
+          items: {type: string}
+          description: Labels of the required fields that are still empty.
+    SubmissionDetailsState:
+      type: object
+      required: [pack, approvals, latest, confirmed, previousCase]
+      properties:
+        pack: {$ref: "#/components/schemas/SubmissionPack"}
+        approvals:
+          type: array
+          items: {$ref: "#/components/schemas/ClientApproval"}
+        latest:
+          allOf: [{$ref: "#/components/schemas/ClientApproval"}]
+          nullable: true
+        confirmed: {type: boolean}
+        previousCase:
+          type: object
+          nullable: true
+          required: [id, reference, stage, updatedAt]
+          properties:
+            id: {type: integer}
+            reference: {type: string}
+            stage: {type: string}
+            updatedAt: {type: string, format: date-time}
+    PrefillResult:
+      type: object
+      required: [copied, fromReference]
+      properties:
+        copied:
+          type: array
+          items: {type: string}
+        fromReference: {type: string}
+    PortalCase:
+      type: object
+      required: [id, reference, propertyAddress, matterType, serviceType, stage, stageIndex, stages, status, loanAmount, propertyValue, updatedAt, skippedStageIndexes, lenderName, valuationDate, expectedCompletionDate, pendingApprovals]
+      properties:
+        id: {type: integer}
+        reference: {type: string}
+        propertyAddress: {type: string}
+        matterType: {type: string}
+        serviceType: {$ref: "#/components/schemas/ServiceType"}
+        stage: {type: string}
+        stageIndex: {type: integer}
+        stages:
+          type: array
+          items: {type: string}
+        status: {type: string}
+        loanAmount: {type: number}
+        propertyValue: {type: number}
+        updatedAt: {type: string, format: date-time}
+        skippedStageIndexes: {type: array, items: {type: integer}}
+        lenderName: {type: string, nullable: true}
+        valuationDate: {type: string, format: date-time, nullable: true}
+        expectedCompletionDate: {type: string, format: date-time, nullable: true}
+        pendingApprovals:
+          type: array
+          items: {$ref: "#/components/schemas/ClientApproval"}
+    CaseDetail:
+      allOf:
+        - {$ref: "#/components/schemas/Case"}
+        - type: object
+          required: [stages, requirements, tasks, messages, draftNotes, submissions]
+          properties:
+            submissions:
+              description: Every lender this case has been submitted to, primary first. The case's own lender fields mirror the primary submission.
+              type: array
+              items: {$ref: "#/components/schemas/CaseSubmission"}
+            stages:
+              type: array
+              items: {type: string}
+            requirements:
+              type: array
+              items: {$ref: "#/components/schemas/Requirement"}
+            tasks:
+              type: array
+              items: {$ref: "#/components/schemas/Task"}
+            messages:
+              type: array
+              items: {$ref: "#/components/schemas/Message"}
+            draftNotes: {type: string}
+    CaseStressTest:
+      type: object
+      required: [id, caseId, stressAtPayRate, stressMargin, icrMultiplier, targetLtv, arrFeeMode, stressBasis, createdAt, updatedAt]
+      properties:
+        id: {type: integer}
+        caseId: {type: integer}
+        lenderId: {type: integer, nullable: true}
+        lenderName: {type: string, nullable: true}
+        monthlyRent: {type: number, nullable: true}
+        propertyValue: {type: number, nullable: true}
+        stressRate: {type: number, nullable: true}
+        payRate: {type: number, nullable: true}
+        stressAtPayRate: {type: boolean}
+        stressMargin: {type: number}
+        icrMultiplier: {type: number}
+        targetLtv: {type: number}
+        arrFeeMode: {type: string, enum: [none, pct, fixed]}
+        arrFeePct: {type: number, nullable: true}
+        arrFeeFixed: {type: number, nullable: true}
+        stressBasis: {type: string, enum: [total, net]}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    EmailTemplateInput:
+      type: object
+      required: [subject, heading, body]
+      properties:
+        subject: {type: string, minLength: 1, maxLength: 200}
+        heading: {type: string, minLength: 1, maxLength: 200}
+        body: {type: string, minLength: 1, maxLength: 10000}
+    EmailTemplate:
+      type: object
+      required: [key, subject, heading, body, isDefault, placeholders, updatedAt]
+      properties:
+        key: {type: string}
+        subject: {type: string}
+        heading: {type: string}
+        body: {type: string}
+        isDefault: {type: boolean, description: True when no custom text is stored.}
+        placeholders:
+          type: array
+          items:
+            type: object
+            required: [token, description]
+            properties:
+              token: {type: string}
+              description: {type: string}
+        updatedAt: {type: string, format: date-time, nullable: true}
+        updatedBy: {type: string, nullable: true}
+    EmailTemplatePreviewInput:
+      allOf:
+        - {$ref: "#/components/schemas/EmailTemplateInput"}
+        - type: object
+          properties:
+            clientId: {type: integer, nullable: true, description: Fill placeholders from this client; otherwise sample values.}
+    EmailTemplatePreview:
+      type: object
+      required: [subject, html]
+      properties:
+        subject: {type: string}
+        html: {type: string}
+    StageThreshold:
+      type: object
+      required: [stageIndex, stage, thresholdDays]
+      properties:
+        stageIndex: {type: integer}
+        stage: {type: string}
+        thresholdDays: {type: integer, nullable: true}
+    UpdateStageThresholdInput:
+      type: object
+      required: [thresholdDays]
+      properties:
+        thresholdDays: {type: integer, nullable: true}
+    DefaultAssignee:
+      description: Master default assignee for one section — the Add flow (client/property/case), a pipeline stage (stage_N receives the handoff task when a case enters stage N; inherits the case default), or a Submission step (submission_* gets its own task when a case enters Submission; inherits the Submission stage). userId is null when nothing is configured for that section.
+      type: object
+      required: [section, userId, displayName]
+      properties:
+        section: {type: string, enum: [client, property, case, stage_0, stage_1, stage_2, stage_3, stage_4, stage_5, stage_6, stage_7, submission_lender, submission_dip, submission_case_number, submission_portfolio, submission_fee, submission_valuation_date, submission_decision]}
+        userId: {type: integer, nullable: true}
+        displayName: {type: string, nullable: true}
+    StaffAccount:
+      description: A staff user as managed from Settings → Users. status is "invited" until the person has set a password, "active" once they can sign in, and "deactivated" when an administrator has switched the account off.
+      type: object
+      required: [id, displayName, email, role, active, hasPin, status, inviteStatus, createdAt]
+      properties:
+        id: {type: integer}
+        displayName: {type: string}
+        email: {type: string, format: email}
+        role: {type: string, enum: [broker_ceo, case_manager, completions_manager, adviser]}
+        active: {type: boolean}
+        hasPin: {type: boolean}
+        status: {type: string, enum: [invited, active, deactivated]}
+        inviteStatus:
+          description: Delivery outcome of the most recent set-password email. "disabled" means email delivery is switched off in this environment, so the link was not sent.
+          type: string
+          enum: [sent, disabled, failed, none]
+        createdAt: {type: string, format: date-time}
+    CreateUserInput:
+      type: object
+      required: [displayName, email, role]
+      properties:
+        displayName: {type: string, minLength: 1, maxLength: 120}
+        email: {type: string, format: email, maxLength: 200}
+        role: {type: string, enum: [broker_ceo, case_manager, completions_manager, adviser]}
+        pin: {type: string, pattern: "^[0-9]{4,8}$", nullable: true}
+    UpdateUserInput:
+      type: object
+      properties:
+        displayName: {type: string, minLength: 1, maxLength: 120}
+        role: {type: string, enum: [broker_ceo, case_manager, completions_manager, adviser]}
+        active: {type: boolean}
+        pin:
+          description: A new 4–8 digit PIN, or null to remove PIN sign-in for this account. Omit to leave the PIN unchanged.
+          type: string
+          pattern: "^[0-9]{4,8}$"
+          nullable: true
+    UpdateDefaultAssigneeInput:
+      type: object
+      required: [userId]
+      properties:
+        userId: {type: integer, nullable: true}
+    UpdateCaseStressTestInput:
+      type: object
+      properties:
+        lenderId: {type: integer, nullable: true}
+        monthlyRent: {type: number, nullable: true}
+        propertyValue: {type: number, nullable: true}
+        stressRate: {type: number, nullable: true}
+        payRate: {type: number, nullable: true}
+        stressAtPayRate: {type: boolean}
+        stressMargin: {type: number}
+        icrMultiplier: {type: number}
+        targetLtv: {type: number}
+        arrFeeMode: {type: string, enum: [none, pct, fixed]}
+        arrFeePct: {type: number, nullable: true}
+        arrFeeFixed: {type: number, nullable: true}
+        stressBasis: {type: string, enum: [total, net]}
+    Requirement:
+      type: object
+      required: [id, stageIndex, label, complete, required, round]
+      properties:
+        id: {type: integer}
+        stageIndex: {type: integer}
+        label: {type: string}
+        complete: {type: boolean}
+        required: {type: boolean}
+        round: {type: integer}
+    AddRequirementInput:
+      type: object
+      required: [label]
+      properties:
+        label: {type: string, minLength: 1, maxLength: 200}
+        required: {type: boolean, default: true}
+    UpdateRequirementInput:
+      type: object
+      required: [complete]
+      properties:
+        complete: {type: boolean}
+    ExtractUnderwritingInput:
+      type: object
+      required: [emailText]
+      properties:
+        emailText: {type: string, minLength: 1, maxLength: 20000}
+    ExtractUnderwritingOutput:
+      type: object
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          items: {type: string}
+    AddUnderwritingRoundInput:
+      type: object
+      required: [emailText, requirementLabels]
+      properties:
+        emailText: {type: string, minLength: 1, maxLength: 20000}
+        requirementLabels:
+          type: array
+          items: {type: string, minLength: 1, maxLength: 200}
+          minItems: 1
+    TaskStatus:
+      type: string
+      enum: [todo, in_progress, done]
+    TaskPriority:
+      type: string
+      enum: [low, normal, high, urgent]
+    Task:
+      type: object
+      required: [id, title, caseId, clientId, caseReference, clientName, assignee, assignedUserId, status, priority, dueDate, notes, createdAt, completedAt, createdByUserId, createdByName, checklistTotal, checklistDone, checklistNext, commentCount, kind, propertyId]
+      properties:
+        id: {type: integer}
+        title: {type: string}
+        caseId: {type: ["integer", "null"]}
+        clientId:
+          description: Client the task concerns (set for onboarding/property tasks; derived from the case otherwise).
+          type: ["integer", "null"]
+        caseReference: {type: ["string", "null"]}
+        clientName: {type: ["string", "null"]}
+        assignee: {type: string}
+        assignedUserId: {type: integer}
+        status: {$ref: "#/components/schemas/TaskStatus"}
+        priority: {$ref: "#/components/schemas/TaskPriority"}
+        dueDate: {type: string, format: date}
+        notes: {type: string}
+        createdAt: {type: string, format: date-time}
+        completedAt: {type: ["string", "null"], format: date-time}
+        createdByUserId: {type: ["integer", "null"]}
+        createdByName: {type: ["string", "null"]}
+        checklistTotal: {type: integer}
+        checklistDone: {type: integer}
+        checklistNext:
+          description: Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.
+          type: ["string", "null"]
+        commentCount: {type: integer}
+        kind:
+          description: Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.
+          type: ["string", "null"]
+        propertyId: {type: ["integer", "null"]}
+    TaskChecklistItem:
+      type: object
+      required: [id, taskId, title, done, position, sourceKey]
+      properties:
+        id: {type: integer}
+        sourceKey:
+          description: Record field this step mirrors; set on auto-maintained steps, null on manual ones.
+          type: ["string", "null"]
+        taskId: {type: integer}
+        title: {type: string}
+        done: {type: boolean}
+        position: {type: integer}
+    TaskChecklistItemInput:
+      type: object
+      required: [title]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 500}
+    TaskChecklistItemUpdate:
+      type: object
+      properties:
+        title: {type: string, minLength: 1, maxLength: 500}
+        done: {type: boolean}
+    TaskComment:
+      type: object
+      required: [id, taskId, authorUserId, authorName, body, createdAt]
+      properties:
+        id: {type: integer}
+        taskId: {type: integer}
+        authorUserId: {type: ["integer", "null"]}
+        authorName: {type: string}
+        body: {type: string}
+        createdAt: {type: string, format: date-time}
+    TaskCommentInput:
+      type: object
+      required: [body]
+      properties:
+        body: {type: string, minLength: 1, maxLength: 5000}
+    TaskDetail:
+      allOf:
+        - {$ref: "#/components/schemas/Task"}
+        - type: object
+          required: [checklist, comments]
+          properties:
+            checklist:
+              type: array
+              items: {$ref: "#/components/schemas/TaskChecklistItem"}
+            comments:
+              type: array
+              items: {$ref: "#/components/schemas/TaskComment"}
+    TaskInput:
+      type: object
+      required: [title, assignedUserId, priority, dueDate]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 500}
+        caseId: {type: ["integer", "null"]}
+        clientId: {type: ["integer", "null"]}
+        propertyId: {type: ["integer", "null"]}
+        priority: {$ref: "#/components/schemas/TaskPriority"}
+        status: {$ref: "#/components/schemas/TaskStatus"}
+        dueDate: {type: string, format: date}
+        notes: {type: string}
+        assignedUserId: {type: integer}
+    TaskUpdate:
+      type: object
+      properties:
+        title: {type: string, minLength: 1, maxLength: 500}
+        caseId: {type: ["integer", "null"]}
+        clientId: {type: ["integer", "null"]}
+        status: {$ref: "#/components/schemas/TaskStatus"}
+        priority: {$ref: "#/components/schemas/TaskPriority"}
+        assignedUserId: {type: integer}
+        notes: {type: string}
+        dueDate: {type: string, format: date}
+        completed: {type: boolean}
+    TaskIdList:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items: {type: integer}
+          minItems: 1
+          maxItems: 200
+    TaskBulkUpdate:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          items: {type: integer}
+          minItems: 1
+          maxItems: 200
+        status: {$ref: "#/components/schemas/TaskStatus"}
+        priority: {$ref: "#/components/schemas/TaskPriority"}
+        assignedUserId: {type: integer}
+        dueDate: {type: string, format: date}
+    Lender:
+      type: object
+      required: [id, name, portfolioStage, activeCases, avgDecisionDays, status]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        portfolioStage: {type: string}
+        activeCases: {type: integer}
+        avgDecisionDays: {type: number}
+        status: {type: string}
+    LenderInput:
+      type: object
+      required: [name, portfolioStage]
+      properties:
+        name: {type: string, minLength: 1}
+        portfolioStage: {type: string, enum: [submission, underwriting]}
+        avgDecisionDays: {type: number, minimum: 0}
+        status: {type: string}
+        profile: {type: object, additionalProperties: true}
+    LenderContact:
+      type: object
+      required: [id, lenderId, name, role]
+      properties:
+        id: {type: integer}
+        lenderId: {type: integer}
+        name: {type: string}
+        email: {type: ["string", "null"], format: email}
+        phone: {type: ["string", "null"]}
+        role: {type: string}
+    LenderContactInput:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1}
+        email: {type: ["string", "null"], format: email}
+        phone: {type: ["string", "null"]}
+        role: {type: string}
+    LenderDetail:
+      allOf:
+        - {$ref: "#/components/schemas/Lender"}
+        - type: object
+          required: [profile, contacts, configuredRequirements]
+          properties:
+            profile: {type: object, additionalProperties: true}
+            contacts: {type: array, items: {$ref: "#/components/schemas/LenderContact"}}
+            configuredRequirements: {type: array, items: {type: string}}
+    Document:
+      type: object
+      required: [id, name, category, status]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        category: {type: string}
+        status: {type: string}
+        clientId: {type: integer}
+        caseId: {type: ["integer", "null"]}
+        contentType: {type: ["string", "null"]}
+        byteSize: {type: ["integer", "null"]}
+        uploadedAt: {type: ["string", "null"], format: date-time}
+    DocumentInput:
+      type: object
+      required: [clientId, name, category]
+      properties:
+        clientId: {type: integer}
+        caseId: {type: ["integer", "null"]}
+        name: {type: string, minLength: 1, maxLength: 255}
+        category: {type: string, minLength: 1}
+        status: {type: string}
+    DocumentUpdate:
+      type: object
+      properties:
+        category: {type: string, minLength: 1}
+        status: {type: string, minLength: 1}
+    Invoice:
+      type: object
+      required: [id, invoiceNumber, clientId, status, dueDate, total, paid]
+      properties:
+        id: {type: integer}
+        invoiceNumber: {type: string}
+        clientId: {type: integer}
+        caseId: {type: ["integer", "null"]}
+        status: {type: string}
+        dueDate: {type: string, format: date}
+        total: {type: number}
+        paid: {type: number}
+        outstanding: {type: number}
+        overdueReminderDue: {type: boolean}
+    InvoiceLineItem:
+      type: object
+      required: [description, quantity, unitAmount]
+      properties:
+        description: {type: string}
+        quantity: {type: number, minimum: 0}
+        unitAmount: {type: number, minimum: 0}
+    InvoiceInput:
+      type: object
+      required: [clientId, lineItems]
+      properties:
+        clientId: {type: integer}
+        caseId: {type: ["integer", "null"]}
+        notes: {type: string}
+        lineItems: {type: array, items: {$ref: "#/components/schemas/InvoiceLineItem"}}
+    InvoicePayment:
+      type: object
+      required: [id, amount, receivedAt, reference, notes]
+      properties:
+        id: {type: integer}
+        amount: {type: number}
+        receivedAt: {type: string, format: date-time}
+        reference: {type: string}
+        notes: {type: string}
+    PaymentInput:
+      type: object
+      required: [amount, receivedAt]
+      properties:
+        amount: {type: number, exclusiveMinimum: 0}
+        receivedAt: {type: string, format: date-time}
+        reference: {type: string}
+        notes: {type: string}
+    VoidInvoiceInput:
+      type: object
+      required: [reason]
+      properties: {reason: {type: string, minLength: 1}}
+    InvoiceDetail:
+      allOf:
+        - {$ref: "#/components/schemas/Invoice"}
+        - type: object
+          required: [lineItems, payments, notes]
+          properties:
+            lineItems: {type: array, items: {$ref: "#/components/schemas/InvoiceLineItem"}}
+            payments: {type: array, items: {$ref: "#/components/schemas/InvoicePayment"}}
+            notes: {type: string}
+    Renewal:
+      type: object
+      required: [id, clientId, type, status, dueDate, notes]
+      properties:
+        id: {type: integer}
+        clientId: {type: integer}
+        caseId: {type: ["integer", "null"]}
+        type: {type: string}
+        status: {type: string}
+        rateEndDate: {type: ["string", "null"], format: date}
+        completionDate: {type: ["string", "null"], format: date}
+        dueDate: {type: string, format: date}
+        nextReminderDate: {type: ["string", "null"], format: date}
+        notes: {type: string}
+    RenewalInput:
+      type: object
+      required: [clientId, type]
+      properties:
+        clientId: {type: integer}
+        caseId: {type: ["integer", "null"]}
+        type: {type: string, enum: [fixed_rate, tracker, annual_review, bridging]}
+        status: {type: string, enum: [upcoming, contacted, in_progress, completed, lost]}
+        rateEndDate: {type: ["string", "null"], format: date}
+        completionDate: {type: ["string", "null"], format: date}
+        dueDate: {type: ["string", "null"], format: date}
+        notes: {type: string}
+    RenewalStatusInput:
+      type: object
+      required: [status]
+      properties: {status: {type: string, enum: [upcoming, contacted, in_progress, completed, lost]}}
+    CalendarEvent:
+      type: object
+      required: [id, title, eventType, eventDate, source, taskId]
+      properties:
+        id: {type: integer}
+        title: {type: string}
+        eventType: {type: string}
+        eventDate: {type: string, format: date-time}
+        caseReference: {type: ["string", "null"]}
+        clientName: {type: ["string", "null"]}
+        caseId: {type: ["integer", "null"]}
+        renewalId: {type: ["integer", "null"]}
+        completed: {type: boolean}
+        source:
+          description: Where the event comes from. Non-manual events mirror a case or renewal date and are edited through it.
+          type: string
+          enum: [manual, case_valuation, case_completion, renewal]
+        taskId:
+          description: Follow-up task linked to this event, if any.
+          type: ["integer", "null"]
+    CalendarEventInput:
+      type: object
+      required: [title, eventType, eventDate]
+      properties:
+        caseId: {type: ["integer", "null"]}
+        title: {type: string, minLength: 1}
+        eventType: {type: string, enum: [valuation, completion, renewal, general]}
+        eventDate: {type: string, format: date-time}
+    CalendarCompleteInput:
+      type: object
+      required: [completed]
+      properties: {completed: {type: boolean}}
+    Message:
+      type: object
+      required: [id, caseId, caseReference, sender, senderRole, body, createdAt]
+      properties:
+        id: {type: integer}
+        caseId: {type: integer}
+        caseReference: {type: string}
+        senderUserId: {type: ["integer", "null"]}
+        sender: {type: string}
+        senderRole: {type: string}
+        body: {type: string}
+        replyTo:
+          type: ["object", "null"]
+          allOf: [{$ref: "#/components/schemas/MessageReplyPreview"}]
+        reactions: {type: array, items: {$ref: "#/components/schemas/MessageReaction"}}
+        attachments: {type: array, items: {$ref: "#/components/schemas/MessageAttachment"}}
+        createdAt: {type: string, format: date-time}
+    MessageReplyPreview:
+      type: object
+      required: [id, sender, body]
+      properties:
+        id: {type: integer}
+        sender: {type: string}
+        body: {type: string}
+    MessageReaction:
+      type: object
+      required: [emoji, count, users, reacted]
+      properties:
+        emoji: {type: string}
+        count: {type: integer}
+        users: {type: array, items: {type: string}, description: Display names of users who reacted}
+        reacted: {type: boolean, description: Whether the current user added this reaction}
+    MessageReactionInput:
+      type: object
+      required: [emoji]
+      properties:
+        emoji: {type: string, minLength: 1, maxLength: 16}
+    MessageAttachment:
+      type: object
+      required: [id, name, contentType, byteSize]
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        contentType: {type: string}
+        byteSize: {type: integer}
+    MessageInput:
+      type: object
+      required: [caseId, body]
+      properties:
+        caseId: {type: integer}
+        body: {type: string, minLength: 1}
+    ChatMessageInput:
+      type: object
+      required: [body]
+      properties:
+        body: {type: string, maxLength: 10000}
+        replyToMessageId: {type: integer, nullable: true}
+        attachmentIds: {type: array, items: {type: integer}, maxItems: 10}
+    CaseChat:
+      type: object
+      required: [caseId, unreadCount, messages]
+      properties:
+        caseId: {type: integer}
+        unreadCount: {type: integer}
+        messages: {type: array, items: {$ref: "#/components/schemas/Message"}}
+    ChatThread:
+      type: object
+      required: [caseId, caseReference, unreadCount]
+      properties:
+        caseId: {type: integer}
+        caseReference: {type: string}
+        unreadCount: {type: integer}
+    ConversationParticipant:
+      type: object
+      required: [id, displayName, role]
+      properties:
+        id: {type: integer}
+        displayName: {type: string}
+        role: {type: string, enum: [broker_ceo, case_manager, completions_manager, adviser]}
+    ConversationMessage:
+      type: object
+      required: [id, conversationId, senderUserId, sender, senderRole, body, createdAt]
+      properties:
+        id: {type: integer}
+        conversationId: {type: integer}
+        senderUserId: {type: integer}
+        sender: {type: string}
+        senderRole: {type: string, enum: [broker_ceo, case_manager, completions_manager, adviser]}
+        body: {type: string}
+        replyTo:
+          type: ["object", "null"]
+          allOf: [{$ref: "#/components/schemas/MessageReplyPreview"}]
+        reactions: {type: array, items: {$ref: "#/components/schemas/MessageReaction"}}
+        attachments: {type: array, items: {$ref: "#/components/schemas/MessageAttachment"}}
+        createdAt: {type: string, format: date-time}
+    CaseConversation:
+      type: object
+      required: [id, caseId, kind, title, participants, messages, createdAt]
+      properties:
+        id: {type: integer}
+        caseId: {type: integer, nullable: true}
+        caseReference: {type: string, nullable: true}
+        kind: {type: string, enum: [direct, group]}
+        title: {type: string}
+        participants:
+          type: array
+          items: {$ref: "#/components/schemas/ConversationParticipant"}
+        messages:
+          type: array
+          items: {$ref: "#/components/schemas/ConversationMessage"}
+        createdAt: {type: string, format: date-time}
+    CreateCaseConversationInput:
+      type: object
+      required: [kind]
+      properties:
+        kind: {type: string, enum: [direct, group]}
+        participantUserId: {type: integer}
+    UpdateConversationInput:
+      type: object
+      required: [title]
+      properties:
+        title: {type: string, nullable: true, maxLength: 80, description: Custom name shown to every participant; null restores the default}
+    ConversationSummary:
+      type: object
+      required: [id, caseId, caseReference, kind, title, unreadCount, createdAt]
+      properties:
+        id: {type: integer}
+        caseId: {type: integer, nullable: true}
+        caseReference: {type: string, nullable: true}
+        kind: {type: string, enum: [direct, group]}
+        title: {type: string}
+        unreadCount: {type: integer}
+        lastMessage:
+          type: ["object", "null"]
+          allOf: [{$ref: "#/components/schemas/ConversationMessage"}]
+        createdAt: {type: string, format: date-time}
+    InboxCase:
+      type: object
+      required: [id, reference, clientName, stage, stageIndex, status, assignedTo, lenderName, propertyAddress]
+      properties:
+        id: {type: integer}
+        reference: {type: string}
+        clientName: {type: string}
+        stage: {type: string}
+        stageIndex: {type: integer}
+        status: {type: string}
+        assignedTo: {type: string}
+        lenderName: {type: string, nullable: true}
+        propertyAddress: {type: string}
+    InboxMessagePreview:
+      type: object
+      required: [id, sender, senderUserId, body, hasAttachment, createdAt]
+      properties:
+        id: {type: integer}
+        sender: {type: string}
+        senderUserId: {type: integer, nullable: true}
+        body: {type: string}
+        hasAttachment: {type: boolean}
+        createdAt: {type: string, format: date-time}
+    ThreadPreferences:
+      type: object
+      required: [pinned, muted, archived]
+      properties:
+        pinned: {type: boolean}
+        muted: {type: boolean}
+        archived: {type: boolean}
+    ThreadPreferencesInput:
+      type: object
+      properties:
+        pinned: {type: boolean}
+        muted: {type: boolean}
+        archived: {type: boolean}
+    ThreadReadInput:
+      type: object
+      required: [read]
+      properties:
+        read: {type: boolean, description: true moves the cursor to now; false rewinds it so the latest message from someone else counts as unread}
+    InboxThread:
+      type: object
+      required: [key, kind, caseId, conversationId, title, subtitle, case, participants, lastMessage, unreadCount, mentionsMe, pinned, muted, archived, lastActivityAt, createdAt]
+      properties:
+        key: {type: string, description: "Stable identity: case-<caseId> or conversation-<conversationId>"}
+        kind: {type: string, enum: [case, direct, group]}
+        caseId: {type: integer, nullable: true}
+        conversationId: {type: integer, nullable: true}
+        title: {type: string}
+        subtitle: {type: string}
+        case:
+          type: ["object", "null"]
+          allOf: [{$ref: "#/components/schemas/InboxCase"}]
+        participants: {type: array, items: {$ref: "#/components/schemas/ConversationParticipant"}}
+        lastMessage:
+          type: ["object", "null"]
+          allOf: [{$ref: "#/components/schemas/InboxMessagePreview"}]
+        unreadCount: {type: integer}
+        mentionsMe: {type: boolean, description: An unread message from someone else mentions the current user by @name (or @everyone)}
+        pinned: {type: boolean}
+        muted: {type: boolean}
+        archived: {type: boolean}
+        lastActivityAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+    GlobalSearchType:
+      type: string
+      enum: [case, client, property, lender, task, message, notification, event, user, document, invoice, renewal]
+    GlobalSearchHit:
+      type: object
+      required: [type, id, title, subtitle, matchedField, snippet, badge, href, date]
+      properties:
+        type: {$ref: "#/components/schemas/GlobalSearchType"}
+        id: {type: integer}
+        title: {type: string, description: Primary label of the record}
+        subtitle: {type: string, nullable: true, description: Secondary context (client name, case reference, address…)}
+        matchedField: {type: string, nullable: true, description: Human label of the field the query matched, when it was not the title}
+        snippet: {type: string, nullable: true, description: Short excerpt of the matched field around the first hit}
+        badge: {type: string, nullable: true, description: Status / stage / role chip}
+        href: {type: string, description: In-app path that opens the record}
+        date: {type: string, format: date-time, nullable: true, description: Most relevant timestamp (updated, due, sent…)}
+    GlobalSearchGroup:
+      type: object
+      required: [type, total, items]
+      properties:
+        type: {$ref: "#/components/schemas/GlobalSearchType"}
+        total: {type: integer, description: Total matches of this type, which may exceed items.length}
+        items: {type: array, items: {$ref: "#/components/schemas/GlobalSearchHit"}}
+    GlobalSearchResults:
+      type: object
+      required: [query, terms, total, groups]
+      properties:
+        query: {type: string}
+        terms: {type: array, items: {type: string}, description: Normalised search terms, for client-side highlighting}
+        total: {type: integer}
+        groups: {type: array, items: {$ref: "#/components/schemas/GlobalSearchGroup"}, description: Only types with at least one hit, in a fixed display order}
+    AssistantStatus:
+      type: object
+      required: [enabled, model, visionModel]
+      properties:
+        enabled: {type: boolean}
+        model: {type: string}
+        visionModel: {type: string}
+    AssistantAttachment:
+      type: object
+      required: [id, name, contentType, byteSize]
+      properties:
+        id: {type: integer, description: Chat attachment id from POST /chat/attachments}
+        name: {type: string}
+        contentType: {type: string}
+        byteSize: {type: integer}
+    AssistantToolCall:
+      type: object
+      required: [id, type, function]
+      properties:
+        id: {type: string}
+        type: {type: string, enum: [function]}
+        function:
+          type: object
+          required: [name, arguments]
+          properties:
+            name: {type: string}
+            arguments: {type: string, description: JSON-encoded arguments}
+    AssistantMessage:
+      type: object
+      description: One transcript entry. `role` decides which other fields apply.
+      required: [role]
+      properties:
+        role: {type: string, enum: [user, assistant, tool]}
+        content: {type: string}
+        attachments: {type: array, items: {$ref: "#/components/schemas/AssistantAttachment"}}
+        tool_calls: {type: array, items: {$ref: "#/components/schemas/AssistantToolCall"}}
+        tool_call_id: {type: string}
+        name: {type: string}
+        status: {type: string, enum: [ok, error, rejected]}
+        displays: {type: array, items: {type: object, additionalProperties: true}, description: Record cards for the UI; never sent to the model}
+    AssistantChatRequest:
+      type: object
+      required: [messages]
+      properties:
+        messages: {type: array, items: {$ref: "#/components/schemas/AssistantMessage"}}
+        approvals: {type: object, additionalProperties: {type: boolean}, description: Decisions on pending write proposals, keyed by tool-call id}
+        page:
+          type: object
+          properties:
+            path: {type: string, description: In-app path the user is viewing}
+    ChatSearchResult:
+      type: object
+      required: [messageId, threadKey, kind, caseId, conversationId, threadTitle, sender, body, createdAt]
+      properties:
+        messageId: {type: integer}
+        threadKey: {type: string}
+        kind: {type: string, enum: [case, direct, group]}
+        caseId: {type: integer, nullable: true}
+        conversationId: {type: integer, nullable: true}
+        threadTitle: {type: string}
+        sender: {type: string}
+        body: {type: string}
+        createdAt: {type: string, format: date-time}
+    IntegrationStatus:
+      type: object
+      required: [resend, openRouter]
+      properties:
+        resend: {$ref: "#/components/schemas/IntegrationState"}
+        openRouter: {$ref: "#/components/schemas/IntegrationState"}
+    IntegrationState:
+      type: object
+      required: [implemented, active, label]
+      properties:
+        implemented: {type: boolean}
+        active: {type: boolean}
+        label: {type: string}
