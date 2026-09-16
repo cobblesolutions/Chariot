@@ -12,14 +12,15 @@ import {
   type TaskDetail,
 } from "@workspace/api-client-react";
 import {
-  Briefcase,
+  ArrowUpRight,
   CalendarDays,
+  Check,
   Flag,
   ListChecks,
   MessageSquare,
   MoreHorizontal,
   Plus,
-  SquarePen,
+  RotateCcw,
   Trash2,
   UserRound,
   X,
@@ -88,6 +89,7 @@ import {
   initialsOf,
   isOverdue,
   priorityClass,
+  taskAction,
 } from "./task-model";
 import { StatusIcon, StatusToggle } from "./task-primitives";
 import { useTaskMutations } from "./use-task-mutations";
@@ -170,6 +172,8 @@ export function TaskInspector({
   const canEdit = isAdmin || task.assignedUserId === user?.id;
   const canDelete = isAdmin || task.createdByUserId === user?.id;
   const selectedCase = cases?.find((c) => c.id === task.caseId) ?? null;
+  const action = taskAction(task);
+  const done = task.status === "done";
   const checklistDone = task.checklist.filter((item) => item.done).length;
   const checklistPct = task.checklist.length
     ? Math.round((checklistDone / task.checklist.length) * 100)
@@ -223,42 +227,6 @@ export function TaskInspector({
         />
         <span className="text-xs text-muted-foreground">Task #{task.id}</span>
         <span className="flex-1" />
-        {task.caseId && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                asChild
-                aria-label="Open case"
-              >
-                <Link href={`/cases/${task.caseId}`}>
-                  <Briefcase />
-                </Link>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Open case {task.caseReference}</TooltipContent>
-          </Tooltip>
-        )}
-        {task.clientId && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                asChild
-                aria-label="Open in Add"
-              >
-                <Link
-                  href={`/add/${task.clientId}${task.caseId ? `?case=${task.caseId}` : ""}`}
-                >
-                  <SquarePen />
-                </Link>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Open in Add</TooltipContent>
-          </Tooltip>
-        )}
         {canDelete && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -302,6 +270,40 @@ export function TaskInspector({
               task.status === "done" && "line-through text-muted-foreground",
             )}
           />
+
+          {/* Where to do it, and how to close it — the two things a task is for. */}
+          <div className="flex flex-wrap items-center gap-2">
+            {action && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button asChild size="sm" className="min-w-0">
+                    <Link href={action.href}>
+                      <span className="truncate">{action.label}</span>
+                      <ArrowUpRight />
+                    </Link>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{action.destination}</TooltipContent>
+              </Tooltip>
+            )}
+            {canEdit && (
+              <Button
+                size="sm"
+                variant={action ? "outline" : "default"}
+                onClick={() => mutations.toggleDone(task)}
+              >
+                {done ? (
+                  <>
+                    <RotateCcw /> Reopen
+                  </>
+                ) : (
+                  <>
+                    <Check /> Mark complete
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
 
           <dl className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-sm">
             <dt className="text-xs text-muted-foreground">Status</dt>

@@ -1,15 +1,22 @@
 import { forwardRef, type KeyboardEvent, type MouseEvent } from "react";
-import { ListChecks, MessageSquare } from "lucide-react";
+import { Link } from "wouter";
+import { ArrowUpRight, ListChecks, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   AssigneeAvatar,
   DueLabel,
   PriorityFlag,
   StatusToggle,
 } from "./task-primitives";
-import { STATUS_TINT, type Task } from "./task-model";
+import { STATUS_TINT, taskAction, type Task } from "./task-model";
 
 export interface TaskRowProps {
   task: Task;
@@ -52,6 +59,7 @@ export const TaskRow = forwardRef<HTMLDivElement, TaskRowProps>(
   ) {
     const done = task.status === "done";
     const hasChecklist = task.checklistTotal > 0;
+    const action = taskAction(task);
 
     const handleClick = (event: MouseEvent<HTMLDivElement>) => {
       if (readOnly) return;
@@ -129,6 +137,25 @@ export const TaskRow = forwardRef<HTMLDivElement, TaskRowProps>(
         >
           {task.title}
         </span>
+        {action && !done && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                asChild
+                variant="ghost"
+                size="icon-xs"
+                className="shrink-0 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
+                aria-label={action.label}
+                onClick={(event: MouseEvent) => event.stopPropagation()}
+              >
+                <Link href={action.href}>
+                  <ArrowUpRight />
+                </Link>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{action.label}</TooltipContent>
+          </Tooltip>
+        )}
         <span className="flex shrink-0 items-center gap-2">
           {showCase && task.caseReference && (
             <Badge

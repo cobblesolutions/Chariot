@@ -240,3 +240,121 @@ export function parseQuickAdd(input: string): QuickAddDraft {
     assigneeQuery,
   };
 }
+
+export interface TaskAction {
+  /** Button label, e.g. "Begin onboarding". */
+  label: string;
+  /** Where the work happens. */
+  href: string;
+  /** Short name of the destination, for tooltips: "Add page", "Case CH-1024". */
+  destination: string;
+}
+
+const addHref = (
+  clientId: number,
+  query?: { property?: number | null; case?: number | null },
+) => {
+  const params = new URLSearchParams();
+  if (query?.property) params.set("property", String(query.property));
+  if (query?.case) params.set("case", String(query.case));
+  const search = params.toString();
+  return `/add/${clientId}${search ? `?${search}` : ""}`;
+};
+
+/**
+ * The one place a task is actually done. System tasks know why they exist
+ * (`kind`) and point at the exact screen; manual tasks fall back to whatever
+ * record they are attached to. Null when the task is free-standing.
+ */
+export function taskAction(
+  task: Pick<
+    Task,
+    "kind" | "caseId" | "clientId" | "propertyId" | "caseReference"
+  >,
+): TaskAction | null {
+  const { kind, caseId, clientId, propertyId } = task;
+  const caseName = task.caseReference
+    ? `case ${task.caseReference}`
+    : "the case";
+  if (clientId) {
+    switch (kind) {
+      case "enquiry_review":
+        return {
+          label: "Review enquiry",
+          href: addHref(clientId),
+          destination: "Add page",
+        };
+      case "client_onboarding":
+        return {
+          label: "Begin onboarding",
+          href: addHref(clientId),
+          destination: "Add page — client details & documents",
+        };
+      case "advanced_property":
+        return {
+          label: "Add the property",
+          href: addHref(clientId),
+          destination: "Add page — property",
+        };
+      case "advanced_case":
+        return {
+          label: "Set up the case",
+          href: addHref(clientId, { property: propertyId }),
+          destination: "Add page — case",
+        };
+      case "property_review":
+        return {
+          label: "Review property",
+          href: addHref(clientId, { property: propertyId }),
+          destination: "Add page — property",
+        };
+      case "property_import":
+        return {
+          label: "Review properties",
+          href: `/clients/${clientId}`,
+          destination: "Client record — properties",
+        };
+      case "case_submission":
+        return {
+          label: "Gather submission details",
+          href: addHref(clientId, { case: caseId }),
+          destination: "Add page — case",
+        };
+    }
+  }
+  if (caseId) {
+    switch (kind) {
+      case "stage_handoff":
+        return {
+          label: "Work the stage",
+          href: `/cases/${caseId}`,
+          destination: `Open ${caseName}`,
+        };
+      case "submission_step":
+        return {
+          label: "Open submission",
+          href: `/cases/${caseId}`,
+          destination: `Open ${caseName}`,
+        };
+      default:
+        return {
+          label: "Open case",
+          href: `/cases/${caseId}`,
+          destination: `Open ${caseName}`,
+        };
+    }
+  }
+  if (propertyId)
+    return {
+      label: "Open property",
+      href: `/properties/${propertyId}`,
+      destination: "Property record",
+    };
+  if (clientId)
+    return {
+      label: "Open client",
+      href: `/clients/${clientId}`,
+      destination: "Client record",
+    };
+  return null;
+}

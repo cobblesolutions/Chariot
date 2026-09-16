@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
+    "build": "echo \"@workspace/api-spec has no build step; see the codegen script\"",
     "codegen": "orval --config ./orval.config.ts && pnpm -w run typecheck:libs"
   },
   "devDependencies": {

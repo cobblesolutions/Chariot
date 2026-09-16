@@ -96,6 +96,8 @@ Store these in the deployment secret manager. Do not put them in `.env` files co
 
 Use unique passwords of at least 16 characters for the three staff accounts. The application stores only scrypt password hashes. After first sign-in, staff can change their password through the application.
 
+For local development, `pnpm --filter @workspace/api-server run start` (and `dev`) also reads `artifacts/api-server/.env` if it exists (`KEY=value` lines, one per line). That file is git-ignored — put local secrets such as `GOOGLE_MAPS_API_KEY` there instead of exporting them in every shell.
+
 ### Non-secret configuration
 
 | Name | Purpose |
