@@ -10,7 +10,6 @@ import type { ClientEnquiryType } from './clientEnquiryType';
 import type { ClientLifecycle } from './clientLifecycle';
 import type { ClientOnboardingStatus } from './clientOnboardingStatus';
 import type { ClientSourceProperty } from './clientSourceProperty';
-import type { TermsAcceptance } from './termsAcceptance';
 import type { WelcomeDelivery } from './welcomeDelivery';
 
 export interface Client {
@@ -39,8 +38,9 @@ export interface Client {
   /** True for an enquiry that has waited for acceptance longer than the stale threshold. */
   stale: boolean;
   welcomeDelivery?: WelcomeDelivery | null;
-  termsOfBusiness: TermsAcceptance | null;
   onboardingCompletedAt: Date | null;
+  /** Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value. */
+  documentFilledFields?: string[];
   /** Cases that are not completed or archived. */
   openCases: number;
   /** Sum of loan amounts across open cases. */

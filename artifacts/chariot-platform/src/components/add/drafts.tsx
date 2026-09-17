@@ -4,13 +4,9 @@ import {
   Briefcase,
   ChevronDown,
   ChevronRight,
-  ClipboardList,
   Flag,
-  Inbox,
-  Mail,
   Plus,
   Search,
-  XCircle,
 } from "lucide-react";
 import { useListCases, useListClients, type Client, type Case } from "@workspace/api-client-react";
 import { useAuth } from "@/components/auth-provider";
@@ -32,7 +28,6 @@ import {
 import { StageBadge } from "@/components/stage-badge";
 import { cn } from "@/lib/utils";
 import { LIFECYCLE_LABELS, enquiryTypeLabel, sourceLabel } from "@/lib/enquiry";
-import { WelcomeTemplateDialog } from "./welcome-template-dialog";
 
 const ONBOARDING_LABEL: Record<string, string> = {
   not_started: "Onboarding not started",
@@ -64,8 +59,8 @@ type Row = { client: Client; cases: Case[]; latest: string };
 type Scope = "all" | "mine";
 
 /**
- * The Add landing page: a row of counters for the three stages of setup, a
- * search box, then the work itself grouped by step — enquiries waiting for a
+ * The Add landing page: one toolbar (search, whose, and the two ways to
+ * start), then the work itself grouped by step — enquiries waiting for a
  * decision, accepted clients still filling in advanced information (and their
  * cases at Submission details), and, folded away, the ones that were closed.
  */
@@ -83,7 +78,6 @@ export function AddDrafts({
   const [showClosed, setShowClosed] = useState(false);
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<Scope>("all");
-  const [templateOpen, setTemplateOpen] = useState(false);
 
   const groups = useMemo(() => {
     const openCases = (cases ?? []).filter(
@@ -123,69 +117,16 @@ export function AddDrafts({
 
   const isLoading = clientsLoading || casesLoading;
   const filtering = query.trim().length > 0 || scope === "mine";
-  const stale = groups.awaiting.filter(({ client }) => client.stale).length;
-  const withCase = groups.advanced.filter(({ cases: clientCases }) => clientCases.length > 0).length;
   const open = (client: Client, firstCase?: Case) =>
     navigate(`/add/${client.id}${firstCase ? `?case=${firstCase.id}` : ""}`);
-  const jump = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
     <div className="space-y-6">
-      {/* Title row */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Add</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            New enquiries come in here, get accepted, and are set up as client, property and case.
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button variant="ghost" onClick={() => setTemplateOpen(true)}>
-            <Mail /> Welcome email
-          </Button>
-          <Button variant="outline" onClick={onExistingClient}>
-            <Search /> Existing client
-          </Button>
-          <Button onClick={onNewClient}>
-            <Plus /> New enquiry
-          </Button>
-        </div>
-      </div>
-      <WelcomeTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} />
+      <h1 className="text-3xl font-bold tracking-tight">Add</h1>
 
-      {/* Counters, one per stage of setup. Click to jump to that section. */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Counter
-          icon={Inbox}
-          label="Awaiting acceptance"
-          value={groups.awaiting.length}
-          detail={stale > 0 ? `${stale} waiting 3+ days` : "Nothing overdue"}
-          attention={stale > 0}
-          onClick={() => jump("add-awaiting")}
-        />
-        <Counter
-          icon={ClipboardList}
-          label="Advanced information"
-          value={groups.advanced.length}
-          detail={withCase > 0 ? `${withCase} with a case started` : "No cases started yet"}
-          onClick={() => jump("add-advanced")}
-        />
-        <Counter
-          icon={XCircle}
-          label="Declined & lost"
-          value={groups.closed.length}
-          detail={groups.closed.length > 0 ? "Kept on file, reopenable" : "None"}
-          muted
-          onClick={() => {
-            setShowClosed(true);
-            jump("add-closed");
-          }}
-        />
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <InputGroup className="bg-background sm:max-w-sm">
+      {/* One line: search, whose enquiries, and the two ways to start. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <InputGroup className="w-full bg-background sm:max-w-sm">
           <InputGroupAddon>
             <Search />
           </InputGroupAddon>
@@ -199,7 +140,6 @@ export function AddDrafts({
         <ToggleGroup
           type="single"
           variant="outline"
-          size="sm"
           value={scope}
           onValueChange={(value) => value && setScope(value as Scope)}
           className="bg-background"
@@ -218,6 +158,14 @@ export function AddDrafts({
             Mine
           </ToggleGroupItem>
         </ToggleGroup>
+        <div className="ml-auto flex gap-2">
+          <Button variant="outline" onClick={onExistingClient}>
+            <Search /> Existing client
+          </Button>
+          <Button onClick={onNewClient}>
+            <Plus /> New enquiry
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (
@@ -325,57 +273,6 @@ export function AddDrafts({
         </>
       )}
     </div>
-  );
-}
-
-function Counter({
-  icon: Icon,
-  label,
-  value,
-  detail,
-  attention,
-  muted,
-  onClick,
-}: {
-  icon: typeof Inbox;
-  label: string;
-  value: number;
-  detail: string;
-  attention?: boolean;
-  muted?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex items-center gap-4 rounded-xl border bg-card p-4 text-left shadow-sm transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-    >
-      <span
-        className={cn(
-          "flex size-11 shrink-0 items-center justify-center rounded-full",
-          muted ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary",
-        )}
-      >
-        <Icon className="size-5" aria-hidden="true" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm text-muted-foreground">{label}</span>
-        <span className="block text-2xl font-semibold tabular-nums tracking-tight">{value}</span>
-        <span
-          className={cn(
-            "block truncate text-xs",
-            attention ? "font-medium text-red-600 dark:text-red-400" : "text-muted-foreground",
-          )}
-        >
-          {detail}
-        </span>
-      </span>
-      <ChevronRight
-        className="size-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
-        aria-hidden="true"
-      />
-    </button>
   );
 }
 

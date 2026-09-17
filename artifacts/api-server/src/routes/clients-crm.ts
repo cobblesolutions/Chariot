@@ -1,4 +1,6 @@
 import { Router, type IRouter, type Response } from "express";
+import { RemindClientOnboardingParams, RemindClientOnboardingResponse } from "@workspace/api-zod";
+import { sendOnboardingReminder } from "../services/client-onboarding";
 import {
   BulkUpdateClientsBody,
   BulkUpdateClientsResponse,
@@ -35,6 +37,21 @@ import { EMPTY_CLIENT_EXTRAS, clientExtrasFor, clientView } from "../services/cl
  */
 const router: IRouter = Router();
 router.use(requireStaff);
+
+/** Nudge a client whose onboarding has stalled: what is still missing, with a portal link. */
+router.post("/clients/:id/onboarding/remind", async (req, res): Promise<void> => {
+  const params = RemindClientOnboardingParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid request" });
+    return;
+  }
+  const result = await sendOnboardingReminder(params.data.id, res.locals.authUser.displayName);
+  if (!result) {
+    res.status(404).json({ error: "Client not found" });
+    return;
+  }
+  res.json(RemindClientOnboardingResponse.parse(result));
+});
 
 const currentUser = (res: Response) => res.locals.authUser as { id: number; role: string; displayName: string };
 

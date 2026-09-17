@@ -5,6 +5,7 @@
  * Chariot Financial Solutions case management API
  * OpenAPI spec version: 1.0.0
  */
+import type { DocumentReading } from './documentReading';
 
 export interface Document {
   id: number;
@@ -20,4 +21,6 @@ export interface Document {
   byteSize?: number | null;
   /** @nullable */
   uploadedAt?: Date | null;
+  /** What the document reading system extracted, when the category has a reader. Omitted on list endpoints. */
+  reading?: DocumentReading | null;
 }

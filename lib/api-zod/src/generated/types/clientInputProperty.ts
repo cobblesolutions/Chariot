@@ -11,9 +11,18 @@
  */
 export type ClientInputProperty = {
   address?: string;
+  city?: string | null;
+  postcode?: string | null;
   matterType?: string;
   value?: number;
   loanAmount?: number;
   rent?: number;
   gdv?: number;
+  propertyType?: string | null;
+  purchasePrice?: number | null;
+  currentLender?: string | null;
+  currentBalance?: number | null;
+  currentRatePct?: number | null;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  currentRateEndDate?: string | null;
 } | null;

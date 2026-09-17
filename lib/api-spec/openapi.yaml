@@ -249,6 +249,109 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Dashboard"}
+  /alerts:
+    get:
+      operationId: listAlerts
+      tags: [alerts]
+      description: Things that need a person. Workers see their own; administrators can see everyone's.
+      parameters:
+        - name: scope
+          in: query
+          schema: {type: string, enum: [mine, all], default: mine}
+        - name: status
+          in: query
+          schema: {type: string, enum: [open, acknowledged, resolved], default: open}
+      responses:
+        "200":
+          description: Alerts, newest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Alert"}
+  /alerts/summary:
+    get:
+      operationId: getAlertSummary
+      tags: [alerts]
+      responses:
+        "200":
+          description: Open, unacknowledged counts for the menu badge
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AlertSummary"}
+  /alerts/evaluate:
+    post:
+      operationId: evaluateAlerts
+      tags: [alerts]
+      description: Run the alert rules now (administrators). The scheduler runs them every 15 minutes anyway.
+      responses:
+        "200":
+          description: What changed
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AlertEvaluation"}
+        "403":
+          description: Not an administrator
+  /alerts/{id}/recheck:
+    post:
+      operationId: recheckAlert
+      tags: [alerts]
+      description: Re-run the rules for this alert after fixing its cause from the card; it resolves at once if the rule no longer fires.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        "200":
+          description: The alert, possibly now resolved
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Alert"}
+        "404":
+          description: Not found
+  /clients/{id}/onboarding/remind:
+    post:
+      operationId: remindClientOnboarding
+      tags: [clients]
+      description: Email the client what is still missing from their onboarding, with a portal link.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        "200":
+          description: Reminder attempted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, missing]
+                properties:
+                  status: {type: string, enum: [sent, disabled, failed]}
+                  missing:
+                    type: array
+                    items: {type: string}
+        "404":
+          description: Client not found
+  /alerts/{id}/acknowledge:
+    post:
+      operationId: acknowledgeAlert
+      tags: [alerts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        "200":
+          description: Marked as seen
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Alert"}
+        "404":
+          description: Not found or already acknowledged
   /activities:
     get:
       operationId: listActivities
@@ -1059,7 +1162,7 @@ paths:
     get:
       operationId: getCaseSubmissionDetails
       tags: [cases]
-      description: The structured details pack that will be submitted, what is still missing, and the client's confirmation state.
+      description: The structured details pack that will be submitted and what is still missing (display-only; nothing is sent to the client).
       parameters:
         - {$ref: "#/components/parameters/Id"}
       responses:
@@ -1068,21 +1171,6 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/SubmissionDetailsState"}
-  /cases/{id}/submission-details/send:
-    post:
-      operationId: sendCaseSubmissionDetails
-      tags: [cases]
-      description: Snapshots the pack and asks the client to confirm it (email button + portal).
-      parameters:
-        - {$ref: "#/components/parameters/Id"}
-      responses:
-        "200":
-          description: Sent
-          content:
-            application/json:
-              schema: {$ref: "#/components/schemas/SubmissionDetailsState"}
-        "409":
-          description: The pack still has missing fields
   /cases/{id}/prefill-from-previous:
     post:
       operationId: prefillCaseFromPrevious
@@ -1149,7 +1237,7 @@ paths:
             schema: {$ref: "#/components/schemas/ExtractUnderwritingInput"}
       responses:
         "200":
-          description: Suggested requirements extracted from the pasted bank email (placeholder heuristic, not real AI yet)
+          description: Requirements read from the pasted lender email (AI when active, a line splitter otherwise)
           content:
             application/json:
               schema: {$ref: "#/components/schemas/ExtractUnderwritingOutput"}
@@ -1166,10 +1254,33 @@ paths:
             schema: {$ref: "#/components/schemas/AddUnderwritingRoundInput"}
       responses:
         "201":
-          description: Confirmed requirements added as a new (or current, if still open) underwriting round
+          description: A new underwriting round — its requirements on the case and a task for the case handler with one checkbox each
           content:
             application/json:
               schema: {$ref: "#/components/schemas/CaseDetail"}
+        "409":
+          description: The current round has not been marked as sent to the lender yet
+  /cases/{id}/underwriting/rounds/{round}/sent:
+    post:
+      operationId: markUnderwritingRoundSent
+      tags: [cases]
+      description: Everything the lender asked for in this round has been provided and sent back; closes the round and its task. The next round may then start.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - name: round
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        "200":
+          description: The case
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseDetail"}
+        "404":
+          description: Round not found
+        "409":
+          description: Items in the round are still open
   /cases/{id}/archive:
     post:
       operationId: archiveCase
@@ -1199,7 +1310,7 @@ paths:
       operationId: getEmailTemplate
       tags: [settings]
       parameters:
-        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email, details_confirmation]}}
+        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email]}}
       responses:
         "200":
           description: The template's editable text (stored, or the built-in default)
@@ -1211,7 +1322,7 @@ paths:
       tags: [settings]
       description: Administrator only. Saves the subject, heading and body text; the branded layout is fixed.
       parameters:
-        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email, details_confirmation]}}
+        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email]}}
       requestBody:
         required: true
         content:
@@ -1228,7 +1339,7 @@ paths:
       tags: [settings]
       description: Administrator only. Removes the stored text so the built-in default is used again.
       parameters:
-        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email, details_confirmation]}}
+        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email]}}
       responses:
         "200":
           description: The default template
@@ -1241,7 +1352,7 @@ paths:
       tags: [settings]
       description: Render unsaved text inside the branded shell, with a real client's details when clientId is given.
       parameters:
-        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email, details_confirmation]}}
+        - {name: key, in: path, required: true, schema: {type: string, enum: [client_welcome, advice_email]}}
       requestBody:
         required: true
         content:
@@ -1259,29 +1370,54 @@ paths:
       tags: [settings]
       responses:
         "200":
-          description: The firm-wide Terms of Business document currently published (null when none)
+          description: The firm's Terms of Business template (current version, history, the tokens it can use) and the DocuSign connection
           content:
             application/json:
               schema: {$ref: "#/components/schemas/TermsOfBusinessState"}
     put:
-      operationId: uploadTermsOfBusiness
+      operationId: publishTermsOfBusiness
       tags: [settings]
-      description: Administrator only. Replaces the firm-wide Terms of Business PDF; the version increments. Send the file bytes with x-filename and x-content-type headers.
+      description: Administrator only. Publishes a new version of the template; earlier versions are kept so a case can always show the version it signed.
       requestBody:
         required: true
         content:
-          application/octet-stream:
-            schema: {type: string, format: binary}
+          application/json:
+            schema: {$ref: "#/components/schemas/TermsTemplateInput"}
       responses:
         "200":
           description: Published
           content:
             application/json:
               schema: {$ref: "#/components/schemas/TermsOfBusinessState"}
+        "400":
+          description: The template is not valid (duplicate field key, select without options, …)
+  /settings/terms-of-business/preview:
+    post:
+      operationId: previewTermsOfBusiness
+      tags: [settings]
+      description: Renders the given (unsaved) template as a PDF with sample values.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TermsTemplateInput"}
+      responses:
+        "200":
+          description: The PDF, inline
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
   /settings/terms-of-business/document:
     get:
       operationId: viewTermsOfBusiness
       tags: [settings]
+      description: A published version rendered with sample values.
+      parameters:
+        - name: version
+          in: query
+          required: false
+          schema: {type: integer}
+          description: A specific published version; the current one when omitted.
       responses:
         "200":
           description: The PDF, inline
@@ -1289,48 +1425,149 @@ paths:
             application/pdf:
               schema: {type: string, format: binary}
         "404":
-          description: No document published
-  /clients/{id}/terms-of-business/accept:
+          description: Nothing published
+  /settings/docusign/connect:
+    get:
+      operationId: connectDocusign
+      tags: [settings]
+      description: Administrator only. Browser navigation — sends the administrator to DocuSign to sign in to the firm's account (OAuth authorization code); DocuSign returns them to the callback.
+      responses:
+        "302":
+          description: Redirect to DocuSign
+        "409":
+          description: The DocuSign app is not registered (env vars missing) or PORTAL_URL is unset
+  /settings/docusign/callback:
+    get:
+      operationId: docusignCallback
+      tags: [settings]
+      description: Where DocuSign sends the administrator back. Exchanges the code for tokens, stores the connection, and redirects to Settings with `?docusign=connected` or `?docusign=error&reason=…`.
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema: {type: string}
+        - name: state
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        "302":
+          description: Redirect back to Settings
+  /settings/docusign/disconnect:
     post:
-      operationId: acceptClientTerms
-      tags: [clients]
-      description: Staff record that the client accepted the Terms of Business outside the portal (signed copy received, or agreed by phone).
+      operationId: disconnectDocusign
+      tags: [settings]
+      description: Administrator only. Forgets the connected DocuSign account. Envelopes already sent keep working through DocuSign's own emails but can no longer be tracked until an account is connected again.
+      responses:
+        "200":
+          description: The signature configuration after disconnecting
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SignatureConfig"}
+  /settings/terms-of-business/docusign/test:
+    post:
+      operationId: testDocusignConnection
+      tags: [settings]
+      description: Administrator only. Checks the connected DocuSign account still answers and reports it.
+      responses:
+        "200":
+          description: Result of the connection test
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/DocusignTestResult"}
+  /cases/{id}/terms-of-business:
+    get:
+      operationId: getCaseTermsOfBusiness
+      tags: [cases]
+      description: The case's Terms of Business — the template version in use, the form values, the read-only values from the case, and the current agreement's signature status.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: State
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseTermsState"}
+    put:
+      operationId: saveCaseTermsOfBusiness
+      tags: [cases]
+      description: Saves the form values on the open draft (starting one when there is none).
       parameters:
         - {$ref: "#/components/parameters/Id"}
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: "#/components/schemas/AcceptTermsInput"}
+            schema: {$ref: "#/components/schemas/CaseTermsValuesInput"}
       responses:
         "200":
-          description: Client with the acceptance recorded
+          description: State
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/ClientDetail"}
-  /portal/terms-of-business:
-    get:
-      operationId: getPortalTermsOfBusiness
-      tags: [portal]
+              schema: {$ref: "#/components/schemas/CaseTermsState"}
+        "409":
+          description: The document is out for signature or already signed
+    delete:
+      operationId: discardCaseTermsOfBusiness
+      tags: [cases]
+      description: Discards the open draft.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
       responses:
         "200":
-          description: The current Terms of Business document and whether the signed-in client has accepted it
+          description: State
           content:
             application/json:
-              schema:
-                type: object
-                required: [document, acceptance]
-                properties:
-                  document:
-                    allOf: [{$ref: "#/components/schemas/TermsOfBusinessDocument"}]
-                    nullable: true
-                  acceptance:
-                    allOf: [{$ref: "#/components/schemas/TermsAcceptance"}]
-                    nullable: true
-  /portal/terms-of-business/document:
+              schema: {$ref: "#/components/schemas/CaseTermsState"}
+  /cases/{id}/terms-of-business/preview:
+    post:
+      operationId: previewCaseTermsOfBusiness
+      tags: [cases]
+      description: The document as it would be sent with these values (or the saved ones when the body is empty). Nothing is stored.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CaseTermsValuesInput"}
+      responses:
+        "200":
+          description: The PDF, inline
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+  /cases/{id}/terms-of-business/send:
+    post:
+      operationId: sendCaseTermsOfBusiness
+      tags: [cases]
+      description: Generates the document from the values (saving them first when given) and sends it to the client for signature through DocuSign.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CaseTermsValuesInput"}
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseTermsState"}
+        "400":
+          description: Required fields missing, or the client has no email
+        "409":
+          description: Already sent or signed, or no template published
+        "503":
+          description: DocuSign is not connected
+  /cases/{id}/terms-of-business/document:
     get:
-      operationId: viewPortalTermsOfBusiness
-      tags: [portal]
+      operationId: viewCaseTermsOfBusiness
+      tags: [cases]
+      description: The document as sent (unsigned). The signed copy is a document on the case (`signedDocumentId`).
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
       responses:
         "200":
           description: The PDF, inline
@@ -1338,20 +1575,116 @@ paths:
             application/pdf:
               schema: {type: string, format: binary}
         "404":
-          description: No document published
-  /portal/terms-of-business/accept:
+          description: No document generated yet
+  /cases/{id}/terms-of-business/refresh:
     post:
-      operationId: acceptPortalTermsOfBusiness
-      tags: [portal]
-      description: The signed-in client accepts the current Terms of Business.
+      operationId: refreshCaseTermsOfBusiness
+      tags: [cases]
+      description: Asks DocuSign for the envelope's current status and applies it (completed → filed and signed).
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
       responses:
         "200":
-          description: Recorded
+          description: State
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/TermsAcceptance"}
-        "409":
-          description: No document is published
+              schema: {$ref: "#/components/schemas/CaseTermsState"}
+  /cases/{id}/terms-of-business/void:
+    post:
+      operationId: voidCaseTermsOfBusiness
+      tags: [cases]
+      description: Withdraws the signature request so the details can be changed and the document sent again.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/VoidTermsInput"}
+      responses:
+        "200":
+          description: State
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseTermsState"}
+  /cases/{id}/terms-of-business/mark-signed:
+    post:
+      operationId: markCaseTermsOfBusinessSigned
+      tags: [cases]
+      description: Staff record a signature given outside DocuSign — a signed copy uploaded to the case, or agreed in person. Any DocuSign envelope still out is voided.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MarkTermsSignedInput"}
+      responses:
+        "200":
+          description: State
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseTermsState"}
+  /cases/{id}/terms-of-business/mock-sign:
+    post:
+      operationId: mockSignCaseTermsOfBusiness
+      tags: [cases]
+      description: Development only (DOCUSIGN_MOCK=true). Pretends the client signed or declined the mock envelope, then runs the same completion path as the DocuSign webhook.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MockSignTermsInput"}
+      responses:
+        "200":
+          description: State
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseTermsState"}
+        "404":
+          description: Not in mock mode
+  /webhooks/docusign:
+    post:
+      operationId: docusignWebhook
+      tags: [portal]
+      description: DocuSign Connect (envelope-level event notification). The payload is only used to find the envelope; the status is re-read from DocuSign before anything changes. Verified with X-DocuSign-Signature-1 when DOCUSIGN_HMAC_KEY is set.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DocusignWebhookPayload"}
+      responses:
+        "200":
+          description: Acknowledged
+  /portal/cases/{id}/terms-of-business:
+    get:
+      operationId: getPortalCaseTermsOfBusiness
+      tags: [portal]
+      description: The signed-in client's view of a case's Terms of Business — whether it is waiting for their signature or signed.
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/PortalTermsOfBusiness"}
+  /portal/cases/{id}/terms-of-business/document:
+    get:
+      operationId: viewPortalCaseTermsOfBusiness
+      tags: [portal]
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      responses:
+        "200":
+          description: The PDF (signed copy when there is one), inline
+          content:
+            application/pdf:
+              schema: {type: string, format: binary}
+        "404":
+          description: Nothing generated yet
   /settings/stage-thresholds:
     get:
       operationId: listStageThresholds
@@ -1507,7 +1840,7 @@ paths:
     post:
       operationId: bulkUpdateTasks
       tags: [tasks]
-      description: Apply the same change (status, priority, assignee, due date) to several tasks at once. Returns the updated tasks.
+      description: Apply the same change (status, priority, assignee, due date) to several tasks at once. Returns the updated tasks. Marking a stage hand-off task done advances its case (see updateTask).
       requestBody:
         required: true
         content:
@@ -1521,6 +1854,8 @@ paths:
               schema:
                 type: array
                 items: {$ref: "#/components/schemas/Task"}
+        "409":
+          description: A stage hand-off task in the set cannot be completed because its case cannot leave the stage yet - `error` names the task, `incomplete` lists what is still open; nothing was changed.
   /tasks/bulk-delete:
     post:
       operationId: bulkDeleteTasks
@@ -1540,6 +1875,7 @@ paths:
     patch:
       operationId: updateTask
       tags: [tasks]
+      description: Marking a stage hand-off task done moves its case to the next stage through the same gate as advancing the case; while the case cannot leave the stage the task cannot be completed either.
       parameters:
         - {$ref: "#/components/parameters/Id"}
       requestBody:
@@ -1553,6 +1889,8 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Task"}
+        "409":
+          description: The case cannot leave the stage yet - `incomplete` lists what is still open; the task stays as it was.
     delete:
       operationId: deleteTask
       tags: [tasks]
@@ -1578,6 +1916,7 @@ paths:
     patch:
       operationId: updateTaskChecklistItem
       tags: [tasks]
+      description: Ticking a synced step (one with a sourceKey) writes through to the case - the requirement, the lender's fee/decision flag or the valuation - so the case and the task stay in step.
       parameters:
         - {$ref: "#/components/parameters/Id"}
         - {name: itemId, in: path, required: true, schema: {type: integer}}
@@ -1592,6 +1931,8 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/TaskChecklistItem"}
+        "409":
+          description: The step is locked (its `lockedHint` says where it is filled in) and cannot be ticked from the task.
     delete:
       operationId: deleteTaskChecklistItem
       tags: [tasks]
@@ -2067,6 +2408,13 @@ paths:
       tags: [clients]
       parameters: [{$ref: "#/components/parameters/Id"}]
       responses: {"204": {description: Deleted}}
+  /documents/{id}/read:
+    post:
+      operationId: readDocument
+      summary: Run the document reading system on one document now (e.g. re-read a payslip) and return its reading.
+      tags: [clients]
+      parameters: [{$ref: "#/components/parameters/Id"}]
+      responses: {"200": {description: Document with its reading, content: {application/json: {schema: {$ref: "#/components/schemas/Document"}}}}}
   /documents/{id}/download:
     get:
       operationId: downloadDocument
@@ -2283,6 +2631,46 @@ components:
         detail: {type: string}
         actorName: {type: string}
         occurredAt: {type: string, format: date-time}
+    Alert:
+      type: object
+      required: [id, kind, kindLabel, severity, title, detail, caseId, caseReference, clientId, clientName, taskId, renewalId, invoiceId, submissionId, assignedUserId, assignedTo, raisedAt, acknowledgedAt, acknowledgedBy, resolvedAt, href]
+      properties:
+        id: {type: integer}
+        kind: {type: string}
+        kindLabel: {type: string}
+        severity: {type: string, enum: [red, amber]}
+        title: {type: string}
+        detail: {type: string}
+        caseId: {type: integer, nullable: true}
+        caseReference: {type: string, nullable: true}
+        clientId: {type: integer, nullable: true}
+        clientName: {type: string, nullable: true}
+        taskId: {type: integer, nullable: true}
+        renewalId: {type: integer, nullable: true}
+        invoiceId: {type: integer, nullable: true}
+        submissionId: {type: integer, nullable: true, description: For valuation alerts, the lender submission concerned.}
+        assignedUserId: {type: integer, nullable: true}
+        assignedTo: {type: string, nullable: true}
+        raisedAt: {type: string, format: date-time}
+        acknowledgedAt: {type: string, format: date-time, nullable: true}
+        acknowledgedBy: {type: string, nullable: true}
+        resolvedAt: {type: string, format: date-time, nullable: true}
+        href: {type: string, description: Where to go to deal with it.}
+    AlertSummary:
+      type: object
+      required: [red, amber, total]
+      properties:
+        red: {type: integer}
+        amber: {type: integer}
+        total: {type: integer}
+    AlertEvaluation:
+      type: object
+      required: [raised, resolved, open, emailed]
+      properties:
+        raised: {type: integer}
+        resolved: {type: integer}
+        open: {type: integer}
+        emailed: {type: integer}
     ActivityListItem:
       type: object
       required: [id, title, detail, actorName, occurredAt, caseId, caseReference]
@@ -2292,6 +2680,9 @@ components:
         detail: {type: string}
         actorName: {type: string}
         occurredAt: {type: string, format: date-time}
+        kind:
+          type: string
+          description: Machine kind (e.g. case, advice, enquiry, terms). Present on rows from the activity feed.
         caseId: {type: integer, nullable: true}
         caseReference: {type: string, nullable: true}
         entityType:
@@ -2335,7 +2726,7 @@ components:
         deliveredAt: {type: string, format: date-time, nullable: true}
     Client:
       type: object
-      required: [id, name, email, phone, companyName, onboardingStatus, createdAt, lifecycle, stale, enquiryReceivedAt, openCases, loanTotal, openTasks, termsOfBusiness, onboardingCompletedAt]
+      required: [id, name, email, phone, companyName, onboardingStatus, createdAt, lifecycle, stale, enquiryReceivedAt, openCases, loanTotal, openTasks, onboardingCompletedAt]
       properties:
         id: {type: integer}
         name: {type: string}
@@ -2367,10 +2758,11 @@ components:
         welcomeDelivery:
           allOf: [{$ref: "#/components/schemas/WelcomeDelivery"}]
           nullable: true
-        termsOfBusiness:
-          allOf: [{$ref: "#/components/schemas/TermsAcceptance"}]
-          nullable: true
         onboardingCompletedAt: {type: string, format: date-time, nullable: true}
+        documentFilledFields:
+          description: Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.
+          type: array
+          items: {type: string}
         openCases: {type: integer, description: Cases that are not completed or archived.}
         loanTotal: {type: number, description: Sum of loan amounts across open cases.}
         openTasks: {type: integer}
@@ -2409,6 +2801,13 @@ components:
         name: {type: string}
         status: {type: string}
         address: {type: ["string", "null"]}
+        registeredAddress:
+          type: ["object", "null"]
+          required: [line1, city, postcode]
+          properties:
+            line1: {type: string}
+            city: {type: string}
+            postcode: {type: string}
     CompaniesHouseSearchResults:
       type: object
       required: [results]
@@ -2539,11 +2938,19 @@ components:
           type: ["object", "null"]
           properties:
             address: {type: string}
+            city: {type: string, nullable: true}
+            postcode: {type: string, nullable: true}
             matterType: {type: string}
             value: {type: number}
             loanAmount: {type: number}
             rent: {type: number}
             gdv: {type: number}
+            propertyType: {type: string, nullable: true}
+            purchasePrice: {type: number, nullable: true}
+            currentLender: {type: string, nullable: true}
+            currentBalance: {type: number, nullable: true}
+            currentRatePct: {type: number, nullable: true}
+            currentRateEndDate: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true}
     ExtractEnquiryInput:
       type: object
       required: [emailText]
@@ -2563,20 +2970,39 @@ components:
             phone: {type: string, nullable: true}
             companyName: {type: string, nullable: true}
             companyNumber: {type: string, nullable: true}
+            title: {type: string, nullable: true}
+            currentAddress: {type: string, nullable: true}
+            currentAddressCity: {type: string, nullable: true}
+            currentAddressPostcode: {type: string, nullable: true}
+            employmentStatus: {type: string, nullable: true}
+            employerName: {type: string, nullable: true}
+            jobTitle: {type: string, nullable: true}
+            annualIncome: {type: number, nullable: true}
         property:
           type: object
           properties:
             address: {type: string, nullable: true}
+            city: {type: string, nullable: true}
+            postcode: {type: string, nullable: true}
             value: {type: number, nullable: true}
             loanAmount: {type: number, nullable: true}
             rent: {type: number, nullable: true}
             matterType: {type: string, nullable: true}
+            propertyType: {type: string, nullable: true}
+            currentLender: {type: string, nullable: true}
+            currentBalance: {type: number, nullable: true}
+            currentRatePct: {type: number, nullable: true}
+            currentRateEndDate: {type: string, nullable: true}
+            purchasePrice: {type: number, nullable: true}
         enquiry:
           type: object
           properties:
             type: {type: string, enum: [purchase, remortgage, refinance, bridging, development, commercial, other], nullable: true}
             timescale: {type: string, nullable: true}
             summary: {type: string, nullable: true}
+            source: {type: string, enum: [email, phone, website, referral, introducer, existing_client, other], nullable: true}
+            introducerName: {type: string, nullable: true}
+            introducerContact: {type: string, nullable: true}
     ExtractEnquiryOutput:
       type: object
       required: [extracted, model, matches]
@@ -2670,7 +3096,7 @@ components:
       required: [id, kind, title, detail, actorName, occurredAt, href]
       properties:
         id: {type: string}
-        kind: {type: string, enum: [activity, interaction, task, document, case, email]}
+        kind: {type: string, enum: [activity, interaction, task, document, case, email, enquiry]}
         title: {type: string}
         detail: {type: string}
         actorName: {type: string}
@@ -2694,38 +3120,231 @@ components:
       properties:
         clientId: {type: integer}
         propertyId: {type: integer, nullable: true}
-    TermsAcceptance:
+    TermsFieldType:
+      type: string
+      enum: [text, textarea, number, currency, date, select]
+    TermsTemplateField:
       type: object
-      required: [acceptedAt, via, version, note, acceptedBy]
+      description: A dynamic field staff fill for each case; `{{key}}` in the body prints its value.
+      required: [key, label, type, required]
       properties:
-        acceptedAt: {type: string, format: date-time}
-        via: {type: string, enum: [portal, signed_upload, staff]}
-        version: {type: integer, nullable: true}
-        note: {type: string, nullable: true}
-        acceptedBy: {type: string, nullable: true, description: Staff member who recorded it, when not accepted by the client in the portal.}
-    TermsOfBusinessDocument:
+        key: {type: string, pattern: "^[a-zA-Z][a-zA-Z0-9_]*$", maxLength: 40}
+        label: {type: string, maxLength: 120}
+        type: {$ref: "#/components/schemas/TermsFieldType"}
+        required: {type: boolean}
+        options: {type: array, items: {type: string, maxLength: 200}, description: Choices for a select field.}
+        defaultValue: {type: string, maxLength: 2000}
+        hint: {type: string, maxLength: 300}
+    TermsTemplateInput:
       type: object
-      required: [filename, contentType, byteSize, version, uploadedAt, uploadedBy]
+      required: [title, body, fields]
       properties:
-        filename: {type: string}
-        contentType: {type: string}
-        byteSize: {type: integer}
-        version: {type: integer}
-        uploadedAt: {type: string, format: date-time}
-        uploadedBy: {type: string, nullable: true}
+        title: {type: string, minLength: 1, maxLength: 120}
+        body: {type: string, minLength: 1, maxLength: 60000, description: "Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders."}
+        fields:
+          type: array
+          maxItems: 40
+          items: {$ref: "#/components/schemas/TermsTemplateField"}
+    TermsTemplate:
+      allOf:
+        - {$ref: "#/components/schemas/TermsTemplateInput"}
+        - type: object
+          required: [version, publishedAt, publishedBy]
+          properties:
+            version: {type: integer}
+            publishedAt: {type: string, format: date-time}
+            publishedBy: {type: string, nullable: true}
+    TermsPlaceholder:
+      type: object
+      required: [token, description, sample, group]
+      properties:
+        token: {type: string}
+        description: {type: string}
+        sample: {type: string, description: Example value, for the preview.}
+        group: {type: string, enum: [client, case, firm], description: Where the value comes from.}
+    SignatureMode:
+      type: string
+      enum: [off, mock, docusign]
+    SignatureConfig:
+      type: object
+      required: [mode, configured, missing, appRegistered, oauthHost, redirectUri, webhookUrl, hmacEnabled, connection]
+      properties:
+        mode: {$ref: "#/components/schemas/SignatureMode"}
+        configured: {type: boolean, description: True when documents can be sent (mock, or a DocuSign account is connected).}
+        missing: {type: array, items: {type: string}, description: App environment variables still unset (DOCUSIGN_INTEGRATION_KEY, DOCUSIGN_SECRET_KEY).}
+        appRegistered: {type: boolean, description: Both app credentials are set, so an administrator can connect an account.}
+        oauthHost: {type: string}
+        redirectUri: {type: string, nullable: true, description: What to register as the app's Redirect URI in DocuSign.}
+        webhookUrl: {type: string, nullable: true}
+        hmacEnabled: {type: boolean}
+        connection:
+          type: object
+          nullable: true
+          description: The DocuSign account documents are sent from; null until an administrator connects one.
+          required: [account, email, userName, baseUri, connectedAt, connectedBy]
+          properties:
+            account: {type: string}
+            email: {type: string}
+            userName: {type: string}
+            baseUri: {type: string}
+            connectedAt: {type: string, format: date-time}
+            connectedBy: {type: string, nullable: true}
+    DocusignTestResult:
+      type: object
+      required: [ok, mode, account, email, baseUri, error]
+      properties:
+        ok: {type: boolean}
+        mode: {$ref: "#/components/schemas/SignatureMode"}
+        account: {type: string, nullable: true}
+        email: {type: string, nullable: true}
+        baseUri: {type: string, nullable: true}
+        error: {type: string, nullable: true}
     TermsOfBusinessState:
       type: object
-      required: [document]
+      required: [template, versions, placeholders, defaults, signature]
       properties:
-        document:
-          allOf: [{$ref: "#/components/schemas/TermsOfBusinessDocument"}]
+        template:
+          allOf: [{$ref: "#/components/schemas/TermsTemplate"}]
           nullable: true
-    AcceptTermsInput:
+          description: The current version; null until an administrator publishes one.
+        versions:
+          type: array
+          description: Every published version, newest first.
+          items: {$ref: "#/components/schemas/TermsTemplate"}
+        placeholders:
+          type: array
+          description: Tokens filled from the case and client automatically.
+          items: {$ref: "#/components/schemas/TermsPlaceholder"}
+        defaults:
+          allOf: [{$ref: "#/components/schemas/TermsTemplateInput"}]
+          description: The built-in template, to start from or reset to.
+        signature: {$ref: "#/components/schemas/SignatureConfig"}
+    TermsAgreementStatus:
+      type: string
+      enum: [draft, sent, signed, declined, voided]
+    TermsSignedVia:
+      type: string
+      enum: [docusign, signed_upload, staff]
+    TermsAgreement:
+      type: object
+      description: One attempt at getting the case's Terms of Business signed.
+      required: [id, caseId, status, templateVersion, values, filename, hasDocument, provider, envelopeId, envelopeStatus, lastCheckedAt, recipientName, recipientEmail, sentAt, sentBy, signedAt, signedVia, signedNote, signedBy, signedDocumentId, declinedAt, declineReason, voidedAt, voidReason, voidedBy, createdAt, updatedAt]
+      properties:
+        id: {type: integer}
+        caseId: {type: integer}
+        status: {$ref: "#/components/schemas/TermsAgreementStatus"}
+        templateVersion: {type: integer}
+        values: {type: object, additionalProperties: {type: string}}
+        filename: {type: string, nullable: true}
+        hasDocument: {type: boolean, description: Whether a PDF has been generated (sent).}
+        provider: {type: string, nullable: true, description: docusign or docusign_mock}
+        envelopeId: {type: string, nullable: true}
+        envelopeStatus: {type: string, nullable: true, description: "DocuSign's own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced."}
+        lastCheckedAt: {type: string, format: date-time, nullable: true}
+        recipientName: {type: string, nullable: true}
+        recipientEmail: {type: string, nullable: true}
+        sentAt: {type: string, format: date-time, nullable: true}
+        sentBy: {type: string, nullable: true}
+        signedAt: {type: string, format: date-time, nullable: true}
+        signedVia:
+          allOf: [{$ref: "#/components/schemas/TermsSignedVia"}]
+          nullable: true
+        signedNote: {type: string, nullable: true}
+        signedBy: {type: string, nullable: true, description: Staff member who recorded a signature given outside DocuSign.}
+        signedDocumentId: {type: integer, nullable: true, description: The signed copy in the case's documents.}
+        declinedAt: {type: string, format: date-time, nullable: true}
+        declineReason: {type: string, nullable: true}
+        voidedAt: {type: string, format: date-time, nullable: true}
+        voidReason: {type: string, nullable: true}
+        voidedBy: {type: string, nullable: true}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    TermsAcceptance:
+      type: object
+      description: Summary of a case's signed Terms of Business.
+      required: [signedAt, via, version, note, signedBy, signedDocumentId]
+      properties:
+        signedAt: {type: string, format: date-time}
+        via: {$ref: "#/components/schemas/TermsSignedVia"}
+        version: {type: integer}
+        note: {type: string, nullable: true}
+        signedBy: {type: string, nullable: true}
+        signedDocumentId: {type: integer, nullable: true}
+    CaseTermsState:
+      type: object
+      required: [template, currentVersion, agreement, history, values, auto, missing, acceptance, recipient, signature]
+      properties:
+        template:
+          allOf: [{$ref: "#/components/schemas/TermsTemplate"}]
+          nullable: true
+          description: The version the current agreement uses (the current template for a new draft); null when nothing is published.
+        currentVersion: {type: integer, nullable: true}
+        agreement:
+          allOf: [{$ref: "#/components/schemas/TermsAgreement"}]
+          nullable: true
+        history:
+          type: array
+          description: Earlier attempts (declined / voided), newest first.
+          items: {$ref: "#/components/schemas/TermsAgreement"}
+        values: {type: object, additionalProperties: {type: string}, description: Form values — the draft's, or the template defaults.}
+        auto: {type: object, additionalProperties: {type: string}, description: Read-only values taken from the case and client.}
+        missing: {type: array, items: {type: string}, description: Required fields still blank.}
+        acceptance:
+          allOf: [{$ref: "#/components/schemas/TermsAcceptance"}]
+          nullable: true
+        recipient:
+          type: object
+          required: [name, email]
+          properties:
+            name: {type: string}
+            email: {type: string}
+        signature:
+          type: object
+          required: [mode, configured, missing]
+          properties:
+            mode: {$ref: "#/components/schemas/SignatureMode"}
+            configured: {type: boolean}
+            missing: {type: array, items: {type: string}}
+    CaseTermsValuesInput:
+      type: object
+      required: [values]
+      properties:
+        values: {type: object, additionalProperties: {type: string, maxLength: 4000}}
+    MarkTermsSignedInput:
       type: object
       required: [via]
       properties:
         via: {type: string, enum: [signed_upload, staff]}
-        note: {type: string}
+        note: {type: string, maxLength: 500}
+        documentId: {type: integer, nullable: true, description: The uploaded signed copy (a document on this case), when there is one.}
+    VoidTermsInput:
+      type: object
+      required: [reason]
+      properties:
+        reason: {type: string, maxLength: 200}
+    MockSignTermsInput:
+      type: object
+      required: [outcome]
+      properties:
+        outcome: {type: string, enum: [signed, declined, bounced]}
+        reason: {type: string}
+    DocusignWebhookPayload:
+      type: object
+      additionalProperties: true
+    PortalTermsOfBusiness:
+      type: object
+      required: [status, title, version, sentAt, signedAt, hasDocument, provider]
+      properties:
+        status:
+          allOf: [{$ref: "#/components/schemas/TermsAgreementStatus"}]
+          nullable: true
+          description: null when nothing has been sent yet.
+        title: {type: string, nullable: true}
+        version: {type: integer, nullable: true}
+        sentAt: {type: string, format: date-time, nullable: true}
+        signedAt: {type: string, format: date-time, nullable: true}
+        hasDocument: {type: boolean}
+        provider: {type: string, nullable: true}
     ExtractInstructionInput:
       type: object
       required: [emailText]
@@ -2754,6 +3373,10 @@ components:
           required: [documents, properties, cases, onboarding]
           properties:
             onboarding: {$ref: "#/components/schemas/OnboardingSummary"}
+            documentChecks:
+              description: Cross-document consistency findings from the document reading system (name, DOB, address, income, commitments, ID expiry, adverse credit, account conduct).
+              type: array
+              items: {$ref: "#/components/schemas/DocumentCheck"}
             documents:
               type: array
               items: {$ref: "#/components/schemas/Document"}
@@ -3026,14 +3649,26 @@ components:
         model: {type: string, nullable: true}
     UnderwritingRound:
       type: object
-      required: [round, emailText, createdAt]
+      required: [round, emailText, createdAt, sentAt, sentBy, taskId, requirements]
       properties:
         round: {type: integer}
         emailText: {type: string}
         createdAt: {type: string, format: date-time}
+        sentAt: {type: string, format: date-time, nullable: true, description: When everything was provided and sent back to the lender.}
+        sentBy: {type: string, nullable: true}
+        taskId: {type: integer, nullable: true, description: The case handler's task whose checkboxes are these requirements.}
+        requirements:
+          type: array
+          items:
+            type: object
+            required: [id, label, complete]
+            properties:
+              id: {type: integer}
+              label: {type: string}
+              complete: {type: boolean}
     Case:
       type: object
-      required: [id, reference, clientId, clientName, propertyAddress, propertyValue, matterType, serviceType, serviceLevelConfirmedAt, serviceLevelConfirmedBy, brokerFeeBasis, brokerFeeFlat, stage, stageIndex, stageDays, stageFlagged, status, loanAmount, assignedTo, updatedAt, skippedStageIndexes, procFeePct, brokerFeePct, procFee, brokerFee, revenue, archivedAt, lenderId, lenderName, caseNumber, dipDocument, valuationDate, valuationCompletedAt, valuationAmount, expectedCompletionDate, applicationFeeConfirmed, bankDecisionRequested, underwritingCleared, underwritingRounds]
+      required: [id, reference, clientId, clientName, propertyAddress, propertyValue, matterType, serviceType, serviceLevelConfirmedAt, serviceLevelConfirmedBy, brokerFeeBasis, brokerFeeFlat, stage, stageIndex, stageDays, stageFlagged, status, loanAmount, assignedTo, assignedUserId, updatedAt, skippedStageIndexes, procFeePct, brokerFeePct, procFee, brokerFee, revenue, archivedAt, lenderId, lenderName, caseNumber, dipDocument, valuationDate, valuationCompletedAt, valuationAmount, expectedCompletionDate, applicationFeeConfirmed, bankDecisionRequested, underwritingCleared, underwritingRounds]
       properties:
         id: {type: integer}
         reference: {type: string}
@@ -3056,6 +3691,7 @@ components:
         status: {type: string}
         loanAmount: {type: number}
         assignedTo: {type: string}
+        assignedUserId: {type: integer, nullable: true}
         updatedAt: {type: string, format: date-time}
         skippedStageIndexes: {type: array, items: {type: integer}}
         procFeePct: {type: number}
@@ -3154,10 +3790,6 @@ components:
         completedRequirementIds:
           type: array
           items: {type: integer}
-        override:
-          description: Administrator only - move on without the client's confirmation of the submission details.
-          type: boolean
-        overrideReason: {type: string}
         completion:
           allOf:
             - {$ref: "#/components/schemas/CompletionInput"}
@@ -3179,7 +3811,7 @@ components:
       properties:
         id: {type: integer}
         caseId: {type: integer}
-        kind: {type: string, enum: [advice, submission_details]}
+        kind: {type: string, enum: [advice]}
         version: {type: integer}
         sentAt: {type: string, format: date-time}
         expiresAt: {type: string, format: date-time}
@@ -3274,7 +3906,7 @@ components:
       required: [status, kind, firstName]
       properties:
         status: {type: string, enum: [recorded, already_recorded]}
-        kind: {type: string, enum: [advice, submission_details]}
+        kind: {type: string, enum: [advice]}
         firstName: {type: string}
     SubmissionField:
       type: object
@@ -3307,16 +3939,9 @@ components:
           description: Labels of the required fields that are still empty.
     SubmissionDetailsState:
       type: object
-      required: [pack, approvals, latest, confirmed, previousCase]
+      required: [pack, previousCase]
       properties:
         pack: {$ref: "#/components/schemas/SubmissionPack"}
-        approvals:
-          type: array
-          items: {$ref: "#/components/schemas/ClientApproval"}
-        latest:
-          allOf: [{$ref: "#/components/schemas/ClientApproval"}]
-          nullable: true
-        confirmed: {type: boolean}
         previousCase:
           type: object
           nullable: true
@@ -3336,7 +3961,7 @@ components:
         fromReference: {type: string}
     PortalCase:
       type: object
-      required: [id, reference, propertyAddress, matterType, serviceType, stage, stageIndex, stages, status, loanAmount, propertyValue, updatedAt, skippedStageIndexes, lenderName, valuationDate, expectedCompletionDate, pendingApprovals]
+      required: [id, reference, propertyAddress, matterType, serviceType, stage, stageIndex, stages, status, loanAmount, propertyValue, updatedAt, skippedStageIndexes, lenderName, valuationDate, expectedCompletionDate, pendingApprovals, termsOfBusiness]
       properties:
         id: {type: integer}
         reference: {type: string}
@@ -3359,12 +3984,17 @@ components:
         pendingApprovals:
           type: array
           items: {$ref: "#/components/schemas/ClientApproval"}
+        termsOfBusiness: {$ref: "#/components/schemas/PortalTermsOfBusiness"}
     CaseDetail:
       allOf:
         - {$ref: "#/components/schemas/Case"}
         - type: object
-          required: [stages, requirements, tasks, messages, draftNotes, submissions]
+          required: [stages, requirements, tasks, messages, draftNotes, submissions, termsOfBusiness]
           properties:
+            termsOfBusiness:
+              allOf: [{$ref: "#/components/schemas/TermsAcceptance"}]
+              nullable: true
+              description: The case's signed Terms of Business; null until signed.
             submissions:
               description: Every lender this case has been submitted to, primary first. The case's own lender fields mirror the primary submission.
               type: array
@@ -3547,11 +4177,12 @@ components:
         emailText: {type: string, minLength: 1, maxLength: 20000}
     ExtractUnderwritingOutput:
       type: object
-      required: [suggestions]
+      required: [suggestions, model]
       properties:
         suggestions:
           type: array
           items: {type: string}
+        model: {type: string, nullable: true, description: The AI model used, or null when the line splitter answered.}
     AddUnderwritingRoundInput:
       type: object
       required: [emailText, requirementLabels]
@@ -3601,11 +4232,14 @@ components:
         propertyId: {type: ["integer", "null"]}
     TaskChecklistItem:
       type: object
-      required: [id, taskId, title, done, position, sourceKey]
+      required: [id, taskId, title, done, position, sourceKey, lockedHint]
       properties:
         id: {type: integer}
         sourceKey:
           description: Record field this step mirrors; set on auto-maintained steps, null on manual ones.
+          type: ["string", "null"]
+        lockedHint:
+          description: Set when a synced step cannot be ticked from the task (it needs a value, a document or a choice on the record) - where to fill it in. Null when the step may be ticked here, which writes through to the case.
           type: ["string", "null"]
         taskId: {type: integer}
         title: {type: string}
@@ -3754,6 +4388,197 @@ components:
         contentType: {type: ["string", "null"]}
         byteSize: {type: ["integer", "null"]}
         uploadedAt: {type: ["string", "null"], format: date-time}
+        reading:
+          description: What the document reading system extracted, when the category has a reader. Omitted on list endpoints.
+          allOf: [{$ref: "#/components/schemas/DocumentReading"}]
+          nullable: true
+    DocumentReading:
+      type: object
+      required: [reader, status, source, model, data, error, appliedFields, readAt]
+      properties:
+        reader: {type: string, description: "Which extractor ran, e.g. proof_of_income."}
+        status: {type: string, enum: [pending, completed, failed, unsupported]}
+        source: {type: string, enum: [ai, heuristic], nullable: true}
+        model: {type: string, nullable: true}
+        data:
+          description: The reader's structured result; for proof_of_income see ProofOfIncomeReading.
+          type: object
+          additionalProperties: true
+          nullable: true
+        error: {type: string, nullable: true}
+        appliedFields: {type: array, items: {type: string}, description: Client fields this reading filled in.}
+        readAt: {type: string, format: date-time}
+    DocumentCheck:
+      type: object
+      required: [key, label, status, detail]
+      properties:
+        key: {type: string}
+        label: {type: string}
+        status: {type: string, enum: [ok, mismatch, attention, info]}
+        detail: {type: string}
+    IdentityReading:
+      description: Reader "identity" (category identity) - passport, driving licence, ID card.
+      type: object
+      properties:
+        documentType: {type: string, enum: [passport, driving_licence, national_id, residence_permit, other], nullable: true}
+        fullName: {type: string, nullable: true}
+        surname: {type: string, nullable: true}
+        givenNames: {type: string, nullable: true}
+        title: {type: string, nullable: true}
+        dateOfBirth: {type: string, nullable: true}
+        nationality: {type: string, nullable: true}
+        gender: {type: string, nullable: true}
+        documentNumber: {type: string, nullable: true}
+        issueDate: {type: string, nullable: true}
+        expiryDate: {type: string, nullable: true}
+        issuingCountry: {type: string, nullable: true}
+        address: {type: string, nullable: true}
+        city: {type: string, nullable: true}
+        postcode: {type: string, nullable: true}
+        confidence: {type: string, enum: [high, medium, low], nullable: true}
+        notes: {type: string, nullable: true}
+    StatementEntry:
+      type: object
+      required: [date, description, amount]
+      properties:
+        date: {type: string, nullable: true}
+        description: {type: string}
+        amount: {type: number}
+    StatementCommitment:
+      type: object
+      required: [payee, amount, kind]
+      properties:
+        payee: {type: string}
+        amount: {type: number}
+        kind: {type: string, enum: [loan, credit_card, mortgage, rent, car_finance, insurance, subscription, childcare, other]}
+    BankStatementsReading:
+      description: Reader "bank_statements" (category bank_statements).
+      type: object
+      properties:
+        bankName: {type: string, nullable: true}
+        accountHolder: {type: string, nullable: true}
+        address: {type: string, nullable: true}
+        city: {type: string, nullable: true}
+        postcode: {type: string, nullable: true}
+        periodStart: {type: string, nullable: true}
+        periodEnd: {type: string, nullable: true}
+        salaryCredits: {type: array, items: {$ref: "#/components/schemas/StatementEntry"}}
+        employerName: {type: string, nullable: true}
+        monthlyNetSalary: {type: number, nullable: true}
+        commitments: {type: array, items: {$ref: "#/components/schemas/StatementCommitment"}}
+        monthlyCommitments: {type: number, nullable: true}
+        mortgagePayments: {type: array, items: {$ref: "#/components/schemas/StatementCommitment"}}
+        monthlyRentPaid: {type: number, nullable: true}
+        rentReceived: {type: array, items: {$ref: "#/components/schemas/StatementEntry"}}
+        monthlyRentReceived: {type: number, nullable: true}
+        closingBalance: {type: number, nullable: true}
+        gambling: {type: boolean, nullable: true}
+        returnedPayments: {type: integer, nullable: true}
+        overdrawn: {type: boolean, nullable: true}
+        confidence: {type: string, enum: [high, medium, low], nullable: true}
+        notes: {type: string, nullable: true}
+    ReportedAddress:
+      type: object
+      required: [address, city, postcode, from, to, current]
+      properties:
+        address: {type: string, nullable: true}
+        city: {type: string, nullable: true}
+        postcode: {type: string, nullable: true}
+        from: {type: string, nullable: true}
+        to: {type: string, nullable: true}
+        current: {type: boolean}
+    AdverseItem:
+      type: object
+      required: [kind, creditor, amount, date, status]
+      properties:
+        kind: {type: string, enum: [default, ccj, missed_payment, arrangement, iva, bankruptcy, debt_management, other]}
+        creditor: {type: string, nullable: true}
+        amount: {type: number, nullable: true}
+        date: {type: string, nullable: true}
+        status: {type: string, nullable: true}
+    CreditAccount:
+      type: object
+      required: [creditor, type, balance, limit, monthlyPayment, status]
+      properties:
+        creditor: {type: string}
+        type: {type: string, enum: [mortgage, credit_card, loan, car_finance, current_account, utility, telecoms, bnpl, other]}
+        balance: {type: number, nullable: true}
+        limit: {type: number, nullable: true}
+        monthlyPayment: {type: number, nullable: true}
+        status: {type: string, nullable: true}
+    CreditReportReading:
+      description: Reader "credit_report" (category credit_report).
+      type: object
+      properties:
+        provider: {type: string, nullable: true}
+        reportDate: {type: string, nullable: true}
+        fullName: {type: string, nullable: true}
+        dateOfBirth: {type: string, nullable: true}
+        score: {type: integer, nullable: true}
+        scoreMax: {type: integer, nullable: true}
+        scoreBand: {type: string, nullable: true}
+        addresses: {type: array, items: {$ref: "#/components/schemas/ReportedAddress"}}
+        electoralRoll: {type: boolean, nullable: true}
+        adverse: {type: array, items: {$ref: "#/components/schemas/AdverseItem"}}
+        defaults: {type: integer, nullable: true}
+        ccjs: {type: integer, nullable: true}
+        missedPayments: {type: integer, nullable: true}
+        iva: {type: boolean, nullable: true}
+        bankruptcy: {type: boolean, nullable: true}
+        accounts: {type: array, items: {$ref: "#/components/schemas/CreditAccount"}}
+        totalUnsecuredDebt: {type: number, nullable: true}
+        monthlyCommitments: {type: number, nullable: true}
+        mortgageAccounts: {type: array, items: {$ref: "#/components/schemas/CreditAccount"}}
+        searches: {type: integer, nullable: true}
+        summary: {type: string, nullable: true}
+        confidence: {type: string, enum: [high, medium, low], nullable: true}
+        notes: {type: string, nullable: true}
+    PortfolioProperty:
+      type: object
+      required: [address]
+      properties:
+        address: {type: string}
+        city: {type: string, nullable: true}
+        postcode: {type: string, nullable: true}
+        propertyType: {type: string, nullable: true}
+        tenure: {type: string, nullable: true}
+        bedrooms: {type: integer, nullable: true}
+        value: {type: number, nullable: true}
+        purchasePrice: {type: number, nullable: true}
+        purchaseDate: {type: string, nullable: true}
+        currentLender: {type: string, nullable: true}
+        currentBalance: {type: number, nullable: true}
+        currentRatePct: {type: number, nullable: true}
+        currentRateEndDate: {type: string, nullable: true}
+        monthlyPayment: {type: number, nullable: true}
+        rent: {type: number, nullable: true}
+        tenancyType: {type: string, nullable: true}
+        notes: {type: string, nullable: true}
+    PortfolioReading:
+      description: Reader "portfolio" (category portfolio) - the client's schedule of properties; apply creates property records.
+      type: object
+      properties:
+        properties: {type: array, items: {$ref: "#/components/schemas/PortfolioProperty"}}
+        totalValue: {type: number, nullable: true}
+        totalBorrowing: {type: number, nullable: true}
+        totalMonthlyRent: {type: number, nullable: true}
+        createdPropertyIds: {type: array, items: {type: integer}}
+        skipped: {type: integer}
+        confidence: {type: string, enum: [high, medium, low], nullable: true}
+        notes: {type: string, nullable: true}
+    ProofOfIncomeReading:
+      type: object
+      properties:
+        documentType: {type: string, enum: [payslip, p60, sa302, tax_year_overview, accounts, employment_contract, bank_statement, other], nullable: true}
+        employerName: {type: string, nullable: true}
+        jobTitle: {type: string, nullable: true}
+        employmentStatus: {type: string, enum: [employed, self_employed, company_director, contractor, retired, not_working, other], nullable: true}
+        payFrequency: {type: string, enum: [weekly, fortnightly, four_weekly, monthly, annual], nullable: true}
+        grossPayForPeriod: {type: number, nullable: true}
+        annualGrossIncome: {type: number, nullable: true}
+        periodEnd: {type: string, nullable: true}
+        confidence: {type: string, enum: [high, medium, low], nullable: true}
+        notes: {type: string, nullable: true}
     DocumentInput:
       type: object
       required: [clientId, name, category]
@@ -4027,7 +4852,7 @@ components:
         createdAt: {type: string, format: date-time}
     InboxCase:
       type: object
-      required: [id, reference, clientName, stage, stageIndex, status, assignedTo, lenderName, propertyAddress]
+      required: [id, reference, clientName, stage, stageIndex, status, assignedTo, assignedUserId, lenderName, propertyAddress]
       properties:
         id: {type: integer}
         reference: {type: string}
@@ -4036,6 +4861,7 @@ components:
         stageIndex: {type: integer}
         status: {type: string}
         assignedTo: {type: string}
+        assignedUserId: {type: integer, nullable: true}
         lenderName: {type: string, nullable: true}
         propertyAddress: {type: string}
     InboxMessagePreview:

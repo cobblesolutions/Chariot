@@ -23,7 +23,9 @@ import {
   Keyboard,
   Layers,
   LayoutList,
+  ListFilter,
   Search,
+  X,
   SquareKanban,
   UserRound,
   Users,
@@ -33,6 +35,14 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from "@/components/ui/combobox";
 import {
   Collapsible,
   CollapsibleContent,
@@ -50,6 +60,7 @@ import {
   InputGroupAddon,
   InputGroupInput,
 } from "@/components/ui/input-group";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -142,6 +153,25 @@ const GROUPS: { key: GroupKey; label: string }[] = [
   { key: "assignee", label: "Group by assignee" },
   { key: "none", label: "No grouping" },
 ];
+
+type CaseOption = { id: number; reference: string; clientName: string };
+type ClientOption = { id: number; name: string };
+
+/** Human labels for `task.kind`; "manual" stands in for tasks with no kind. */
+const KIND_LABELS: Record<string, string> = {
+  manual: "Manual",
+  enquiry_review: "Enquiry review",
+  client_onboarding: "Onboarding",
+  advanced_property: "Add property",
+  advanced_case: "Set up case",
+  property_review: "Property review",
+  property_import: "Property import",
+  case_submission: "Submission details",
+  stage_handoff: "Stage handoff",
+  submission_step: "Submission step",
+};
+const kindLabel = (kind: string) =>
+  KIND_LABELS[kind] ?? kind.replace(/_/g, " ");
 
 const SHORTCUTS: [string, string[]][] = [
   ["New task", ["N"]],
@@ -306,6 +336,28 @@ function RailButton({
   );
 }
 
+function FilterChip({
+  label,
+  onClear,
+}: {
+  label: string;
+  onClear: () => void;
+}) {
+  return (
+    <Badge variant="secondary" className="gap-1 pr-1">
+      {label}
+      <button
+        type="button"
+        onClick={onClear}
+        aria-label={`Remove ${label} filter`}
+        className="rounded-sm text-muted-foreground hover:text-foreground"
+      >
+        <X className="size-3" />
+      </button>
+    </Badge>
+  );
+}
+
 export default function TasksPage() {
   const { user } = useAuth();
   const isAdmin = isFullAccess(user?.role);
@@ -321,6 +373,9 @@ export default function TasksPage() {
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>("me");
   const [priorities, setPriorities] = useState<Set<TaskPriority>>(new Set());
   const [search, setSearch] = useState("");
+  const [caseFilter, setCaseFilter] = useState<CaseOption | null>(null);
+  const [clientFilter, setClientFilter] = useState<ClientOption | null>(null);
+  const [kindFilter, setKindFilter] = useState<string>("any");
   const [groupBy, setGroupBy] = useState<GroupKey>("due");
   const [mode, setMode] = useState<Mode>("board");
   const [activeId, setActiveId] = useState<number | null>(() => {
@@ -392,9 +447,56 @@ export default function TasksPage() {
     return counts;
   }, [tasks]);
 
+  // Filter options come from the loaded tasks, so only cases/clients/kinds
+  // that actually have tasks are offered.
+  const caseOptions = useMemo(() => {
+    const map = new Map<number, CaseOption>();
+    for (const task of tasks ?? []) {
+      if (task.caseId && task.caseReference && !map.has(task.caseId))
+        map.set(task.caseId, {
+          id: task.caseId,
+          reference: task.caseReference,
+          clientName: task.clientName ?? "",
+        });
+    }
+    return [...map.values()].sort((a, b) =>
+      a.reference.localeCompare(b.reference),
+    );
+  }, [tasks]);
+  const clientOptions = useMemo(() => {
+    const map = new Map<number, ClientOption>();
+    for (const task of tasks ?? []) {
+      if (task.clientId && task.clientName && !map.has(task.clientId))
+        map.set(task.clientId, { id: task.clientId, name: task.clientName });
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [tasks]);
+  const kindOptions = useMemo(() => {
+    const kinds = new Set<string>();
+    for (const task of tasks ?? []) kinds.add(task.kind ?? "manual");
+    return [...kinds].sort((a, b) => kindLabel(a).localeCompare(kindLabel(b)));
+  }, [tasks]);
+  const matchesRecordFilters = useCallback(
+    (task: Task) =>
+      (!caseFilter || task.caseId === caseFilter.id) &&
+      (!clientFilter || task.clientId === clientFilter.id) &&
+      (kindFilter === "any" || (task.kind ?? "manual") === kindFilter),
+    [caseFilter, clientFilter, kindFilter],
+  );
+  const activeFilterCount =
+    (caseFilter ? 1 : 0) +
+    (clientFilter ? 1 : 0) +
+    (kindFilter !== "any" ? 1 : 0);
+  const clearFilters = () => {
+    setCaseFilter(null);
+    setClientFilter(null);
+    setKindFilter("any");
+  };
+
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return byPerson.filter((task) => {
+      if (!matchesRecordFilters(task)) return false;
       // The board keeps its Done column populated; the column itself limits how many show.
       if (mode === "board" && view === "open" && !isOpen(task)) {
         if (!task.completedAt) return false;
@@ -407,7 +509,7 @@ export default function TasksPage() {
       }
       return true;
     });
-  }, [byPerson, view, priorities, search, mode]);
+  }, [byPerson, view, priorities, search, mode, matchesRecordFilters]);
 
   const groups = useMemo(
     () => groupTasks(visible, groupBy, view),
@@ -579,6 +681,10 @@ export default function TasksPage() {
       hiddenBy.push("all priorities");
     }
     if (search.trim()) setSearch("");
+    if (!matchesRecordFilters(task)) {
+      clearFilters();
+      hiddenBy.push("all cases");
+    }
     if (hiddenBy.length) {
       toast.add({
         title: "Task added",
@@ -764,6 +870,129 @@ export default function TasksPage() {
                     <Kbd>/</Kbd>
                   </InputGroupAddon>
                 </InputGroup>
+                <Popover>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={activeFilterCount ? "secondary" : "ghost"}
+                          size="sm"
+                          aria-label="Filter tasks"
+                        >
+                          <ListFilter />
+                          <span className="hidden sm:inline">Filter</span>
+                          {activeFilterCount > 0 && (
+                            <Badge className="h-5 min-w-5 px-1 tabular-nums">
+                              {activeFilterCount}
+                            </Badge>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Filter by case, client or type
+                    </TooltipContent>
+                  </Tooltip>
+                  <PopoverContent align="end" className="w-72 space-y-3">
+                    <Field>
+                      <FieldLabel htmlFor="task-filter-case">Case</FieldLabel>
+                      <Combobox
+                        items={caseOptions}
+                        itemToStringLabel={(c: CaseOption) => c.reference}
+                        itemToStringValue={(c: CaseOption) =>
+                          `${c.reference} ${c.clientName}`
+                        }
+                        value={caseFilter}
+                        onValueChange={(c: CaseOption | null) =>
+                          setCaseFilter(c)
+                        }
+                      >
+                        <ComboboxInput
+                          id="task-filter-case"
+                          className="w-full"
+                          placeholder="Any case"
+                          showClear
+                        />
+                        <ComboboxContent>
+                          <ComboboxEmpty>No cases found.</ComboboxEmpty>
+                          <ComboboxList>
+                            {(c: CaseOption) => (
+                              <ComboboxItem key={c.id} value={c}>
+                                <span className="shrink-0">{c.reference}</span>
+                                {c.clientName && (
+                                  <span className="truncate text-muted-foreground">
+                                    · {c.clientName}
+                                  </span>
+                                )}
+                              </ComboboxItem>
+                            )}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="task-filter-client">
+                        Client
+                      </FieldLabel>
+                      <Combobox
+                        items={clientOptions}
+                        itemToStringLabel={(c: ClientOption) => c.name}
+                        itemToStringValue={(c: ClientOption) => c.name}
+                        value={clientFilter}
+                        onValueChange={(c: ClientOption | null) =>
+                          setClientFilter(c)
+                        }
+                      >
+                        <ComboboxInput
+                          id="task-filter-client"
+                          className="w-full"
+                          placeholder="Any client"
+                          showClear
+                        />
+                        <ComboboxContent>
+                          <ComboboxEmpty>No clients found.</ComboboxEmpty>
+                          <ComboboxList>
+                            {(c: ClientOption) => (
+                              <ComboboxItem key={c.id} value={c}>
+                                {c.name}
+                              </ComboboxItem>
+                            )}
+                          </ComboboxList>
+                        </ComboboxContent>
+                      </Combobox>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="task-filter-kind">Type</FieldLabel>
+                      <Select value={kindFilter} onValueChange={setKindFilter}>
+                        <SelectTrigger
+                          id="task-filter-kind"
+                          className="w-full"
+                          aria-label="Task type"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="any">Any type</SelectItem>
+                          {kindOptions.map((kind) => (
+                            <SelectItem key={kind} value={kind}>
+                              {kindLabel(kind)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    {activeFilterCount > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full"
+                        onClick={clearFilters}
+                      >
+                        Clear filters
+                      </Button>
+                    )}
+                  </PopoverContent>
+                </Popover>
                 {mode === "list" && (
                   <Select
                     value={groupBy}
@@ -836,6 +1065,37 @@ export default function TasksPage() {
               </div>
             </header>
 
+            {activeFilterCount > 0 && (
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b px-3 py-2 md:px-4">
+                {caseFilter && (
+                  <FilterChip
+                    label={`Case ${caseFilter.reference}`}
+                    onClear={() => setCaseFilter(null)}
+                  />
+                )}
+                {clientFilter && (
+                  <FilterChip
+                    label={clientFilter.name}
+                    onClear={() => setClientFilter(null)}
+                  />
+                )}
+                {kindFilter !== "any" && (
+                  <FilterChip
+                    label={kindLabel(kindFilter)}
+                    onClear={() => setKindFilter("any")}
+                  />
+                )}
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-6 px-1 text-xs"
+                  onClick={clearFilters}
+                >
+                  Clear all
+                </Button>
+              </div>
+            )}
+
             {view !== "done" && (
               <div className="shrink-0 border-b px-3 py-3 md:px-4">
                 <QuickAdd
@@ -877,13 +1137,13 @@ export default function TasksPage() {
                           <activeView.icon />
                         </EmptyMedia>
                         <EmptyTitle>
-                          {search || priorities.size
+                          {search || priorities.size || activeFilterCount
                             ? "Nothing matches"
                             : `Nothing in ${activeView.label.toLowerCase()}`}
                         </EmptyTitle>
                         <EmptyDescription>
-                          {search || priorities.size
-                            ? "Try clearing the search or priority filters."
+                          {search || priorities.size || activeFilterCount
+                            ? "Try clearing the search or filters."
                             : view === "done"
                               ? "Completed tasks will show up here."
                               : "Press N to add a task."}

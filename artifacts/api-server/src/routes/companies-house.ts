@@ -11,11 +11,32 @@ interface CompaniesHouseApiItem {
   title: string;
   company_status?: string;
   address_snippet?: string;
+  address?: {
+    premises?: string;
+    address_line_1?: string;
+    address_line_2?: string;
+    locality?: string;
+    region?: string;
+    postal_code?: string;
+  };
+}
+
+/** Split the registered office into the line/city/postcode shape our address fields use. */
+function toRegisteredAddress(address: CompaniesHouseApiItem["address"]) {
+  if (!address) return null;
+  const line1 = [address.premises, address.address_line_1, address.address_line_2]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(", ");
+  const city = address.locality?.trim() || address.region?.trim() || "";
+  const postcode = address.postal_code?.trim() || "";
+  if (!line1 && !city && !postcode) return null;
+  return { line1, city, postcode };
 }
 
 /**
- * Companies House company search, used to auto-fill the "Company Name" field
- * when creating a client. Fails closed (503) until COMPANIES_HOUSE_API_KEY is
+ * Companies House company search, used to auto-fill the company name, number
+ * and registered address when creating a client. Fails closed (503) until COMPANIES_HOUSE_API_KEY is
  * configured — the UI falls back to manual entry until then.
  */
 router.get("/companies-house/search", async (req, res): Promise<void> => {
@@ -47,6 +68,7 @@ router.get("/companies-house/search", async (req, res): Promise<void> => {
           name: item.title,
           status: item.company_status ?? "unknown",
           address: item.address_snippet ?? null,
+          registeredAddress: toRegisteredAddress(item.address),
         })),
       }),
     );

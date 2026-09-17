@@ -32,6 +32,7 @@ export interface Case {
   status: string;
   loanAmount: number;
   assignedTo: string;
+  assignedUserId: number | null;
   updatedAt: Date;
   skippedStageIndexes: number[];
   procFeePct: number;

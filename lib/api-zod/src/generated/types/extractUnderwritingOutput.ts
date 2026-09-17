@@ -8,4 +8,6 @@
 
 export interface ExtractUnderwritingOutput {
   suggestions: string[];
+  /** The AI model used */
+  model: string | null;
 }

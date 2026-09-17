@@ -30,6 +30,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UsersTab } from "@/components/settings/users-tab";
 import { TermsOfBusinessTab } from "@/components/settings/terms-of-business-tab";
+import { useSearch } from "wouter";
 
 const assigneeSections: Array<{
   section: DefaultAssigneeSection;
@@ -364,13 +365,17 @@ export default function SettingsPage() {
     );
   };
 
+  // `/settings?tab=terms-of-business` deep-links a tab (from the case's Terms section).
+  const requestedTab = new URLSearchParams(useSearch()).get("tab");
+  const initialTab = requestedTab && ["stage-flagging", "default-assignees", "terms-of-business", "users"].includes(requestedTab) ? requestedTab : "stage-flagging";
+
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-page mx-auto">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
       </div>
 
-      <Tabs defaultValue="stage-flagging">
+      <Tabs defaultValue={initialTab}>
         <TabsList>
           <TabsTrigger value="stage-flagging">
             <Flag />

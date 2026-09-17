@@ -152,7 +152,7 @@ export const ListPortalCasesResponseItem = zod.object({
   "pendingApprovals": zod.array(zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
+  "kind": zod.enum(['advice']),
   "version": zod.int(),
   "sentAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
@@ -164,7 +164,16 @@ export const ListPortalCasesResponseItem = zod.object({
   "respondedVia": zod.enum(['email', 'portal', 'staff']).nullable(),
   "note": zod.string().nullable(),
   "snapshot": zod.record(zod.string(), zod.unknown()).describe('What the client was shown - an AdviceSnapshot or a SubmissionPack.')
-}))
+})),
+  "termsOfBusiness": zod.object({
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']).nullable().describe('null when nothing has been sent yet.'),
+  "title": zod.string().nullable(),
+  "version": zod.int().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "hasDocument": zod.boolean(),
+  "provider": zod.string().nullable()
+})
 })
 export const ListPortalCasesResponse = zod.array(ListPortalCasesResponseItem)
 
@@ -184,7 +193,7 @@ export const RespondPortalApprovalBody = zod.object({
 export const RespondPortalApprovalResponse = zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
+  "kind": zod.enum(['advice']),
   "version": zod.int(),
   "sentAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
@@ -217,7 +226,7 @@ export const RespondApprovalByTokenBody = zod.object({
 
 export const RespondApprovalByTokenResponse = zod.object({
   "status": zod.enum(['recorded', 'already_recorded']),
-  "kind": zod.enum(['advice', 'submission_details']),
+  "kind": zod.enum(['advice']),
   "firstName": zod.string()
 })
 
@@ -231,7 +240,17 @@ export const ListPortalDocumentsResponseItem = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 export const ListPortalDocumentsResponse = zod.array(ListPortalDocumentsResponseItem)
 
@@ -354,6 +373,135 @@ export const GetDashboardResponse = zod.object({
 })
 
 
+/**
+ * Things that need a person. Workers see their own; administrators can see everyone's.
+ */
+export const listAlertsQueryScopeDefault = `mine`;
+export const listAlertsQueryStatusDefault = `open`;
+
+export const ListAlertsQueryParams = zod.object({
+  "scope": zod.enum(['mine', 'all']).default(listAlertsQueryScopeDefault),
+  "status": zod.enum(['open', 'acknowledged', 'resolved']).default(listAlertsQueryStatusDefault)
+})
+
+export const ListAlertsResponseItem = zod.object({
+  "id": zod.int(),
+  "kind": zod.string(),
+  "kindLabel": zod.string(),
+  "severity": zod.enum(['red', 'amber']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "caseId": zod.int().nullable(),
+  "caseReference": zod.string().nullable(),
+  "clientId": zod.int().nullable(),
+  "clientName": zod.string().nullable(),
+  "taskId": zod.int().nullable(),
+  "renewalId": zod.int().nullable(),
+  "invoiceId": zod.int().nullable(),
+  "submissionId": zod.int().nullable().describe('For valuation alerts'),
+  "assignedUserId": zod.int().nullable(),
+  "assignedTo": zod.string().nullable(),
+  "raisedAt": zod.coerce.date(),
+  "acknowledgedAt": zod.coerce.date().nullable(),
+  "acknowledgedBy": zod.string().nullable(),
+  "resolvedAt": zod.coerce.date().nullable(),
+  "href": zod.string().describe('Where to go to deal with it.')
+})
+export const ListAlertsResponse = zod.array(ListAlertsResponseItem)
+
+
+export const GetAlertSummaryResponse = zod.object({
+  "red": zod.int(),
+  "amber": zod.int(),
+  "total": zod.int()
+})
+
+
+/**
+ * Run the alert rules now (administrators). The scheduler runs them every 15 minutes anyway.
+ */
+export const EvaluateAlertsResponse = zod.object({
+  "raised": zod.int(),
+  "resolved": zod.int(),
+  "open": zod.int(),
+  "emailed": zod.int()
+})
+
+
+/**
+ * Re-run the rules for this alert after fixing its cause from the card; it resolves at once if the rule no longer fires.
+ */
+export const RecheckAlertParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const RecheckAlertResponse = zod.object({
+  "id": zod.int(),
+  "kind": zod.string(),
+  "kindLabel": zod.string(),
+  "severity": zod.enum(['red', 'amber']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "caseId": zod.int().nullable(),
+  "caseReference": zod.string().nullable(),
+  "clientId": zod.int().nullable(),
+  "clientName": zod.string().nullable(),
+  "taskId": zod.int().nullable(),
+  "renewalId": zod.int().nullable(),
+  "invoiceId": zod.int().nullable(),
+  "submissionId": zod.int().nullable().describe('For valuation alerts'),
+  "assignedUserId": zod.int().nullable(),
+  "assignedTo": zod.string().nullable(),
+  "raisedAt": zod.coerce.date(),
+  "acknowledgedAt": zod.coerce.date().nullable(),
+  "acknowledgedBy": zod.string().nullable(),
+  "resolvedAt": zod.coerce.date().nullable(),
+  "href": zod.string().describe('Where to go to deal with it.')
+})
+
+
+/**
+ * Email the client what is still missing from their onboarding, with a portal link.
+ */
+export const RemindClientOnboardingParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const RemindClientOnboardingResponse = zod.object({
+  "status": zod.enum(['sent', 'disabled', 'failed']),
+  "missing": zod.array(zod.string())
+})
+
+
+export const AcknowledgeAlertParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const AcknowledgeAlertResponse = zod.object({
+  "id": zod.int(),
+  "kind": zod.string(),
+  "kindLabel": zod.string(),
+  "severity": zod.enum(['red', 'amber']),
+  "title": zod.string(),
+  "detail": zod.string(),
+  "caseId": zod.int().nullable(),
+  "caseReference": zod.string().nullable(),
+  "clientId": zod.int().nullable(),
+  "clientName": zod.string().nullable(),
+  "taskId": zod.int().nullable(),
+  "renewalId": zod.int().nullable(),
+  "invoiceId": zod.int().nullable(),
+  "submissionId": zod.int().nullable().describe('For valuation alerts'),
+  "assignedUserId": zod.int().nullable(),
+  "assignedTo": zod.string().nullable(),
+  "raisedAt": zod.coerce.date(),
+  "acknowledgedAt": zod.coerce.date().nullable(),
+  "acknowledgedBy": zod.string().nullable(),
+  "resolvedAt": zod.coerce.date().nullable(),
+  "href": zod.string().describe('Where to go to deal with it.')
+})
+
+
 export const listActivitiesQueryPageDefault = 1;
 
 export const listActivitiesQueryPageSizeDefault = 25;
@@ -374,6 +522,7 @@ export const ListActivitiesResponse = zod.object({
   "detail": zod.string(),
   "actorName": zod.string(),
   "occurredAt": zod.coerce.date(),
+  "kind": zod.string().optional().describe('Machine kind (e.g. case, advice, enquiry, terms). Present on rows from the activity feed.'),
   "caseId": zod.int().nullable(),
   "caseReference": zod.string().nullable(),
   "entityType": zod.enum(['client', 'property', 'invoice', 'renewal', 'document']).nullish().describe('The record this activity is about, when it is not (only) a case.'),
@@ -479,14 +628,8 @@ export const ListClientsResponseItem = zod.object({
   "error": zod.string().nullish(),
   "deliveredAt": zod.coerce.date().nullish()
 }).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
   "onboardingCompletedAt": zod.coerce.date().nullable(),
+  "documentFilledFields": zod.array(zod.string()).optional().describe('Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.'),
   "openCases": zod.int().describe('Cases that are not completed or archived.'),
   "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
   "openTasks": zod.int(),
@@ -531,6 +674,7 @@ export const createClientBodyOtherIncomeMin = 0;
 
 export const createClientBodyMonthlyCommitmentsMin = 0;
 
+export const createClientBodyPropertyCurrentRateEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
 
 export const CreateClientBody = zod.object({
@@ -576,11 +720,19 @@ export const CreateClientBody = zod.object({
   "enquiryExtractionModel": zod.string().nullish(),
   "property": zod.object({
   "address": zod.string().optional(),
+  "city": zod.string().nullish(),
+  "postcode": zod.string().nullish(),
   "matterType": zod.string().optional(),
   "value": zod.number().optional(),
   "loanAmount": zod.number().optional(),
   "rent": zod.number().optional(),
-  "gdv": zod.number().optional()
+  "gdv": zod.number().optional(),
+  "propertyType": zod.string().nullish(),
+  "purchasePrice": zod.number().nullish(),
+  "currentLender": zod.string().nullish(),
+  "currentBalance": zod.number().nullish(),
+  "currentRatePct": zod.number().nullish(),
+  "currentRateEndDate": zod.string().regex(createClientBodyPropertyCurrentRateEndDateRegExp).nullish()
 }).nullish()
 })
 
@@ -620,14 +772,8 @@ export const CreateClientResponse = zod.object({
   "error": zod.string().nullish(),
   "deliveredAt": zod.coerce.date().nullish()
 }).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
   "onboardingCompletedAt": zod.coerce.date().nullable(),
+  "documentFilledFields": zod.array(zod.string()).optional().describe('Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.'),
   "openCases": zod.int().describe('Cases that are not completed or archived.'),
   "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
   "openTasks": zod.int(),
@@ -685,19 +831,38 @@ export const ExtractClientEnquiryResponse = zod.object({
   "email": zod.string().nullish(),
   "phone": zod.string().nullish(),
   "companyName": zod.string().nullish(),
-  "companyNumber": zod.string().nullish()
+  "companyNumber": zod.string().nullish(),
+  "title": zod.string().nullish(),
+  "currentAddress": zod.string().nullish(),
+  "currentAddressCity": zod.string().nullish(),
+  "currentAddressPostcode": zod.string().nullish(),
+  "employmentStatus": zod.string().nullish(),
+  "employerName": zod.string().nullish(),
+  "jobTitle": zod.string().nullish(),
+  "annualIncome": zod.number().nullish()
 }),
   "property": zod.object({
   "address": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "postcode": zod.string().nullish(),
   "value": zod.number().nullish(),
   "loanAmount": zod.number().nullish(),
   "rent": zod.number().nullish(),
-  "matterType": zod.string().nullish()
+  "matterType": zod.string().nullish(),
+  "propertyType": zod.string().nullish(),
+  "currentLender": zod.string().nullish(),
+  "currentBalance": zod.number().nullish(),
+  "currentRatePct": zod.number().nullish(),
+  "currentRateEndDate": zod.string().nullish(),
+  "purchasePrice": zod.number().nullish()
 }),
   "enquiry": zod.object({
   "type": zod.enum(['purchase', 'remortgage', 'refinance', 'bridging', 'development', 'commercial', 'other']).nullish(),
   "timescale": zod.string().nullish(),
-  "summary": zod.string().nullish()
+  "summary": zod.string().nullish(),
+  "source": zod.enum(['email', 'phone', 'website', 'referral', 'introducer', 'existing_client', 'other']).nullish(),
+  "introducerName": zod.string().nullish(),
+  "introducerContact": zod.string().nullish()
 })
 }),
   "model": zod.string().nullable().describe('AI model used'),
@@ -734,14 +899,8 @@ export const ExtractClientEnquiryResponse = zod.object({
   "error": zod.string().nullish(),
   "deliveredAt": zod.coerce.date().nullish()
 }).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
   "onboardingCompletedAt": zod.coerce.date().nullable(),
+  "documentFilledFields": zod.array(zod.string()).optional().describe('Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.'),
   "openCases": zod.int().describe('Cases that are not completed or archived.'),
   "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
   "openTasks": zod.int(),
@@ -826,14 +985,8 @@ export const FindClientMatchesResponse = zod.object({
   "error": zod.string().nullish(),
   "deliveredAt": zod.coerce.date().nullish()
 }).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
   "onboardingCompletedAt": zod.coerce.date().nullable(),
+  "documentFilledFields": zod.array(zod.string()).optional().describe('Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.'),
   "openCases": zod.int().describe('Cases that are not completed or archived.'),
   "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
   "openTasks": zod.int(),
@@ -934,14 +1087,8 @@ export const AcceptClientEnquiryResponse = zod.object({
   "error": zod.string().nullish(),
   "deliveredAt": zod.coerce.date().nullish()
 }).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
   "onboardingCompletedAt": zod.coerce.date().nullable(),
+  "documentFilledFields": zod.array(zod.string()).optional().describe('Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.'),
   "openCases": zod.int().describe('Cases that are not completed or archived.'),
   "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
   "openTasks": zod.int(),
@@ -987,6 +1134,12 @@ export const AcceptClientEnquiryResponse = zod.object({
   "updatedAt": zod.coerce.date()
 }))
 }),
+  "documentChecks": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "status": zod.enum(['ok', 'mismatch', 'attention', 'info']),
+  "detail": zod.string()
+})).optional().describe('Cross-document consistency findings from the document reading system (name, DOB, address, income, commitments, ID expiry, adverse credit, account conduct).'),
   "documents": zod.array(zod.object({
   "id": zod.int(),
   "name": zod.string(),
@@ -996,7 +1149,17 @@ export const AcceptClientEnquiryResponse = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })),
   "properties": zod.array(zod.object({
   "id": zod.int(),
@@ -1049,6 +1212,7 @@ export const AcceptClientEnquiryResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -1076,7 +1240,15 @@ export const AcceptClientEnquiryResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 }))
 }))
@@ -1132,14 +1304,8 @@ export const DeclineClientEnquiryResponse = zod.object({
   "error": zod.string().nullish(),
   "deliveredAt": zod.coerce.date().nullish()
 }).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
   "onboardingCompletedAt": zod.coerce.date().nullable(),
+  "documentFilledFields": zod.array(zod.string()).optional().describe('Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.'),
   "openCases": zod.int().describe('Cases that are not completed or archived.'),
   "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
   "openTasks": zod.int(),
@@ -1185,6 +1351,12 @@ export const DeclineClientEnquiryResponse = zod.object({
   "updatedAt": zod.coerce.date()
 }))
 }),
+  "documentChecks": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "status": zod.enum(['ok', 'mismatch', 'attention', 'info']),
+  "detail": zod.string()
+})).optional().describe('Cross-document consistency findings from the document reading system (name, DOB, address, income, commitments, ID expiry, adverse credit, account conduct).'),
   "documents": zod.array(zod.object({
   "id": zod.int(),
   "name": zod.string(),
@@ -1194,7 +1366,17 @@ export const DeclineClientEnquiryResponse = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })),
   "properties": zod.array(zod.object({
   "id": zod.int(),
@@ -1247,6 +1429,7 @@ export const DeclineClientEnquiryResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -1274,7 +1457,15 @@ export const DeclineClientEnquiryResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 }))
 }))
@@ -1322,14 +1513,8 @@ export const ReopenClientEnquiryResponse = zod.object({
   "error": zod.string().nullish(),
   "deliveredAt": zod.coerce.date().nullish()
 }).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
   "onboardingCompletedAt": zod.coerce.date().nullable(),
+  "documentFilledFields": zod.array(zod.string()).optional().describe('Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.'),
   "openCases": zod.int().describe('Cases that are not completed or archived.'),
   "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
   "openTasks": zod.int(),
@@ -1375,6 +1560,12 @@ export const ReopenClientEnquiryResponse = zod.object({
   "updatedAt": zod.coerce.date()
 }))
 }),
+  "documentChecks": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "status": zod.enum(['ok', 'mismatch', 'attention', 'info']),
+  "detail": zod.string()
+})).optional().describe('Cross-document consistency findings from the document reading system (name, DOB, address, income, commitments, ID expiry, adverse credit, account conduct).'),
   "documents": zod.array(zod.object({
   "id": zod.int(),
   "name": zod.string(),
@@ -1384,7 +1575,17 @@ export const ReopenClientEnquiryResponse = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })),
   "properties": zod.array(zod.object({
   "id": zod.int(),
@@ -1437,6 +1638,7 @@ export const ReopenClientEnquiryResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -1464,7 +1666,15 @@ export const ReopenClientEnquiryResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 }))
 }))
@@ -1487,19 +1697,38 @@ export const RecordRepeatEnquiryBody = zod.object({
   "email": zod.string().nullish(),
   "phone": zod.string().nullish(),
   "companyName": zod.string().nullish(),
-  "companyNumber": zod.string().nullish()
+  "companyNumber": zod.string().nullish(),
+  "title": zod.string().nullish(),
+  "currentAddress": zod.string().nullish(),
+  "currentAddressCity": zod.string().nullish(),
+  "currentAddressPostcode": zod.string().nullish(),
+  "employmentStatus": zod.string().nullish(),
+  "employerName": zod.string().nullish(),
+  "jobTitle": zod.string().nullish(),
+  "annualIncome": zod.number().nullish()
 }),
   "property": zod.object({
   "address": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "postcode": zod.string().nullish(),
   "value": zod.number().nullish(),
   "loanAmount": zod.number().nullish(),
   "rent": zod.number().nullish(),
-  "matterType": zod.string().nullish()
+  "matterType": zod.string().nullish(),
+  "propertyType": zod.string().nullish(),
+  "currentLender": zod.string().nullish(),
+  "currentBalance": zod.number().nullish(),
+  "currentRatePct": zod.number().nullish(),
+  "currentRateEndDate": zod.string().nullish(),
+  "purchasePrice": zod.number().nullish()
 }),
   "enquiry": zod.object({
   "type": zod.enum(['purchase', 'remortgage', 'refinance', 'bridging', 'development', 'commercial', 'other']).nullish(),
   "timescale": zod.string().nullish(),
-  "summary": zod.string().nullish()
+  "summary": zod.string().nullish(),
+  "source": zod.enum(['email', 'phone', 'website', 'referral', 'introducer', 'existing_client', 'other']).nullish(),
+  "introducerName": zod.string().nullish(),
+  "introducerContact": zod.string().nullish()
 })
 }).nullish()
 })
@@ -1558,14 +1787,8 @@ export const BulkUpdateClientsResponseItem = zod.object({
   "error": zod.string().nullish(),
   "deliveredAt": zod.coerce.date().nullish()
 }).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
   "onboardingCompletedAt": zod.coerce.date().nullable(),
+  "documentFilledFields": zod.array(zod.string()).optional().describe('Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.'),
   "openCases": zod.int().describe('Cases that are not completed or archived.'),
   "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
   "openTasks": zod.int(),
@@ -1609,7 +1832,7 @@ export const GetClientTimelineParams = zod.object({
 
 export const GetClientTimelineResponseItem = zod.object({
   "id": zod.string(),
-  "kind": zod.enum(['activity', 'interaction', 'task', 'document', 'case', 'email']),
+  "kind": zod.enum(['activity', 'interaction', 'task', 'document', 'case', 'email', 'enquiry']),
   "title": zod.string(),
   "detail": zod.string(),
   "actorName": zod.string(),
@@ -1718,7 +1941,12 @@ export const SearchCompaniesHouseResponse = zod.object({
   "companyNumber": zod.string(),
   "name": zod.string(),
   "status": zod.string(),
-  "address": zod.string().nullish()
+  "address": zod.string().nullish(),
+  "registeredAddress": zod.object({
+  "line1": zod.string(),
+  "city": zod.string(),
+  "postcode": zod.string()
+}).nullish()
 }))
 })
 
@@ -1806,14 +2034,8 @@ export const GetClientResponse = zod.object({
   "error": zod.string().nullish(),
   "deliveredAt": zod.coerce.date().nullish()
 }).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
   "onboardingCompletedAt": zod.coerce.date().nullable(),
+  "documentFilledFields": zod.array(zod.string()).optional().describe('Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.'),
   "openCases": zod.int().describe('Cases that are not completed or archived.'),
   "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
   "openTasks": zod.int(),
@@ -1859,6 +2081,12 @@ export const GetClientResponse = zod.object({
   "updatedAt": zod.coerce.date()
 }))
 }),
+  "documentChecks": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "status": zod.enum(['ok', 'mismatch', 'attention', 'info']),
+  "detail": zod.string()
+})).optional().describe('Cross-document consistency findings from the document reading system (name, DOB, address, income, commitments, ID expiry, adverse credit, account conduct).'),
   "documents": zod.array(zod.object({
   "id": zod.int(),
   "name": zod.string(),
@@ -1868,7 +2096,17 @@ export const GetClientResponse = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })),
   "properties": zod.array(zod.object({
   "id": zod.int(),
@@ -1921,6 +2159,7 @@ export const GetClientResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -1948,7 +2187,15 @@ export const GetClientResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 }))
 }))
@@ -2048,14 +2295,8 @@ export const UpdateClientResponse = zod.object({
   "error": zod.string().nullish(),
   "deliveredAt": zod.coerce.date().nullish()
 }).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
   "onboardingCompletedAt": zod.coerce.date().nullable(),
+  "documentFilledFields": zod.array(zod.string()).optional().describe('Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value.'),
   "openCases": zod.int().describe('Cases that are not completed or archived.'),
   "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
   "openTasks": zod.int(),
@@ -2101,6 +2342,12 @@ export const UpdateClientResponse = zod.object({
   "updatedAt": zod.coerce.date()
 }))
 }),
+  "documentChecks": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string(),
+  "status": zod.enum(['ok', 'mismatch', 'attention', 'info']),
+  "detail": zod.string()
+})).optional().describe('Cross-document consistency findings from the document reading system (name, DOB, address, income, commitments, ID expiry, adverse credit, account conduct).'),
   "documents": zod.array(zod.object({
   "id": zod.int(),
   "name": zod.string(),
@@ -2110,7 +2357,17 @@ export const UpdateClientResponse = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })),
   "properties": zod.array(zod.object({
   "id": zod.int(),
@@ -2163,6 +2420,7 @@ export const UpdateClientResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -2190,7 +2448,15 @@ export const UpdateClientResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 }))
 }))
@@ -2289,6 +2555,7 @@ export const ListCasesResponseItem = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -2316,7 +2583,15 @@ export const ListCasesResponseItem = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 })
 export const ListCasesResponse = zod.array(ListCasesResponseItem)
@@ -2361,6 +2636,7 @@ export const CreateCaseResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -2388,7 +2664,15 @@ export const CreateCaseResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 })
 
@@ -2419,6 +2703,7 @@ export const GetCaseResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -2446,9 +2731,25 @@ export const GetCaseResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 }).and(zod.object({
+  "termsOfBusiness": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable().describe('The case\'s signed Terms of Business; null until signed.'),
   "submissions": zod.array(zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
@@ -2589,6 +2890,7 @@ export const UpdateCaseResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -2616,7 +2918,15 @@ export const UpdateCaseResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 })
 
@@ -2800,6 +3110,7 @@ export const ApplyCaseStressTestPropertyValueResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -2827,7 +3138,15 @@ export const ApplyCaseStressTestPropertyValueResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 })
 
@@ -2951,6 +3270,7 @@ export const SetCaseValuationCompletedResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -2978,7 +3298,15 @@ export const SetCaseValuationCompletedResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 })
 
@@ -2989,8 +3317,6 @@ export const AdvanceCaseParams = zod.object({
 
 export const AdvanceCaseBody = zod.object({
   "completedRequirementIds": zod.array(zod.int()),
-  "override": zod.boolean().optional().describe('Administrator only - move on without the client\'s confirmation of the submission details.'),
-  "overrideReason": zod.string().optional(),
   "completion": zod.object({
   "renewalType": zod.enum(['fixed_rate', 'bridging']),
   "rateEndDate": zod.coerce.date().nullable(),
@@ -3021,6 +3347,7 @@ export const AdvanceCaseResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -3048,9 +3375,25 @@ export const AdvanceCaseResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 }).and(zod.object({
+  "termsOfBusiness": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable().describe('The case\'s signed Terms of Business; null until signed.'),
   "submissions": zod.array(zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
@@ -3165,6 +3508,7 @@ export const ConfirmCaseServiceLevelResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -3192,9 +3536,25 @@ export const ConfirmCaseServiceLevelResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 }).and(zod.object({
+  "termsOfBusiness": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable().describe('The case\'s signed Terms of Business; null until signed.'),
   "submissions": zod.array(zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
@@ -3288,12 +3648,13 @@ export const GetCaseAdviceResponse = zod.object({
   "mode": zod.enum(['advice', 'instruction']).describe('advice = the adviser writes and sends a recommendation; instruction = the client\'s own instruction (execution only), confirmed with the submission details.'),
   "instructionRecorded": zod.boolean(),
   "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
   "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
   "advice": zod.object({
   "source": zod.enum(['adviser', 'client_email', 'staff']).nullable(),
   "instructionEmailText": zod.string().nullable(),
@@ -3313,7 +3674,7 @@ export const GetCaseAdviceResponse = zod.object({
   "approvals": zod.array(zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
+  "kind": zod.enum(['advice']),
   "version": zod.int(),
   "sentAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
@@ -3329,7 +3690,7 @@ export const GetCaseAdviceResponse = zod.object({
   "latest": zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
+  "kind": zod.enum(['advice']),
   "version": zod.int(),
   "sentAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
@@ -3384,12 +3745,13 @@ export const UpdateCaseAdviceResponse = zod.object({
   "mode": zod.enum(['advice', 'instruction']).describe('advice = the adviser writes and sends a recommendation; instruction = the client\'s own instruction (execution only), confirmed with the submission details.'),
   "instructionRecorded": zod.boolean(),
   "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
   "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
   "advice": zod.object({
   "source": zod.enum(['adviser', 'client_email', 'staff']).nullable(),
   "instructionEmailText": zod.string().nullable(),
@@ -3409,7 +3771,7 @@ export const UpdateCaseAdviceResponse = zod.object({
   "approvals": zod.array(zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
+  "kind": zod.enum(['advice']),
   "version": zod.int(),
   "sentAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
@@ -3425,7 +3787,7 @@ export const UpdateCaseAdviceResponse = zod.object({
   "latest": zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
+  "kind": zod.enum(['advice']),
   "version": zod.int(),
   "sentAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
@@ -3457,12 +3819,13 @@ export const SendCaseAdviceResponse = zod.object({
   "mode": zod.enum(['advice', 'instruction']).describe('advice = the adviser writes and sends a recommendation; instruction = the client\'s own instruction (execution only), confirmed with the submission details.'),
   "instructionRecorded": zod.boolean(),
   "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
   "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
   "advice": zod.object({
   "source": zod.enum(['adviser', 'client_email', 'staff']).nullable(),
   "instructionEmailText": zod.string().nullable(),
@@ -3482,7 +3845,7 @@ export const SendCaseAdviceResponse = zod.object({
   "approvals": zod.array(zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
+  "kind": zod.enum(['advice']),
   "version": zod.int(),
   "sentAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
@@ -3498,7 +3861,7 @@ export const SendCaseAdviceResponse = zod.object({
   "latest": zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
+  "kind": zod.enum(['advice']),
   "version": zod.int(),
   "sentAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
@@ -3564,7 +3927,7 @@ export const RecordCaseApprovalBody = zod.object({
 export const RecordCaseApprovalResponse = zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
+  "kind": zod.enum(['advice']),
   "version": zod.int(),
   "sentAt": zod.coerce.date(),
   "expiresAt": zod.coerce.date(),
@@ -3580,7 +3943,7 @@ export const RecordCaseApprovalResponse = zod.object({
 
 
 /**
- * The structured details pack that will be submitted, what is still missing, and the client's confirmation state.
+ * The structured details pack that will be submitted and what is still missing (display-only; nothing is sent to the client).
  */
 export const GetCaseSubmissionDetailsParams = zod.object({
   "id": zod.coerce.number().int()
@@ -3601,103 +3964,6 @@ export const GetCaseSubmissionDetailsResponse = zod.object({
 })),
   "missing": zod.array(zod.string()).describe('Labels of the required fields that are still empty.')
 }),
-  "approvals": zod.array(zod.object({
-  "id": zod.int(),
-  "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
-  "version": zod.int(),
-  "sentAt": zod.coerce.date(),
-  "expiresAt": zod.coerce.date(),
-  "sentBy": zod.string().nullable(),
-  "deliveryStatus": zod.enum(['pending', 'sent', 'disabled', 'failed']),
-  "deliveryError": zod.string().nullable(),
-  "response": zod.enum(['approved', 'discuss']).nullable(),
-  "respondedAt": zod.coerce.date().nullable(),
-  "respondedVia": zod.enum(['email', 'portal', 'staff']).nullable(),
-  "note": zod.string().nullable(),
-  "snapshot": zod.record(zod.string(), zod.unknown()).describe('What the client was shown - an AdviceSnapshot or a SubmissionPack.')
-})),
-  "latest": zod.object({
-  "id": zod.int(),
-  "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
-  "version": zod.int(),
-  "sentAt": zod.coerce.date(),
-  "expiresAt": zod.coerce.date(),
-  "sentBy": zod.string().nullable(),
-  "deliveryStatus": zod.enum(['pending', 'sent', 'disabled', 'failed']),
-  "deliveryError": zod.string().nullable(),
-  "response": zod.enum(['approved', 'discuss']).nullable(),
-  "respondedAt": zod.coerce.date().nullable(),
-  "respondedVia": zod.enum(['email', 'portal', 'staff']).nullable(),
-  "note": zod.string().nullable(),
-  "snapshot": zod.record(zod.string(), zod.unknown()).describe('What the client was shown - an AdviceSnapshot or a SubmissionPack.')
-}).nullable(),
-  "confirmed": zod.boolean(),
-  "previousCase": zod.object({
-  "id": zod.int(),
-  "reference": zod.string(),
-  "stage": zod.string(),
-  "updatedAt": zod.coerce.date()
-}).nullable()
-})
-
-
-/**
- * Snapshots the pack and asks the client to confirm it (email button + portal).
- */
-export const SendCaseSubmissionDetailsParams = zod.object({
-  "id": zod.coerce.number().int()
-})
-
-export const SendCaseSubmissionDetailsResponse = zod.object({
-  "pack": zod.object({
-  "sections": zod.array(zod.object({
-  "key": zod.string(),
-  "title": zod.string(),
-  "fields": zod.array(zod.object({
-  "key": zod.string(),
-  "label": zod.string(),
-  "value": zod.string().nullable(),
-  "source": zod.enum(['client', 'property', 'case', 'advice']),
-  "missing": zod.boolean()
-}))
-})),
-  "missing": zod.array(zod.string()).describe('Labels of the required fields that are still empty.')
-}),
-  "approvals": zod.array(zod.object({
-  "id": zod.int(),
-  "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
-  "version": zod.int(),
-  "sentAt": zod.coerce.date(),
-  "expiresAt": zod.coerce.date(),
-  "sentBy": zod.string().nullable(),
-  "deliveryStatus": zod.enum(['pending', 'sent', 'disabled', 'failed']),
-  "deliveryError": zod.string().nullable(),
-  "response": zod.enum(['approved', 'discuss']).nullable(),
-  "respondedAt": zod.coerce.date().nullable(),
-  "respondedVia": zod.enum(['email', 'portal', 'staff']).nullable(),
-  "note": zod.string().nullable(),
-  "snapshot": zod.record(zod.string(), zod.unknown()).describe('What the client was shown - an AdviceSnapshot or a SubmissionPack.')
-})),
-  "latest": zod.object({
-  "id": zod.int(),
-  "caseId": zod.int(),
-  "kind": zod.enum(['advice', 'submission_details']),
-  "version": zod.int(),
-  "sentAt": zod.coerce.date(),
-  "expiresAt": zod.coerce.date(),
-  "sentBy": zod.string().nullable(),
-  "deliveryStatus": zod.enum(['pending', 'sent', 'disabled', 'failed']),
-  "deliveryError": zod.string().nullable(),
-  "response": zod.enum(['approved', 'discuss']).nullable(),
-  "respondedAt": zod.coerce.date().nullable(),
-  "respondedVia": zod.enum(['email', 'portal', 'staff']).nullable(),
-  "note": zod.string().nullable(),
-  "snapshot": zod.record(zod.string(), zod.unknown()).describe('What the client was shown - an AdviceSnapshot or a SubmissionPack.')
-}).nullable(),
-  "confirmed": zod.boolean(),
   "previousCase": zod.object({
   "id": zod.int(),
   "reference": zod.string(),
@@ -3775,7 +4041,8 @@ export const ExtractUnderwritingRequirementsBody = zod.object({
 })
 
 export const ExtractUnderwritingRequirementsResponse = zod.object({
-  "suggestions": zod.array(zod.string())
+  "suggestions": zod.array(zod.string()),
+  "model": zod.string().nullable().describe('The AI model used')
 })
 
 
@@ -3817,6 +4084,7 @@ export const AddUnderwritingRoundResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -3844,9 +4112,187 @@ export const AddUnderwritingRoundResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 }).and(zod.object({
+  "termsOfBusiness": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable().describe('The case\'s signed Terms of Business; null until signed.'),
+  "submissions": zod.array(zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "lenderId": zod.int(),
+  "lenderName": zod.string(),
+  "status": zod.enum(['active', 'withdrawn', 'declined', 'offered']),
+  "isPrimary": zod.boolean(),
+  "lenderCaseNumber": zod.string().nullable(),
+  "dipDocument": zod.object({
+  "id": zod.int(),
+  "name": zod.string()
+}).nullable(),
+  "applicationFeeConfirmed": zod.boolean(),
+  "valuationDate": zod.coerce.date().nullable(),
+  "valuationCompletedAt": zod.coerce.date().nullable(),
+  "bankDecisionRequested": zod.boolean(),
+  "notes": zod.string(),
+  "closedAt": zod.coerce.date().nullable(),
+  "closeReason": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+})).describe('Every lender this case has been submitted to, primary first. The case\'s own lender fields mirror the primary submission.'),
+  "stages": zod.array(zod.string()),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "stageIndex": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean(),
+  "required": zod.boolean(),
+  "round": zod.int()
+})),
+  "tasks": zod.array(zod.object({
+  "id": zod.int(),
+  "title": zod.string(),
+  "caseId": zod.int().nullable(),
+  "clientId": zod.int().nullable().describe('Client the task concerns (set for onboarding\/property tasks; derived from the case otherwise).'),
+  "caseReference": zod.string().nullable(),
+  "clientName": zod.string().nullable(),
+  "assignee": zod.string(),
+  "assignedUserId": zod.int(),
+  "status": zod.enum(['todo', 'in_progress', 'done']),
+  "priority": zod.enum(['low', 'normal', 'high', 'urgent']),
+  "dueDate": zod.coerce.date(),
+  "notes": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable(),
+  "createdByUserId": zod.int().nullable(),
+  "createdByName": zod.string().nullable(),
+  "checklistTotal": zod.int(),
+  "checklistDone": zod.int(),
+  "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "commentCount": zod.int(),
+  "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
+  "propertyId": zod.int().nullable()
+})),
+  "messages": zod.array(zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "caseReference": zod.string(),
+  "senderUserId": zod.int().nullish(),
+  "sender": zod.string(),
+  "senderRole": zod.string(),
+  "body": zod.string(),
+  "replyTo": zod.object({
+  "id": zod.int(),
+  "sender": zod.string(),
+  "body": zod.string()
+}).nullish(),
+  "reactions": zod.array(zod.object({
+  "emoji": zod.string(),
+  "count": zod.int(),
+  "users": zod.array(zod.string()).describe('Display names of users who reacted'),
+  "reacted": zod.boolean().describe('Whether the current user added this reaction')
+})).optional(),
+  "attachments": zod.array(zod.object({
+  "id": zod.int(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "byteSize": zod.int()
+})).optional(),
+  "createdAt": zod.coerce.date()
+})),
+  "draftNotes": zod.string()
+}))
+
+
+/**
+ * Everything the lender asked for in this round has been provided and sent back; closes the round and its task. The next round may then start.
+ */
+export const MarkUnderwritingRoundSentParams = zod.object({
+  "id": zod.coerce.number().int(),
+  "round": zod.coerce.number().int()
+})
+
+export const MarkUnderwritingRoundSentResponse = zod.object({
+  "id": zod.int(),
+  "reference": zod.string(),
+  "clientId": zod.int(),
+  "clientName": zod.string(),
+  "propertyId": zod.int().nullish(),
+  "propertyAddress": zod.string(),
+  "propertyValue": zod.number(),
+  "rent": zod.number().nullish(),
+  "gdv": zod.number().nullish(),
+  "matterType": zod.string(),
+  "serviceType": zod.enum(['full_advice', 'light_advice', 'execution_only']),
+  "serviceLevelConfirmedAt": zod.coerce.date().nullable(),
+  "serviceLevelConfirmedBy": zod.string().nullable(),
+  "stage": zod.string(),
+  "stageIndex": zod.int(),
+  "stageDays": zod.int(),
+  "stageThresholdDays": zod.int().nullish(),
+  "stageFlagged": zod.boolean(),
+  "status": zod.string(),
+  "loanAmount": zod.number(),
+  "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
+  "updatedAt": zod.coerce.date(),
+  "skippedStageIndexes": zod.array(zod.int()),
+  "procFeePct": zod.number(),
+  "brokerFeePct": zod.number(),
+  "brokerFeeBasis": zod.enum(['percent', 'flat']),
+  "brokerFeeFlat": zod.number().nullable(),
+  "procFee": zod.number(),
+  "brokerFee": zod.number(),
+  "revenue": zod.number(),
+  "archivedAt": zod.coerce.date().nullable(),
+  "lenderId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
+  "caseNumber": zod.string().nullable(),
+  "dipDocument": zod.object({
+  "id": zod.int(),
+  "name": zod.string()
+}).nullable(),
+  "valuationDate": zod.coerce.date().nullable(),
+  "valuationCompletedAt": zod.coerce.date().nullable().describe('When staff confirmed the valuation took place; null until confirmed.'),
+  "valuationAmount": zod.number().nullable().describe('The lender\'s valuation figure, recorded when the valuation is confirmed; null until then.'),
+  "expectedCompletionDate": zod.coerce.date().nullable().describe('Day the mortgage is expected to complete. Mirrored to the calendar and a follow-up task.'),
+  "applicationFeeConfirmed": zod.boolean(),
+  "bankDecisionRequested": zod.boolean(),
+  "underwritingCleared": zod.boolean(),
+  "underwritingRounds": zod.array(zod.object({
+  "round": zod.int(),
+  "emailText": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
+}))
+}).and(zod.object({
+  "termsOfBusiness": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable().describe('The case\'s signed Terms of Business; null until signed.'),
   "submissions": zod.array(zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
@@ -3958,6 +4404,7 @@ export const ArchiveCaseResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -3985,7 +4432,15 @@ export const ArchiveCaseResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 })
 
@@ -4016,6 +4471,7 @@ export const RestoreCaseResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -4043,13 +4499,21 @@ export const RestoreCaseResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 })
 
 
 export const GetEmailTemplateParams = zod.object({
-  "key": zod.enum(['client_welcome', 'advice_email', 'details_confirmation'])
+  "key": zod.enum(['client_welcome', 'advice_email'])
 })
 
 export const GetEmailTemplateResponse = zod.object({
@@ -4071,7 +4535,7 @@ export const GetEmailTemplateResponse = zod.object({
  * Administrator only. Saves the subject, heading and body text; the branded layout is fixed.
  */
 export const UpdateEmailTemplateParams = zod.object({
-  "key": zod.enum(['client_welcome', 'advice_email', 'details_confirmation'])
+  "key": zod.enum(['client_welcome', 'advice_email'])
 })
 
 export const updateEmailTemplateBodySubjectMax = 200;
@@ -4107,7 +4571,7 @@ export const UpdateEmailTemplateResponse = zod.object({
  * Administrator only. Removes the stored text so the built-in default is used again.
  */
 export const ResetEmailTemplateParams = zod.object({
-  "key": zod.enum(['client_welcome', 'advice_email', 'details_confirmation'])
+  "key": zod.enum(['client_welcome', 'advice_email'])
 })
 
 export const ResetEmailTemplateResponse = zod.object({
@@ -4129,7 +4593,7 @@ export const ResetEmailTemplateResponse = zod.object({
  * Render unsaved text inside the branded shell, with a real client's details when clientId is given.
  */
 export const PreviewEmailTemplateParams = zod.object({
-  "key": zod.enum(['client_welcome', 'advice_email', 'details_confirmation'])
+  "key": zod.enum(['client_welcome', 'advice_email'])
 })
 
 export const previewEmailTemplateBodyOneSubjectMax = 200;
@@ -4154,266 +4618,1522 @@ export const PreviewEmailTemplateResponse = zod.object({
 })
 
 
+export const getTermsOfBusinessResponseTemplateOneOneTitleMax = 120;
+
+export const getTermsOfBusinessResponseTemplateOneOneBodyMax = 60000;
+
+export const getTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax = 40;
+
+
+export const getTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const getTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax = 120;
+
+export const getTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax = 200;
+
+export const getTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax = 2000;
+
+export const getTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax = 300;
+
+export const getTermsOfBusinessResponseTemplateOneOneFieldsMax = 40;
+
+export const getTermsOfBusinessResponseVersionsItemOneTitleMax = 120;
+
+export const getTermsOfBusinessResponseVersionsItemOneBodyMax = 60000;
+
+export const getTermsOfBusinessResponseVersionsItemOneFieldsItemKeyMax = 40;
+
+
+export const getTermsOfBusinessResponseVersionsItemOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const getTermsOfBusinessResponseVersionsItemOneFieldsItemLabelMax = 120;
+
+export const getTermsOfBusinessResponseVersionsItemOneFieldsItemOptionsItemMax = 200;
+
+export const getTermsOfBusinessResponseVersionsItemOneFieldsItemDefaultValueMax = 2000;
+
+export const getTermsOfBusinessResponseVersionsItemOneFieldsItemHintMax = 300;
+
+export const getTermsOfBusinessResponseVersionsItemOneFieldsMax = 40;
+
+export const getTermsOfBusinessResponseDefaultsOneTitleMax = 120;
+
+export const getTermsOfBusinessResponseDefaultsOneBodyMax = 60000;
+
+export const getTermsOfBusinessResponseDefaultsOneFieldsItemKeyMax = 40;
+
+
+export const getTermsOfBusinessResponseDefaultsOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const getTermsOfBusinessResponseDefaultsOneFieldsItemLabelMax = 120;
+
+export const getTermsOfBusinessResponseDefaultsOneFieldsItemOptionsItemMax = 200;
+
+export const getTermsOfBusinessResponseDefaultsOneFieldsItemDefaultValueMax = 2000;
+
+export const getTermsOfBusinessResponseDefaultsOneFieldsItemHintMax = 300;
+
+export const getTermsOfBusinessResponseDefaultsOneFieldsMax = 40;
+
+
+
 export const GetTermsOfBusinessResponse = zod.object({
-  "document": zod.object({
-  "filename": zod.string(),
-  "contentType": zod.string(),
-  "byteSize": zod.int(),
+  "template": zod.object({
+  "title": zod.string().min(1).max(getTermsOfBusinessResponseTemplateOneOneTitleMax),
+  "body": zod.string().min(1).max(getTermsOfBusinessResponseTemplateOneOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(getTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax).regex(getTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp),
+  "label": zod.string().max(getTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(getTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(getTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(getTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(getTermsOfBusinessResponseTemplateOneOneFieldsMax)
+}).and(zod.object({
   "version": zod.int(),
-  "uploadedAt": zod.coerce.date(),
-  "uploadedBy": zod.string().nullable()
-}).nullable()
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+})).nullable().describe('The current version; null until an administrator publishes one.'),
+  "versions": zod.array(zod.object({
+  "title": zod.string().min(1).max(getTermsOfBusinessResponseVersionsItemOneTitleMax),
+  "body": zod.string().min(1).max(getTermsOfBusinessResponseVersionsItemOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(getTermsOfBusinessResponseVersionsItemOneFieldsItemKeyMax).regex(getTermsOfBusinessResponseVersionsItemOneFieldsItemKeyRegExp),
+  "label": zod.string().max(getTermsOfBusinessResponseVersionsItemOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(getTermsOfBusinessResponseVersionsItemOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(getTermsOfBusinessResponseVersionsItemOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(getTermsOfBusinessResponseVersionsItemOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(getTermsOfBusinessResponseVersionsItemOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+}))).describe('Every published version, newest first.'),
+  "placeholders": zod.array(zod.object({
+  "token": zod.string(),
+  "description": zod.string(),
+  "sample": zod.string().describe('Example value'),
+  "group": zod.enum(['client', 'case', 'firm']).describe('Where the value comes from.')
+})).describe('Tokens filled from the case and client automatically.'),
+  "defaults": zod.object({
+  "title": zod.string().min(1).max(getTermsOfBusinessResponseDefaultsOneTitleMax),
+  "body": zod.string().min(1).max(getTermsOfBusinessResponseDefaultsOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(getTermsOfBusinessResponseDefaultsOneFieldsItemKeyMax).regex(getTermsOfBusinessResponseDefaultsOneFieldsItemKeyRegExp),
+  "label": zod.string().max(getTermsOfBusinessResponseDefaultsOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(getTermsOfBusinessResponseDefaultsOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(getTermsOfBusinessResponseDefaultsOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(getTermsOfBusinessResponseDefaultsOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(getTermsOfBusinessResponseDefaultsOneFieldsMax)
+}).describe('The built-in template, to start from or reset to.'),
+  "signature": zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean().describe('True when documents can be sent (mock'),
+  "missing": zod.array(zod.string()).describe('App environment variables still unset (DOCUSIGN_INTEGRATION_KEY'),
+  "appRegistered": zod.boolean().describe('Both app credentials are set'),
+  "oauthHost": zod.string(),
+  "redirectUri": zod.string().nullable().describe('What to register as the app\'s Redirect URI in DocuSign.'),
+  "webhookUrl": zod.string().nullable(),
+  "hmacEnabled": zod.boolean(),
+  "connection": zod.object({
+  "account": zod.string(),
+  "email": zod.string(),
+  "userName": zod.string(),
+  "baseUri": zod.string(),
+  "connectedAt": zod.coerce.date(),
+  "connectedBy": zod.string().nullable()
+}).nullable().describe('The DocuSign account documents are sent from; null until an administrator connects one.')
+})
 })
 
 
 /**
- * Administrator only. Replaces the firm-wide Terms of Business PDF; the version increments. Send the file bytes with x-filename and x-content-type headers.
+ * Administrator only. Publishes a new version of the template; earlier versions are kept so a case can always show the version it signed.
  */
-export const UploadTermsOfBusinessResponse = zod.object({
-  "document": zod.object({
-  "filename": zod.string(),
-  "contentType": zod.string(),
-  "byteSize": zod.int(),
-  "version": zod.int(),
-  "uploadedAt": zod.coerce.date(),
-  "uploadedBy": zod.string().nullable()
-}).nullable()
+export const publishTermsOfBusinessBodyTitleMax = 120;
+
+export const publishTermsOfBusinessBodyBodyMax = 60000;
+
+export const publishTermsOfBusinessBodyFieldsItemKeyMax = 40;
+
+
+export const publishTermsOfBusinessBodyFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const publishTermsOfBusinessBodyFieldsItemLabelMax = 120;
+
+export const publishTermsOfBusinessBodyFieldsItemOptionsItemMax = 200;
+
+export const publishTermsOfBusinessBodyFieldsItemDefaultValueMax = 2000;
+
+export const publishTermsOfBusinessBodyFieldsItemHintMax = 300;
+
+export const publishTermsOfBusinessBodyFieldsMax = 40;
+
+
+
+export const PublishTermsOfBusinessBody = zod.object({
+  "title": zod.string().min(1).max(publishTermsOfBusinessBodyTitleMax),
+  "body": zod.string().min(1).max(publishTermsOfBusinessBodyBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(publishTermsOfBusinessBodyFieldsItemKeyMax).regex(publishTermsOfBusinessBodyFieldsItemKeyRegExp),
+  "label": zod.string().max(publishTermsOfBusinessBodyFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(publishTermsOfBusinessBodyFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(publishTermsOfBusinessBodyFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(publishTermsOfBusinessBodyFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(publishTermsOfBusinessBodyFieldsMax)
 })
 
+export const publishTermsOfBusinessResponseTemplateOneOneTitleMax = 120;
+
+export const publishTermsOfBusinessResponseTemplateOneOneBodyMax = 60000;
+
+export const publishTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax = 40;
+
+
+export const publishTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const publishTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax = 120;
+
+export const publishTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax = 200;
+
+export const publishTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax = 2000;
+
+export const publishTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax = 300;
+
+export const publishTermsOfBusinessResponseTemplateOneOneFieldsMax = 40;
+
+export const publishTermsOfBusinessResponseVersionsItemOneTitleMax = 120;
+
+export const publishTermsOfBusinessResponseVersionsItemOneBodyMax = 60000;
+
+export const publishTermsOfBusinessResponseVersionsItemOneFieldsItemKeyMax = 40;
+
+
+export const publishTermsOfBusinessResponseVersionsItemOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const publishTermsOfBusinessResponseVersionsItemOneFieldsItemLabelMax = 120;
+
+export const publishTermsOfBusinessResponseVersionsItemOneFieldsItemOptionsItemMax = 200;
+
+export const publishTermsOfBusinessResponseVersionsItemOneFieldsItemDefaultValueMax = 2000;
+
+export const publishTermsOfBusinessResponseVersionsItemOneFieldsItemHintMax = 300;
+
+export const publishTermsOfBusinessResponseVersionsItemOneFieldsMax = 40;
+
+export const publishTermsOfBusinessResponseDefaultsOneTitleMax = 120;
+
+export const publishTermsOfBusinessResponseDefaultsOneBodyMax = 60000;
+
+export const publishTermsOfBusinessResponseDefaultsOneFieldsItemKeyMax = 40;
+
+
+export const publishTermsOfBusinessResponseDefaultsOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const publishTermsOfBusinessResponseDefaultsOneFieldsItemLabelMax = 120;
+
+export const publishTermsOfBusinessResponseDefaultsOneFieldsItemOptionsItemMax = 200;
+
+export const publishTermsOfBusinessResponseDefaultsOneFieldsItemDefaultValueMax = 2000;
+
+export const publishTermsOfBusinessResponseDefaultsOneFieldsItemHintMax = 300;
+
+export const publishTermsOfBusinessResponseDefaultsOneFieldsMax = 40;
+
+
+
+export const PublishTermsOfBusinessResponse = zod.object({
+  "template": zod.object({
+  "title": zod.string().min(1).max(publishTermsOfBusinessResponseTemplateOneOneTitleMax),
+  "body": zod.string().min(1).max(publishTermsOfBusinessResponseTemplateOneOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(publishTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax).regex(publishTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp),
+  "label": zod.string().max(publishTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(publishTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(publishTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(publishTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(publishTermsOfBusinessResponseTemplateOneOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+})).nullable().describe('The current version; null until an administrator publishes one.'),
+  "versions": zod.array(zod.object({
+  "title": zod.string().min(1).max(publishTermsOfBusinessResponseVersionsItemOneTitleMax),
+  "body": zod.string().min(1).max(publishTermsOfBusinessResponseVersionsItemOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(publishTermsOfBusinessResponseVersionsItemOneFieldsItemKeyMax).regex(publishTermsOfBusinessResponseVersionsItemOneFieldsItemKeyRegExp),
+  "label": zod.string().max(publishTermsOfBusinessResponseVersionsItemOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(publishTermsOfBusinessResponseVersionsItemOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(publishTermsOfBusinessResponseVersionsItemOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(publishTermsOfBusinessResponseVersionsItemOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(publishTermsOfBusinessResponseVersionsItemOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+}))).describe('Every published version, newest first.'),
+  "placeholders": zod.array(zod.object({
+  "token": zod.string(),
+  "description": zod.string(),
+  "sample": zod.string().describe('Example value'),
+  "group": zod.enum(['client', 'case', 'firm']).describe('Where the value comes from.')
+})).describe('Tokens filled from the case and client automatically.'),
+  "defaults": zod.object({
+  "title": zod.string().min(1).max(publishTermsOfBusinessResponseDefaultsOneTitleMax),
+  "body": zod.string().min(1).max(publishTermsOfBusinessResponseDefaultsOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(publishTermsOfBusinessResponseDefaultsOneFieldsItemKeyMax).regex(publishTermsOfBusinessResponseDefaultsOneFieldsItemKeyRegExp),
+  "label": zod.string().max(publishTermsOfBusinessResponseDefaultsOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(publishTermsOfBusinessResponseDefaultsOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(publishTermsOfBusinessResponseDefaultsOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(publishTermsOfBusinessResponseDefaultsOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(publishTermsOfBusinessResponseDefaultsOneFieldsMax)
+}).describe('The built-in template, to start from or reset to.'),
+  "signature": zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean().describe('True when documents can be sent (mock'),
+  "missing": zod.array(zod.string()).describe('App environment variables still unset (DOCUSIGN_INTEGRATION_KEY'),
+  "appRegistered": zod.boolean().describe('Both app credentials are set'),
+  "oauthHost": zod.string(),
+  "redirectUri": zod.string().nullable().describe('What to register as the app\'s Redirect URI in DocuSign.'),
+  "webhookUrl": zod.string().nullable(),
+  "hmacEnabled": zod.boolean(),
+  "connection": zod.object({
+  "account": zod.string(),
+  "email": zod.string(),
+  "userName": zod.string(),
+  "baseUri": zod.string(),
+  "connectedAt": zod.coerce.date(),
+  "connectedBy": zod.string().nullable()
+}).nullable().describe('The DocuSign account documents are sent from; null until an administrator connects one.')
+})
+})
+
+
+/**
+ * Renders the given (unsaved) template as a PDF with sample values.
+ */
+export const previewTermsOfBusinessBodyTitleMax = 120;
+
+export const previewTermsOfBusinessBodyBodyMax = 60000;
+
+export const previewTermsOfBusinessBodyFieldsItemKeyMax = 40;
+
+
+export const previewTermsOfBusinessBodyFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const previewTermsOfBusinessBodyFieldsItemLabelMax = 120;
+
+export const previewTermsOfBusinessBodyFieldsItemOptionsItemMax = 200;
+
+export const previewTermsOfBusinessBodyFieldsItemDefaultValueMax = 2000;
+
+export const previewTermsOfBusinessBodyFieldsItemHintMax = 300;
+
+export const previewTermsOfBusinessBodyFieldsMax = 40;
+
+
+
+export const PreviewTermsOfBusinessBody = zod.object({
+  "title": zod.string().min(1).max(previewTermsOfBusinessBodyTitleMax),
+  "body": zod.string().min(1).max(previewTermsOfBusinessBodyBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(previewTermsOfBusinessBodyFieldsItemKeyMax).regex(previewTermsOfBusinessBodyFieldsItemKeyRegExp),
+  "label": zod.string().max(previewTermsOfBusinessBodyFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(previewTermsOfBusinessBodyFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(previewTermsOfBusinessBodyFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(previewTermsOfBusinessBodyFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(previewTermsOfBusinessBodyFieldsMax)
+})
+
+export const PreviewTermsOfBusinessResponse = zod.unknown()
+
+
+/**
+ * A published version rendered with sample values.
+ */
+export const ViewTermsOfBusinessQueryParams = zod.object({
+  "version": zod.coerce.number().int().optional().describe('A specific published version; the current one when omitted.')
+})
 
 export const ViewTermsOfBusinessResponse = zod.unknown()
 
 
 /**
- * Staff record that the client accepted the Terms of Business outside the portal (signed copy received, or agreed by phone).
+ * Administrator only. Browser navigation — sends the administrator to DocuSign to sign in to the firm's account (OAuth authorization code); DocuSign returns them to the callback.
  */
-export const AcceptClientTermsParams = zod.object({
-  "id": zod.coerce.number().int()
-})
-
-export const AcceptClientTermsBody = zod.object({
-  "via": zod.enum(['signed_upload', 'staff']),
-  "note": zod.string().optional()
-})
-
-export const acceptClientTermsResponseOneNextFollowUpAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const acceptClientTermsResponseOneDateOfBirthRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const acceptClientTermsResponseTwoPropertiesItemPurchaseDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-export const acceptClientTermsResponseTwoPropertiesItemCurrentRateEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
-
-
-export const AcceptClientTermsResponse = zod.object({
-  "id": zod.int(),
-  "name": zod.string(),
-  "email": zod.string(),
-  "phone": zod.string(),
-  "companyName": zod.string(),
-  "onboardingStatus": zod.enum(['not_started', 'in_progress', 'complete']),
-  "createdAt": zod.coerce.date(),
-  "lifecycle": zod.enum(['enquiry', 'onboarding', 'active', 'declined', 'lost']),
-  "source": zod.enum(['email', 'phone', 'website', 'referral', 'introducer', 'existing_client', 'other']).nullish(),
-  "introducerName": zod.string().nullish(),
-  "introducerContact": zod.string().nullish(),
-  "assignee": zod.object({
-  "id": zod.int(),
-  "displayName": zod.string()
-}).nullish(),
-  "enquiryType": zod.enum(['purchase', 'remortgage', 'refinance', 'bridging', 'development', 'commercial', 'other']).nullish(),
-  "enquirySummary": zod.string().nullish(),
-  "enquiryTimescale": zod.string().nullish(),
-  "enquiryEmailText": zod.string().nullish(),
-  "enquiryEmailSubject": zod.string().nullish(),
-  "enquiryEmailFrom": zod.string().nullish(),
-  "enquiryReceivedAt": zod.coerce.date(),
-  "acceptedAt": zod.coerce.date().nullish(),
-  "closedAt": zod.coerce.date().nullish(),
-  "outcomeReason": zod.string().nullish(),
-  "stale": zod.boolean().describe('True for an enquiry that has waited for acceptance longer than the stale threshold.'),
-  "welcomeDelivery": zod.object({
-  "status": zod.enum(['pending', 'sent', 'disabled', 'failed']),
-  "error": zod.string().nullish(),
-  "deliveredAt": zod.coerce.date().nullish()
-}).nullish(),
-  "termsOfBusiness": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable(),
-  "onboardingCompletedAt": zod.coerce.date().nullable(),
-  "openCases": zod.int().describe('Cases that are not completed or archived.'),
-  "loanTotal": zod.number().describe('Sum of loan amounts across open cases.'),
-  "openTasks": zod.int(),
-  "lastActivityAt": zod.coerce.date().nullish(),
-  "lastContactedAt": zod.coerce.date().nullish().describe('Most recent logged interaction.'),
-  "nextFollowUpAt": zod.string().regex(acceptClientTermsResponseOneNextFollowUpAtRegExp).nullish(),
-  "title": zod.string().nullish(),
-  "dateOfBirth": zod.string().regex(acceptClientTermsResponseOneDateOfBirthRegExp).nullish(),
-  "nationality": zod.string().nullish(),
-  "maritalStatus": zod.string().nullish(),
-  "dependants": zod.int().nullish(),
-  "currentAddress": zod.string().nullish(),
-  "currentAddressCity": zod.string().nullish(),
-  "currentAddressPostcode": zod.string().nullish(),
-  "previousAddress": zod.string().nullish(),
-  "previousAddressCity": zod.string().nullish(),
-  "previousAddressPostcode": zod.string().nullish(),
-  "alternativePhone": zod.string().nullish(),
-  "employmentStatus": zod.string().nullish(),
-  "employerName": zod.string().nullish(),
-  "jobTitle": zod.string().nullish(),
-  "annualIncome": zod.number().nullish(),
-  "otherIncome": zod.number().nullish(),
-  "monthlyCommitments": zod.number().nullish(),
-  "creditHistoryNotes": zod.string().nullish(),
-  "companyNumber": zod.string().nullish(),
-  "companyRegisteredAddress": zod.string().nullish(),
-  "companyRegisteredCity": zod.string().nullish(),
-  "companyRegisteredPostcode": zod.string().nullish(),
-  "notes": zod.string().nullish()
-}).and(zod.object({
-  "onboarding": zod.object({
-  "status": zod.enum(['not_started', 'in_progress', 'complete']),
-  "completed": zod.int(),
-  "total": zod.int(),
-  "items": zod.array(zod.object({
-  "detail": zod.string().nullable().describe('Extra status text, e.g. how and when the Terms of Business were accepted.'),
-  "key": zod.string(),
-  "label": zod.string(),
-  "kind": zod.enum(['field', 'date', 'textarea', 'document']),
-  "value": zod.string().nullish(),
-  "status": zod.enum(['required', 'complete', 'not_applicable']),
-  "updatedAt": zod.coerce.date()
-}))
-}),
-  "documents": zod.array(zod.object({
-  "id": zod.int(),
-  "name": zod.string(),
-  "category": zod.string(),
-  "status": zod.string(),
-  "clientId": zod.int().optional(),
-  "caseId": zod.int().nullish(),
-  "contentType": zod.string().nullish(),
-  "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
-})),
-  "properties": zod.array(zod.object({
-  "id": zod.int(),
-  "clientId": zod.int().nullish(),
-  "address": zod.string(),
-  "city": zod.string().nullish(),
-  "postcode": zod.string().nullish(),
-  "matterType": zod.string(),
-  "value": zod.number(),
-  "loanAmount": zod.number(),
-  "rent": zod.number().nullish(),
-  "gdv": zod.number().nullish(),
-  "propertyType": zod.string().nullish(),
-  "tenure": zod.string().nullish(),
-  "leaseYearsRemaining": zod.int().nullish(),
-  "bedrooms": zod.int().nullish(),
-  "yearBuilt": zod.int().nullish(),
-  "epcRating": zod.string().nullish(),
-  "occupancy": zod.string().nullish(),
-  "tenancyType": zod.string().nullish(),
-  "purchasePrice": zod.number().nullish(),
-  "purchaseDate": zod.string().regex(acceptClientTermsResponseTwoPropertiesItemPurchaseDateRegExp).nullish(),
-  "currentLender": zod.string().nullish(),
-  "currentRatePct": zod.number().nullish(),
-  "currentBalance": zod.number().nullish(),
-  "currentRateEndDate": zod.string().regex(acceptClientTermsResponseTwoPropertiesItemCurrentRateEndDateRegExp).nullish(),
-  "notes": zod.string().nullish(),
-  "createdAt": zod.coerce.date().optional(),
-  "updatedAt": zod.coerce.date().optional()
-})),
-  "cases": zod.array(zod.object({
-  "id": zod.int(),
-  "reference": zod.string(),
-  "clientId": zod.int(),
-  "clientName": zod.string(),
-  "propertyId": zod.int().nullish(),
-  "propertyAddress": zod.string(),
-  "propertyValue": zod.number(),
-  "rent": zod.number().nullish(),
-  "gdv": zod.number().nullish(),
-  "matterType": zod.string(),
-  "serviceType": zod.enum(['full_advice', 'light_advice', 'execution_only']),
-  "serviceLevelConfirmedAt": zod.coerce.date().nullable(),
-  "serviceLevelConfirmedBy": zod.string().nullable(),
-  "stage": zod.string(),
-  "stageIndex": zod.int(),
-  "stageDays": zod.int(),
-  "stageThresholdDays": zod.int().nullish(),
-  "stageFlagged": zod.boolean(),
-  "status": zod.string(),
-  "loanAmount": zod.number(),
-  "assignedTo": zod.string(),
-  "updatedAt": zod.coerce.date(),
-  "skippedStageIndexes": zod.array(zod.int()),
-  "procFeePct": zod.number(),
-  "brokerFeePct": zod.number(),
-  "brokerFeeBasis": zod.enum(['percent', 'flat']),
-  "brokerFeeFlat": zod.number().nullable(),
-  "procFee": zod.number(),
-  "brokerFee": zod.number(),
-  "revenue": zod.number(),
-  "archivedAt": zod.coerce.date().nullable(),
-  "lenderId": zod.int().nullable(),
-  "lenderName": zod.string().nullable(),
-  "caseNumber": zod.string().nullable(),
-  "dipDocument": zod.object({
-  "id": zod.int(),
-  "name": zod.string()
-}).nullable(),
-  "valuationDate": zod.coerce.date().nullable(),
-  "valuationCompletedAt": zod.coerce.date().nullable().describe('When staff confirmed the valuation took place; null until confirmed.'),
-  "valuationAmount": zod.number().nullable().describe('The lender\'s valuation figure, recorded when the valuation is confirmed; null until then.'),
-  "expectedCompletionDate": zod.coerce.date().nullable().describe('Day the mortgage is expected to complete. Mirrored to the calendar and a follow-up task.'),
-  "applicationFeeConfirmed": zod.boolean(),
-  "bankDecisionRequested": zod.boolean(),
-  "underwritingCleared": zod.boolean(),
-  "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
-  "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
-}))
-}))
-}))
-
-
-export const GetPortalTermsOfBusinessResponse = zod.object({
-  "document": zod.object({
-  "filename": zod.string(),
-  "contentType": zod.string(),
-  "byteSize": zod.int(),
-  "version": zod.int(),
-  "uploadedAt": zod.coerce.date(),
-  "uploadedBy": zod.string().nullable()
-}).nullable(),
-  "acceptance": zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
-}).nullable()
-})
-
-
-export const ViewPortalTermsOfBusinessResponse = zod.unknown()
+export const ConnectDocusignResponse = zod.void()
 
 
 /**
- * The signed-in client accepts the current Terms of Business.
+ * Where DocuSign sends the administrator back. Exchanges the code for tokens, stores the connection, and redirects to Settings with `?docusign=connected` or `?docusign=error&reason=…`.
  */
-export const AcceptPortalTermsOfBusinessResponse = zod.object({
-  "acceptedAt": zod.coerce.date(),
-  "via": zod.enum(['portal', 'signed_upload', 'staff']),
-  "version": zod.int().nullable(),
-  "note": zod.string().nullable(),
-  "acceptedBy": zod.string().nullable().describe('Staff member who recorded it')
+export const DocusignCallbackQueryParams = zod.object({
+  "code": zod.coerce.string().optional(),
+  "state": zod.coerce.string().optional()
 })
+
+export const DocusignCallbackResponse = zod.void()
+
+
+/**
+ * Administrator only. Forgets the connected DocuSign account. Envelopes already sent keep working through DocuSign's own emails but can no longer be tracked until an account is connected again.
+ */
+export const DisconnectDocusignResponse = zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean().describe('True when documents can be sent (mock'),
+  "missing": zod.array(zod.string()).describe('App environment variables still unset (DOCUSIGN_INTEGRATION_KEY'),
+  "appRegistered": zod.boolean().describe('Both app credentials are set'),
+  "oauthHost": zod.string(),
+  "redirectUri": zod.string().nullable().describe('What to register as the app\'s Redirect URI in DocuSign.'),
+  "webhookUrl": zod.string().nullable(),
+  "hmacEnabled": zod.boolean(),
+  "connection": zod.object({
+  "account": zod.string(),
+  "email": zod.string(),
+  "userName": zod.string(),
+  "baseUri": zod.string(),
+  "connectedAt": zod.coerce.date(),
+  "connectedBy": zod.string().nullable()
+}).nullable().describe('The DocuSign account documents are sent from; null until an administrator connects one.')
+})
+
+
+/**
+ * Administrator only. Checks the connected DocuSign account still answers and reports it.
+ */
+export const TestDocusignConnectionResponse = zod.object({
+  "ok": zod.boolean(),
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "account": zod.string().nullable(),
+  "email": zod.string().nullable(),
+  "baseUri": zod.string().nullable(),
+  "error": zod.string().nullable()
+})
+
+
+/**
+ * The case's Terms of Business — the template version in use, the form values, the read-only values from the case, and the current agreement's signature status.
+ */
+export const GetCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const getCaseTermsOfBusinessResponseTemplateOneOneTitleMax = 120;
+
+export const getCaseTermsOfBusinessResponseTemplateOneOneBodyMax = 60000;
+
+export const getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax = 40;
+
+
+export const getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax = 120;
+
+export const getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax = 200;
+
+export const getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax = 2000;
+
+export const getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax = 300;
+
+export const getCaseTermsOfBusinessResponseTemplateOneOneFieldsMax = 40;
+
+
+
+export const GetCaseTermsOfBusinessResponse = zod.object({
+  "template": zod.object({
+  "title": zod.string().min(1).max(getCaseTermsOfBusinessResponseTemplateOneOneTitleMax),
+  "body": zod.string().min(1).max(getCaseTermsOfBusinessResponseTemplateOneOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax).regex(getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp),
+  "label": zod.string().max(getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(getCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(getCaseTermsOfBusinessResponseTemplateOneOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+})).nullable().describe('The version the current agreement uses (the current template for a new draft); null when nothing is published.'),
+  "currentVersion": zod.int().nullable(),
+  "agreement": zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.').nullable(),
+  "history": zod.array(zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.')).describe('Earlier attempts (declined \/ voided), newest first.'),
+  "values": zod.record(zod.string(), zod.string()).describe('Form values — the draft\'s'),
+  "auto": zod.record(zod.string(), zod.string()).describe('Read-only values taken from the case and client.'),
+  "missing": zod.array(zod.string()).describe('Required fields still blank.'),
+  "acceptance": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
+  "recipient": zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "signature": zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean(),
+  "missing": zod.array(zod.string())
+})
+})
+
+
+/**
+ * Saves the form values on the open draft (starting one when there is none).
+ */
+export const SaveCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const saveCaseTermsOfBusinessBodyValuesMaxOne = 4000;
+
+
+
+export const SaveCaseTermsOfBusinessBody = zod.object({
+  "values": zod.record(zod.string(), zod.string().max(saveCaseTermsOfBusinessBodyValuesMaxOne))
+})
+
+export const saveCaseTermsOfBusinessResponseTemplateOneOneTitleMax = 120;
+
+export const saveCaseTermsOfBusinessResponseTemplateOneOneBodyMax = 60000;
+
+export const saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax = 40;
+
+
+export const saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax = 120;
+
+export const saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax = 200;
+
+export const saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax = 2000;
+
+export const saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax = 300;
+
+export const saveCaseTermsOfBusinessResponseTemplateOneOneFieldsMax = 40;
+
+
+
+export const SaveCaseTermsOfBusinessResponse = zod.object({
+  "template": zod.object({
+  "title": zod.string().min(1).max(saveCaseTermsOfBusinessResponseTemplateOneOneTitleMax),
+  "body": zod.string().min(1).max(saveCaseTermsOfBusinessResponseTemplateOneOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax).regex(saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp),
+  "label": zod.string().max(saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(saveCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(saveCaseTermsOfBusinessResponseTemplateOneOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+})).nullable().describe('The version the current agreement uses (the current template for a new draft); null when nothing is published.'),
+  "currentVersion": zod.int().nullable(),
+  "agreement": zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.').nullable(),
+  "history": zod.array(zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.')).describe('Earlier attempts (declined \/ voided), newest first.'),
+  "values": zod.record(zod.string(), zod.string()).describe('Form values — the draft\'s'),
+  "auto": zod.record(zod.string(), zod.string()).describe('Read-only values taken from the case and client.'),
+  "missing": zod.array(zod.string()).describe('Required fields still blank.'),
+  "acceptance": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
+  "recipient": zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "signature": zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean(),
+  "missing": zod.array(zod.string())
+})
+})
+
+
+/**
+ * Discards the open draft.
+ */
+export const DiscardCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const discardCaseTermsOfBusinessResponseTemplateOneOneTitleMax = 120;
+
+export const discardCaseTermsOfBusinessResponseTemplateOneOneBodyMax = 60000;
+
+export const discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax = 40;
+
+
+export const discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax = 120;
+
+export const discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax = 200;
+
+export const discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax = 2000;
+
+export const discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax = 300;
+
+export const discardCaseTermsOfBusinessResponseTemplateOneOneFieldsMax = 40;
+
+
+
+export const DiscardCaseTermsOfBusinessResponse = zod.object({
+  "template": zod.object({
+  "title": zod.string().min(1).max(discardCaseTermsOfBusinessResponseTemplateOneOneTitleMax),
+  "body": zod.string().min(1).max(discardCaseTermsOfBusinessResponseTemplateOneOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax).regex(discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp),
+  "label": zod.string().max(discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(discardCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(discardCaseTermsOfBusinessResponseTemplateOneOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+})).nullable().describe('The version the current agreement uses (the current template for a new draft); null when nothing is published.'),
+  "currentVersion": zod.int().nullable(),
+  "agreement": zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.').nullable(),
+  "history": zod.array(zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.')).describe('Earlier attempts (declined \/ voided), newest first.'),
+  "values": zod.record(zod.string(), zod.string()).describe('Form values — the draft\'s'),
+  "auto": zod.record(zod.string(), zod.string()).describe('Read-only values taken from the case and client.'),
+  "missing": zod.array(zod.string()).describe('Required fields still blank.'),
+  "acceptance": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
+  "recipient": zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "signature": zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean(),
+  "missing": zod.array(zod.string())
+})
+})
+
+
+/**
+ * The document as it would be sent with these values (or the saved ones when the body is empty). Nothing is stored.
+ */
+export const PreviewCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const previewCaseTermsOfBusinessBodyValuesMaxOne = 4000;
+
+
+
+export const PreviewCaseTermsOfBusinessBody = zod.object({
+  "values": zod.record(zod.string(), zod.string().max(previewCaseTermsOfBusinessBodyValuesMaxOne))
+})
+
+export const PreviewCaseTermsOfBusinessResponse = zod.unknown()
+
+
+/**
+ * Generates the document from the values (saving them first when given) and sends it to the client for signature through DocuSign.
+ */
+export const SendCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const sendCaseTermsOfBusinessBodyValuesMaxOne = 4000;
+
+
+
+export const SendCaseTermsOfBusinessBody = zod.object({
+  "values": zod.record(zod.string(), zod.string().max(sendCaseTermsOfBusinessBodyValuesMaxOne))
+})
+
+export const sendCaseTermsOfBusinessResponseTemplateOneOneTitleMax = 120;
+
+export const sendCaseTermsOfBusinessResponseTemplateOneOneBodyMax = 60000;
+
+export const sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax = 40;
+
+
+export const sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax = 120;
+
+export const sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax = 200;
+
+export const sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax = 2000;
+
+export const sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax = 300;
+
+export const sendCaseTermsOfBusinessResponseTemplateOneOneFieldsMax = 40;
+
+
+
+export const SendCaseTermsOfBusinessResponse = zod.object({
+  "template": zod.object({
+  "title": zod.string().min(1).max(sendCaseTermsOfBusinessResponseTemplateOneOneTitleMax),
+  "body": zod.string().min(1).max(sendCaseTermsOfBusinessResponseTemplateOneOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax).regex(sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp),
+  "label": zod.string().max(sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(sendCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(sendCaseTermsOfBusinessResponseTemplateOneOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+})).nullable().describe('The version the current agreement uses (the current template for a new draft); null when nothing is published.'),
+  "currentVersion": zod.int().nullable(),
+  "agreement": zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.').nullable(),
+  "history": zod.array(zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.')).describe('Earlier attempts (declined \/ voided), newest first.'),
+  "values": zod.record(zod.string(), zod.string()).describe('Form values — the draft\'s'),
+  "auto": zod.record(zod.string(), zod.string()).describe('Read-only values taken from the case and client.'),
+  "missing": zod.array(zod.string()).describe('Required fields still blank.'),
+  "acceptance": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
+  "recipient": zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "signature": zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean(),
+  "missing": zod.array(zod.string())
+})
+})
+
+
+/**
+ * The document as sent (unsigned). The signed copy is a document on the case (`signedDocumentId`).
+ */
+export const ViewCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const ViewCaseTermsOfBusinessResponse = zod.unknown()
+
+
+/**
+ * Asks DocuSign for the envelope's current status and applies it (completed → filed and signed).
+ */
+export const RefreshCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const refreshCaseTermsOfBusinessResponseTemplateOneOneTitleMax = 120;
+
+export const refreshCaseTermsOfBusinessResponseTemplateOneOneBodyMax = 60000;
+
+export const refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax = 40;
+
+
+export const refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax = 120;
+
+export const refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax = 200;
+
+export const refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax = 2000;
+
+export const refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax = 300;
+
+export const refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsMax = 40;
+
+
+
+export const RefreshCaseTermsOfBusinessResponse = zod.object({
+  "template": zod.object({
+  "title": zod.string().min(1).max(refreshCaseTermsOfBusinessResponseTemplateOneOneTitleMax),
+  "body": zod.string().min(1).max(refreshCaseTermsOfBusinessResponseTemplateOneOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax).regex(refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp),
+  "label": zod.string().max(refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(refreshCaseTermsOfBusinessResponseTemplateOneOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+})).nullable().describe('The version the current agreement uses (the current template for a new draft); null when nothing is published.'),
+  "currentVersion": zod.int().nullable(),
+  "agreement": zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.').nullable(),
+  "history": zod.array(zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.')).describe('Earlier attempts (declined \/ voided), newest first.'),
+  "values": zod.record(zod.string(), zod.string()).describe('Form values — the draft\'s'),
+  "auto": zod.record(zod.string(), zod.string()).describe('Read-only values taken from the case and client.'),
+  "missing": zod.array(zod.string()).describe('Required fields still blank.'),
+  "acceptance": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
+  "recipient": zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "signature": zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean(),
+  "missing": zod.array(zod.string())
+})
+})
+
+
+/**
+ * Withdraws the signature request so the details can be changed and the document sent again.
+ */
+export const VoidCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const voidCaseTermsOfBusinessBodyReasonMax = 200;
+
+
+
+export const VoidCaseTermsOfBusinessBody = zod.object({
+  "reason": zod.string().max(voidCaseTermsOfBusinessBodyReasonMax)
+})
+
+export const voidCaseTermsOfBusinessResponseTemplateOneOneTitleMax = 120;
+
+export const voidCaseTermsOfBusinessResponseTemplateOneOneBodyMax = 60000;
+
+export const voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax = 40;
+
+
+export const voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax = 120;
+
+export const voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax = 200;
+
+export const voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax = 2000;
+
+export const voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax = 300;
+
+export const voidCaseTermsOfBusinessResponseTemplateOneOneFieldsMax = 40;
+
+
+
+export const VoidCaseTermsOfBusinessResponse = zod.object({
+  "template": zod.object({
+  "title": zod.string().min(1).max(voidCaseTermsOfBusinessResponseTemplateOneOneTitleMax),
+  "body": zod.string().min(1).max(voidCaseTermsOfBusinessResponseTemplateOneOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax).regex(voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp),
+  "label": zod.string().max(voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(voidCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(voidCaseTermsOfBusinessResponseTemplateOneOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+})).nullable().describe('The version the current agreement uses (the current template for a new draft); null when nothing is published.'),
+  "currentVersion": zod.int().nullable(),
+  "agreement": zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.').nullable(),
+  "history": zod.array(zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.')).describe('Earlier attempts (declined \/ voided), newest first.'),
+  "values": zod.record(zod.string(), zod.string()).describe('Form values — the draft\'s'),
+  "auto": zod.record(zod.string(), zod.string()).describe('Read-only values taken from the case and client.'),
+  "missing": zod.array(zod.string()).describe('Required fields still blank.'),
+  "acceptance": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
+  "recipient": zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "signature": zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean(),
+  "missing": zod.array(zod.string())
+})
+})
+
+
+/**
+ * Staff record a signature given outside DocuSign — a signed copy uploaded to the case, or agreed in person. Any DocuSign envelope still out is voided.
+ */
+export const MarkCaseTermsOfBusinessSignedParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const markCaseTermsOfBusinessSignedBodyNoteMax = 500;
+
+
+
+export const MarkCaseTermsOfBusinessSignedBody = zod.object({
+  "via": zod.enum(['signed_upload', 'staff']),
+  "note": zod.string().max(markCaseTermsOfBusinessSignedBodyNoteMax).optional(),
+  "documentId": zod.int().nullish().describe('The uploaded signed copy (a document on this case)')
+})
+
+export const markCaseTermsOfBusinessSignedResponseTemplateOneOneTitleMax = 120;
+
+export const markCaseTermsOfBusinessSignedResponseTemplateOneOneBodyMax = 60000;
+
+export const markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemKeyMax = 40;
+
+
+export const markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemLabelMax = 120;
+
+export const markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemOptionsItemMax = 200;
+
+export const markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemDefaultValueMax = 2000;
+
+export const markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemHintMax = 300;
+
+export const markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsMax = 40;
+
+
+
+export const MarkCaseTermsOfBusinessSignedResponse = zod.object({
+  "template": zod.object({
+  "title": zod.string().min(1).max(markCaseTermsOfBusinessSignedResponseTemplateOneOneTitleMax),
+  "body": zod.string().min(1).max(markCaseTermsOfBusinessSignedResponseTemplateOneOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemKeyMax).regex(markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemKeyRegExp),
+  "label": zod.string().max(markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(markCaseTermsOfBusinessSignedResponseTemplateOneOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+})).nullable().describe('The version the current agreement uses (the current template for a new draft); null when nothing is published.'),
+  "currentVersion": zod.int().nullable(),
+  "agreement": zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.').nullable(),
+  "history": zod.array(zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.')).describe('Earlier attempts (declined \/ voided), newest first.'),
+  "values": zod.record(zod.string(), zod.string()).describe('Form values — the draft\'s'),
+  "auto": zod.record(zod.string(), zod.string()).describe('Read-only values taken from the case and client.'),
+  "missing": zod.array(zod.string()).describe('Required fields still blank.'),
+  "acceptance": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
+  "recipient": zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "signature": zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean(),
+  "missing": zod.array(zod.string())
+})
+})
+
+
+/**
+ * Development only (DOCUSIGN_MOCK=true). Pretends the client signed or declined the mock envelope, then runs the same completion path as the DocuSign webhook.
+ */
+export const MockSignCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const MockSignCaseTermsOfBusinessBody = zod.object({
+  "outcome": zod.enum(['signed', 'declined', 'bounced']),
+  "reason": zod.string().optional()
+})
+
+export const mockSignCaseTermsOfBusinessResponseTemplateOneOneTitleMax = 120;
+
+export const mockSignCaseTermsOfBusinessResponseTemplateOneOneBodyMax = 60000;
+
+export const mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax = 40;
+
+
+export const mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp = new RegExp('^[a-zA-Z][a-zA-Z0-9_]*$');
+export const mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax = 120;
+
+export const mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax = 200;
+
+export const mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax = 2000;
+
+export const mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax = 300;
+
+export const mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsMax = 40;
+
+
+
+export const MockSignCaseTermsOfBusinessResponse = zod.object({
+  "template": zod.object({
+  "title": zod.string().min(1).max(mockSignCaseTermsOfBusinessResponseTemplateOneOneTitleMax),
+  "body": zod.string().min(1).max(mockSignCaseTermsOfBusinessResponseTemplateOneOneBodyMax).describe('Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.'),
+  "fields": zod.array(zod.object({
+  "key": zod.string().max(mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyMax).regex(mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemKeyRegExp),
+  "label": zod.string().max(mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemLabelMax),
+  "type": zod.enum(['text', 'textarea', 'number', 'currency', 'date', 'select']),
+  "required": zod.boolean(),
+  "options": zod.array(zod.string().max(mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemOptionsItemMax)).optional().describe('Choices for a select field.'),
+  "defaultValue": zod.string().max(mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemDefaultValueMax).optional(),
+  "hint": zod.string().max(mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsItemHintMax).optional()
+}).describe('A dynamic field staff fill for each case; `{{key}}` in the body prints its value.')).max(mockSignCaseTermsOfBusinessResponseTemplateOneOneFieldsMax)
+}).and(zod.object({
+  "version": zod.int(),
+  "publishedAt": zod.coerce.date(),
+  "publishedBy": zod.string().nullable()
+})).nullable().describe('The version the current agreement uses (the current template for a new draft); null when nothing is published.'),
+  "currentVersion": zod.int().nullable(),
+  "agreement": zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.').nullable(),
+  "history": zod.array(zod.object({
+  "id": zod.int(),
+  "caseId": zod.int(),
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']),
+  "templateVersion": zod.int(),
+  "values": zod.record(zod.string(), zod.string()),
+  "filename": zod.string().nullable(),
+  "hasDocument": zod.boolean().describe('Whether a PDF has been generated (sent).'),
+  "provider": zod.string().nullable().describe('docusign or docusign_mock'),
+  "envelopeId": zod.string().nullable(),
+  "envelopeStatus": zod.string().nullable().describe('DocuSign\'s own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced.'),
+  "lastCheckedAt": zod.coerce.date().nullable(),
+  "recipientName": zod.string().nullable(),
+  "recipientEmail": zod.string().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "sentBy": zod.string().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "signedVia": zod.enum(['docusign', 'signed_upload', 'staff']).nullable(),
+  "signedNote": zod.string().nullable(),
+  "signedBy": zod.string().nullable().describe('Staff member who recorded a signature given outside DocuSign.'),
+  "signedDocumentId": zod.int().nullable().describe('The signed copy in the case\'s documents.'),
+  "declinedAt": zod.coerce.date().nullable(),
+  "declineReason": zod.string().nullable(),
+  "voidedAt": zod.coerce.date().nullable(),
+  "voidReason": zod.string().nullable(),
+  "voidedBy": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).describe('One attempt at getting the case\'s Terms of Business signed.')).describe('Earlier attempts (declined \/ voided), newest first.'),
+  "values": zod.record(zod.string(), zod.string()).describe('Form values — the draft\'s'),
+  "auto": zod.record(zod.string(), zod.string()).describe('Read-only values taken from the case and client.'),
+  "missing": zod.array(zod.string()).describe('Required fields still blank.'),
+  "acceptance": zod.object({
+  "signedAt": zod.coerce.date(),
+  "via": zod.enum(['docusign', 'signed_upload', 'staff']),
+  "version": zod.int(),
+  "note": zod.string().nullable(),
+  "signedBy": zod.string().nullable(),
+  "signedDocumentId": zod.int().nullable()
+}).describe('Summary of a case\'s signed Terms of Business.').nullable(),
+  "recipient": zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+}),
+  "signature": zod.object({
+  "mode": zod.enum(['off', 'mock', 'docusign']),
+  "configured": zod.boolean(),
+  "missing": zod.array(zod.string())
+})
+})
+
+
+/**
+ * DocuSign Connect (envelope-level event notification). The payload is only used to find the envelope; the status is re-read from DocuSign before anything changes. Verified with X-DocuSign-Signature-1 when DOCUSIGN_HMAC_KEY is set.
+ */
+export const DocusignWebhookBody = zod.record(zod.string(), zod.unknown())
+
+export const DocusignWebhookResponse = zod.unknown()
+
+
+/**
+ * The signed-in client's view of a case's Terms of Business — whether it is waiting for their signature or signed.
+ */
+export const GetPortalCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const GetPortalCaseTermsOfBusinessResponse = zod.object({
+  "status": zod.enum(['draft', 'sent', 'signed', 'declined', 'voided']).nullable().describe('null when nothing has been sent yet.'),
+  "title": zod.string().nullable(),
+  "version": zod.int().nullable(),
+  "sentAt": zod.coerce.date().nullable(),
+  "signedAt": zod.coerce.date().nullable(),
+  "hasDocument": zod.boolean(),
+  "provider": zod.string().nullable()
+})
+
+
+export const ViewPortalCaseTermsOfBusinessParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const ViewPortalCaseTermsOfBusinessResponse = zod.unknown()
 
 
 export const ListStageThresholdsResponseItem = zod.object({
@@ -4631,7 +6351,7 @@ export const CreateTaskResponse = zod.object({
 
 
 /**
- * Apply the same change (status, priority, assignee, due date) to several tasks at once. Returns the updated tasks.
+ * Apply the same change (status, priority, assignee, due date) to several tasks at once. Returns the updated tasks. Marking a stage hand-off task done advances its case (see updateTask).
  */
 export const bulkUpdateTasksBodyIdsMax = 200;
 
@@ -4714,6 +6434,7 @@ export const GetTaskResponse = zod.object({
   "checklist": zod.array(zod.object({
   "id": zod.int(),
   "sourceKey": zod.string().nullable().describe('Record field this step mirrors; set on auto-maintained steps, null on manual ones.'),
+  "lockedHint": zod.string().nullable().describe('Set when a synced step cannot be ticked from the task (it needs a value, a document or a choice on the record) - where to fill it in. Null when the step may be ticked here, which writes through to the case.'),
   "taskId": zod.int(),
   "title": zod.string(),
   "done": zod.boolean(),
@@ -4730,6 +6451,9 @@ export const GetTaskResponse = zod.object({
 }))
 
 
+/**
+ * Marking a stage hand-off task done moves its case to the next stage through the same gate as advancing the case; while the case cannot leave the stage the task cannot be completed either.
+ */
 export const UpdateTaskParams = zod.object({
   "id": zod.coerce.number().int()
 })
@@ -4798,6 +6522,7 @@ export const CreateTaskChecklistItemBody = zod.object({
 export const CreateTaskChecklistItemResponse = zod.object({
   "id": zod.int(),
   "sourceKey": zod.string().nullable().describe('Record field this step mirrors; set on auto-maintained steps, null on manual ones.'),
+  "lockedHint": zod.string().nullable().describe('Set when a synced step cannot be ticked from the task (it needs a value, a document or a choice on the record) - where to fill it in. Null when the step may be ticked here, which writes through to the case.'),
   "taskId": zod.int(),
   "title": zod.string(),
   "done": zod.boolean(),
@@ -4805,6 +6530,9 @@ export const CreateTaskChecklistItemResponse = zod.object({
 })
 
 
+/**
+ * Ticking a synced step (one with a sourceKey) writes through to the case - the requirement, the lender's fee/decision flag or the valuation - so the case and the task stay in step.
+ */
 export const UpdateTaskChecklistItemParams = zod.object({
   "id": zod.coerce.number().int(),
   "itemId": zod.coerce.number().int()
@@ -4822,6 +6550,7 @@ export const UpdateTaskChecklistItemBody = zod.object({
 export const UpdateTaskChecklistItemResponse = zod.object({
   "id": zod.int(),
   "sourceKey": zod.string().nullable().describe('Record field this step mirrors; set on auto-maintained steps, null on manual ones.'),
+  "lockedHint": zod.string().nullable().describe('Set when a synced step cannot be ticked from the task (it needs a value, a document or a choice on the record) - where to fill it in. Null when the step may be ticked here, which writes through to the case.'),
   "taskId": zod.int(),
   "title": zod.string(),
   "done": zod.boolean(),
@@ -5153,6 +6882,7 @@ export const GetPropertyResponse = zod.object({
   "status": zod.string(),
   "loanAmount": zod.number(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "updatedAt": zod.coerce.date(),
   "skippedStageIndexes": zod.array(zod.int()),
   "procFeePct": zod.number(),
@@ -5180,7 +6910,15 @@ export const GetPropertyResponse = zod.object({
   "underwritingRounds": zod.array(zod.object({
   "round": zod.int(),
   "emailText": zod.string(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
+  "sentBy": zod.string().nullable(),
+  "taskId": zod.int().nullable().describe('The case handler\'s task whose checkboxes are these requirements.'),
+  "requirements": zod.array(zod.object({
+  "id": zod.int(),
+  "label": zod.string(),
+  "complete": zod.boolean()
+}))
 }))
 }))
 }))
@@ -5765,6 +7503,7 @@ export const ListInboxResponseItem = zod.object({
   "stageIndex": zod.int(),
   "status": zod.string(),
   "assignedTo": zod.string(),
+  "assignedUserId": zod.int().nullable(),
   "lenderName": zod.string().nullable(),
   "propertyAddress": zod.string()
 }).nullable(),
@@ -6312,7 +8051,17 @@ export const ListDocumentsResponseItem = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 export const ListDocumentsResponse = zod.array(ListDocumentsResponseItem)
 
@@ -6339,7 +8088,17 @@ export const CreateDocumentMetadataResponse = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 
 
@@ -6352,7 +8111,17 @@ export const UploadDocumentResponse = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 
 
@@ -6378,7 +8147,17 @@ export const UpdateDocumentResponse = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 
 
@@ -6387,6 +8166,36 @@ export const DeleteDocumentParams = zod.object({
 })
 
 export const DeleteDocumentResponse = zod.void()
+
+
+/**
+ * @summary Run the document reading system on one document now (e.g. re-read a payslip) and return its reading.
+ */
+export const ReadDocumentParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const ReadDocumentResponse = zod.object({
+  "id": zod.int(),
+  "name": zod.string(),
+  "category": zod.string(),
+  "status": zod.string(),
+  "clientId": zod.int().optional(),
+  "caseId": zod.int().nullish(),
+  "contentType": zod.string().nullish(),
+  "byteSize": zod.int().nullish(),
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
+})
 
 
 export const DownloadDocumentParams = zod.object({
@@ -6405,7 +8214,17 @@ export const UploadPortalDocumentResponse = zod.object({
   "caseId": zod.int().nullish(),
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
-  "uploadedAt": zod.coerce.date().nullish()
+  "uploadedAt": zod.coerce.date().nullish(),
+  "reading": zod.object({
+  "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
+  "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
+  "source": zod.enum(['ai', 'heuristic']).nullable(),
+  "model": zod.string().nullable(),
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
+  "error": zod.string().nullable(),
+  "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
+  "readAt": zod.coerce.date()
+}).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 
 

@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, ne } from "drizzle-orm";
 import {
+  activitiesTable,
   casesTable,
   clientOnboardingItemsTable,
   clientsTable,
@@ -11,11 +12,15 @@ import {
   requirementsTable,
   taskChecklistItemsTable,
   tasksTable,
+  underwritingRoundsTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { ONBOARDING_DEFINITIONS } from "./client-onboarding";
 import { portfolioRequirementLabel } from "./case-portfolio-requirement";
-import { SUBMISSION_STAGE_INDEX } from "./stages";
+import { STAGES, SUBMISSION_STAGE_INDEX } from "./stages";
+
+const UNDERWRITING_STAGE_INDEX = STAGES.indexOf("Underwriting");
+import { syncCaseFromSubmissions } from "./case-submissions";
 
 /**
  * Auto-maintained task checklists. A client onboarding, property review or
@@ -33,10 +38,59 @@ export const CASE_SUBMISSION_KIND = "case_submission";
  * ways — ticking one on the task completes the requirement on the case.
  */
 export const STAGE_HANDOFF_KIND = "stage_handoff";
+/** One task per underwriting round; its steps are that round's requirements only. */
+export const UNDERWRITING_ROUND_KIND = "underwriting_round";
 export const REQUIREMENT_KEY_PREFIX = "req:";
 export const requirementKey = (id: number) => `${REQUIREMENT_KEY_PREFIX}${id}`;
 export const requirementIdFromKey = (key: string | null | undefined) =>
   key?.startsWith(REQUIREMENT_KEY_PREFIX) ? Number(key.slice(REQUIREMENT_KEY_PREFIX.length)) || null : null;
+
+/** `sub:<submissionId>:<field>` — one lender's step on the Submission stage. */
+const submissionStepFromKey = (key: string) => {
+  const match = /^sub:(\d+):(dip|caseNumber|fee|decision)$/.exec(key);
+  return match ? { submissionId: Number(match[1]), field: match[2] as "dip" | "caseNumber" | "fee" | "decision" } : null;
+};
+
+/**
+ * Requirements the system ticks itself (emails going out, the client
+ * answering, a signature landing, the calculator passing). The case page has
+ * no checkbox for these either, so a task must not offer one. Keyed by the
+ * requirement label as seeded in routes/operations.ts and services/case-advice.ts.
+ */
+const SYSTEM_REQUIREMENT_LOCKS: Record<string, string> = {
+  "Service level confirmed": "Confirmed by the adviser on the case",
+  "Advice sent to client": "Sent from the advice stage on the case",
+  "Client approved advice": "Ticked when the client answers the advice email or portal",
+  "Client instruction recorded": "Recorded from the client's email on the case",
+  "Terms of Business signed": "Ticked when the client signs the Terms of Business",
+  "Stress test completed": "Passed from the stress test calculator on the case",
+};
+
+/**
+ * Where a synced step has to be filled in when it cannot simply be ticked
+ * from the task: it needs a value, a document or a choice, so the task shows
+ * it locked with this hint and the API refuses a manual tick. Null means the
+ * step is a plain yes/no that the task may tick — it is written through to
+ * the case (`applyChecklistItemToCase`).
+ */
+export function checklistStepLock(sourceKey: string | null | undefined, title?: string | null): string | null {
+  if (!sourceKey) return null;
+  if (requirementIdFromKey(sourceKey)) return (title && SYSTEM_REQUIREMENT_LOCKS[title]) || null;
+  if (sourceKey === "portfolio" || sourceKey === "valuationCompleted") return null;
+  const step = submissionStepFromKey(sourceKey);
+  if (step) {
+    if (step.field === "fee" || step.field === "decision") return null;
+    return step.field === "dip" ? "Upload the DIP on the case" : "Record the lender's case number on the case";
+  }
+  if (sourceKey === "lenderId") return "Choose the lender on the case";
+  if (sourceKey === "lenderChosen") return "Choose the lender to proceed with on the case";
+  if (sourceKey === "valuationDate") return "Set the valuation date on the case";
+  if (sourceKey === "dip") return "Upload the DIP on the case";
+  if (sourceKey === "caseNumber") return "Record the lender's case number on the case";
+  if (sourceKey.startsWith("onboarding:")) return "Completed from the client's onboarding list";
+  // Client, property and case field steps mirror the Add page forms.
+  return "Filled in on the record";
+}
 
 interface Step {
   key: string;
@@ -300,15 +354,34 @@ export async function seedTaskChecklist(
  * steps that appeared since (a new underwriting round, an added requirement)
  * and dropping ones whose requirement was removed. Manual steps are left alone.
  */
+/** The requirements of the underwriting round a task was created for. */
+async function roundSteps(caseId: number, taskId: number): Promise<{ steps: Step[]; done: Map<string, boolean> } | null> {
+  const [round] = await db
+    .select({ round: underwritingRoundsTable.round })
+    .from(underwritingRoundsTable)
+    .where(and(eq(underwritingRoundsTable.caseId, caseId), eq(underwritingRoundsTable.taskId, taskId)));
+  if (!round) return null;
+  const requirements = await db
+    .select({ id: requirementsTable.id, label: requirementsTable.label, complete: requirementsTable.complete })
+    .from(requirementsTable)
+    .where(and(eq(requirementsTable.caseId, caseId), eq(requirementsTable.stageIndex, UNDERWRITING_STAGE_INDEX), eq(requirementsTable.round, round.round)))
+    .orderBy(asc(requirementsTable.id));
+  return {
+    steps: requirements.map((item) => ({ key: requirementKey(item.id), label: item.label })),
+    done: new Map(requirements.map((item) => [requirementKey(item.id), item.complete])),
+  };
+}
+
 async function syncStageChecklists(caseId: number) {
   const tasks = await db
-    .select({ id: tasksTable.id, stageIndex: tasksTable.stageIndex })
+    .select({ id: tasksTable.id, stageIndex: tasksTable.stageIndex, kind: tasksTable.kind })
     .from(tasksTable)
-    .where(and(eq(tasksTable.kind, STAGE_HANDOFF_KIND), eq(tasksTable.caseId, caseId), ne(tasksTable.status, "done")));
+    .where(and(inArray(tasksTable.kind, [STAGE_HANDOFF_KIND, UNDERWRITING_ROUND_KIND]), eq(tasksTable.caseId, caseId), ne(tasksTable.status, "done")));
   for (const task of tasks) {
-    if (task.stageIndex == null) continue;
-    const stage = await stageSteps(caseId, task.stageIndex);
-    if (!stage) return;
+    const stage = task.kind === UNDERWRITING_ROUND_KIND
+      ? await roundSteps(caseId, task.id)
+      : task.stageIndex == null ? null : await stageSteps(caseId, task.stageIndex);
+    if (!stage) continue;
     const items = await db
       .select({
         id: taskChecklistItemsTable.id,
@@ -374,16 +447,77 @@ export const syncCaseChecklists = (caseId: number) =>
     .then(() => undefined)
     .catch(swallow("Case"));
 
-/** Ticking a requirement step on a task completes (or reopens) the requirement itself. */
-export async function applyChecklistItemToCase(item: { sourceKey: string | null; done: boolean }, completedBy: string) {
+export class ChecklistStepLockedError extends Error {}
+
+/**
+ * Ticking a synced step on a task writes it through to the case: a
+ * requirement completes (or reopens), a lender's fee/decision flag flips on
+ * its submission, the valuation is confirmed. Steps that need a value or a
+ * document cannot be ticked by hand — the task shows them locked and this
+ * throws `ChecklistStepLockedError` with where to go instead.
+ */
+export async function applyChecklistItemToCase(
+  task: { caseId: number | null },
+  item: { sourceKey: string | null; title?: string | null; done: boolean },
+  actor: { userId: number; displayName: string },
+) {
+  if (!item.sourceKey) return;
+  const lock = checklistStepLock(item.sourceKey, item.title);
+  if (lock) throw new ChecklistStepLockedError(`${lock} — this step ticks itself once it is recorded.`);
+  const completion = { complete: item.done, completedAt: item.done ? new Date() : null, completedBy: item.done ? actor.displayName : null };
   const requirementId = requirementIdFromKey(item.sourceKey);
-  if (!requirementId) return;
-  await db
-    .update(requirementsTable)
-    .set({
-      complete: item.done,
-      completedAt: item.done ? new Date() : null,
-      completedBy: item.done ? completedBy : null,
-    })
-    .where(eq(requirementsTable.id, requirementId));
+  if (requirementId) {
+    await db.update(requirementsTable).set(completion).where(eq(requirementsTable.id, requirementId));
+    return;
+  }
+  if (!task.caseId) return;
+  if (item.sourceKey === "portfolio") {
+    await db
+      .update(requirementsTable)
+      .set(completion)
+      .where(and(eq(requirementsTable.caseId, task.caseId), eq(requirementsTable.label, portfolioRequirementLabel)));
+    return;
+  }
+  if (item.sourceKey === "valuationCompleted") {
+    const [caseRow] = await db.select({ valuationDate: casesTable.valuationDate }).from(casesTable).where(eq(casesTable.id, task.caseId));
+    if (item.done && !caseRow?.valuationDate) throw new ChecklistStepLockedError("Set the valuation date on the case first.");
+    // Lazy: case-dates imports this module (via assignment) for its own syncs.
+    const { setValuationCompleted } = await import("./case-dates");
+    await setValuationCompleted(task.caseId, item.done, actor);
+    return;
+  }
+  const step = submissionStepFromKey(item.sourceKey);
+  if (!step) return;
+  const [submission] = await db
+    .select()
+    .from(caseSubmissionsTable)
+    .where(and(eq(caseSubmissionsTable.id, step.submissionId), eq(caseSubmissionsTable.caseId, task.caseId)));
+  if (!submission) return;
+  const [lender] = await db.select({ name: lendersTable.name }).from(lendersTable).where(eq(lendersTable.id, submission.lenderId));
+  const lenderName = lender?.name ?? "Lender";
+  if (step.field === "fee") {
+    if (submission.applicationFeeConfirmed === item.done) return;
+    await db
+      .update(caseSubmissionsTable)
+      .set({ applicationFeeConfirmed: item.done, applicationFeeConfirmedAt: item.done ? new Date() : null })
+      .where(eq(caseSubmissionsTable.id, submission.id));
+    if (item.done) {
+      await db.insert(activitiesTable).values({
+        caseId: task.caseId, title: "Fee confirmed", detail: `Application & valuation fee confirmed with ${lenderName}`, actorName: actor.displayName,
+      });
+    }
+  } else if (step.field === "decision") {
+    if (submission.bankDecisionRequested === item.done) return;
+    await db
+      .update(caseSubmissionsTable)
+      .set({ bankDecisionRequested: item.done, bankDecisionRequestedAt: item.done ? new Date() : null })
+      .where(eq(caseSubmissionsTable.id, submission.id));
+    if (item.done) {
+      await db.insert(activitiesTable).values({
+        caseId: task.caseId, title: "Decision requested", detail: `Decision requested from ${lenderName}`, actorName: actor.displayName,
+      });
+    }
+  }
+  // The case row mirrors the primary submission.
+  await syncCaseFromSubmissions(task.caseId);
 }

@@ -19,6 +19,7 @@ import {
   clientsTable, db, lenderContactsTable, lendersTable, messagesTable,
   propertiesTable, propertyValuationsTable, tasksTable,
 } from "@workspace/db";
+import { stageName } from "../services/stages";
 import { and, asc, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { reconcileLenderPortfolioRequirements } from "../services/case-portfolio-requirement";
 import { createAssignmentTask, resolveAssignee } from "../services/assignment";
@@ -59,7 +60,7 @@ router.get("/properties", async (_req, res) => {
     .from(propertiesTable)
     .leftJoin(clientsTable, eq(propertiesTable.clientId, clientsTable.id))
     .orderBy(desc(propertiesTable.createdAt));
-  const caseRows = await db.select({ id: casesTable.id, reference: sql<string>`coalesce(${casesTable.displayReference}, ${casesTable.reference})`, status: casesTable.status, stage: casesTable.stage, propertyId: casesTable.propertyId })
+  const caseRows = await db.select({ id: casesTable.id, reference: sql<string>`coalesce(${casesTable.displayReference}, ${casesTable.reference})`, status: casesTable.status, stageIndex: casesTable.stageIndex, propertyId: casesTable.propertyId })
     .from(casesTable)
     .where(eq(casesTable.status, "active"));
   const casesByProperty = new Map<number, typeof caseRows>();
@@ -72,7 +73,7 @@ router.get("/properties", async (_req, res) => {
   res.json(rows.map(({ property, clientName }) => ({
     ...property,
     clientName,
-    activeCases: (casesByProperty.get(property.id) ?? []).map((c) => ({ id: c.id, reference: c.reference, status: c.status, stage: c.stage })),
+    activeCases: (casesByProperty.get(property.id) ?? []).map((c) => ({ id: c.id, reference: c.reference, status: c.status, stage: stageName(c.stageIndex) })),
   })));
 });
 router.post("/properties", async (req, res) => {

@@ -28,12 +28,16 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { AudioLevelMeter } from "./audio-level-meter";
 import { useAssistantConfig, type SuggestionHit } from "./config";
 import { TypeTile } from "./record-card";
 import { encodeRef, type RecordRef, type TranscriptAttachment } from "./types";
+
+/** A file still on its way up, shown as a chip with its own progress bar. */
+type PendingUpload = { name: string; percent: number };
 import { useDictation } from "./use-dictation";
 
 export type ComposerSubmit = {
@@ -238,7 +242,7 @@ function AssistantComposer({
   const [attachments, setAttachments] = React.useState<TranscriptAttachment[]>(
     [],
   );
-  const [uploading, setUploading] = React.useState<string[]>([]);
+  const [uploading, setUploading] = React.useState<PendingUpload[]>([]);
   const [highlight, setHighlight] = React.useState(-1);
   const [suppressedFor, setSuppressedFor] = React.useState<string | null>(null);
   const [focused, setFocused] = React.useState(false);
@@ -345,9 +349,15 @@ function AssistantComposer({
         });
         continue;
       }
-      setUploading((names) => [...names, file.name]);
+      setUploading((pending) => [...pending, { name: file.name, percent: 0 }]);
       try {
-        const attachment = await config.uploadAttachment(file);
+        const attachment = await config.uploadAttachment(file, (percent) =>
+          setUploading((pending) =>
+            pending.map((item) =>
+              item.name === file.name ? { ...item, percent } : item,
+            ),
+          ),
+        );
         setAttachments((current) => [...current, attachment]);
       } catch (error) {
         toast.add({
@@ -356,9 +366,9 @@ function AssistantComposer({
           type: "error",
         });
       } finally {
-        setUploading((names) => {
-          const index = names.indexOf(file.name);
-          return index === -1 ? names : names.toSpliced(index, 1);
+        setUploading((pending) => {
+          const index = pending.findIndex((item) => item.name === file.name);
+          return index === -1 ? pending : pending.toSpliced(index, 1);
         });
       }
     }
@@ -506,14 +516,21 @@ function AssistantComposer({
               </AttachmentActions>
             </Attachment>
           ))}
-          {uploading.map((name, index) => (
+          {uploading.map(({ name, percent }, index) => (
             <Attachment key={`${name}-${index}`} size="xs" state="uploading">
               <AttachmentMedia>
                 <Spinner />
               </AttachmentMedia>
               <AttachmentContent>
                 <AttachmentTitle>{name}</AttachmentTitle>
-                <AttachmentDescription>Uploading…</AttachmentDescription>
+                <AttachmentDescription>
+                  {percent >= 100 ? "Processing…" : `Uploading ${percent}%`}
+                </AttachmentDescription>
+                <Progress
+                  value={percent}
+                  className="mt-1 h-0.5 w-32 max-w-full"
+                  aria-label={`Uploading ${name}`}
+                />
               </AttachmentContent>
             </Attachment>
           ))}

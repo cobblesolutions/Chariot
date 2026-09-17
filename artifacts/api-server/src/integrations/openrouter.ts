@@ -14,6 +14,11 @@ export interface AiRequest<TContext> {
   context: TContext;
   schemaName: string;
   systemInstruction: string;
+  /**
+   * Which model to spend on. "cheap" is for simple extraction (lists out of an
+   * email) and uses OPENROUTER_MODEL_CHEAP; "standard" (default) uses OPENROUTER_MODEL.
+   */
+  tier?: "cheap" | "standard";
   document?: {
     filename: string;
     contentType: string;
@@ -31,19 +36,24 @@ export interface AiResult<T> {
  * OpenRouter remains inactive until the business approves a model and provides
  * credentials through the deployment secret manager. No fallback model or provider is used.
  */
+/** Cheapest model that reliably returns JSON, for extraction jobs; the standard tier for reasoning. */
+export const CHEAP_MODEL_DEFAULT = "google/gemini-2.5-flash-lite";
+export const STANDARD_MODEL_DEFAULT = "deepseek/deepseek-v4-pro-0813";
+
+export function modelFor(tier: "cheap" | "standard"): string {
+  if (tier === "cheap") return process.env.OPENROUTER_MODEL_CHEAP || CHEAP_MODEL_DEFAULT;
+  return process.env.OPENROUTER_MODEL || process.env.ASSISTANT_MODEL || STANDARD_MODEL_DEFAULT;
+}
+
 export async function runOpenRouterWorkflow<TContext, TResult>(
   request: AiRequest<TContext>,
 ): Promise<AiResult<TResult>> {
-  if (process.env.OPENROUTER_ACTIVE !== "true") {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  // A key alone switches the workflows on (as the assistant already does); OPENROUTER_ACTIVE=false forces them off.
+  if (!apiKey || process.env.OPENROUTER_ACTIVE === "false") {
     return { status: "disabled" };
   }
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_MODEL;
-  if (!apiKey || !model) {
-    throw new Error(
-      "OPENROUTER_API_KEY and OPENROUTER_MODEL are required when OpenRouter is active",
-    );
-  }
+  const model = modelFor(request.tier ?? "standard");
   const userContent = request.document
     ? [
         {

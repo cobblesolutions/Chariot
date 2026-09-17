@@ -126,20 +126,18 @@ export function AcceptPanel({ client }: { client: ClientDetail }) {
   const closed = client.lifecycle === "declined" || client.lifecycle === "lost";
   const pending = client.lifecycle === "enquiry";
   const property = client.properties[0];
+  const openCase = client.cases.find((item) => item.status === "active");
   const facts = [
     { label: "Wants", value: enquiryTypeLabel(client.enquiryType) },
     { label: "Timescale", value: client.enquiryTimescale ?? null },
     { label: "Source", value: sourceLabel(client.source) },
     { label: "Referred by", value: client.introducerName ?? null },
     { label: "Company", value: client.companyName || null },
-    {
-      label: "Property",
-      value: property
-        ? [formatAddress(property), property.value ? formatMoney(property.value) : null, property.loanAmount ? `loan ${formatMoney(property.loanAmount)}` : null]
-            .filter(Boolean)
-            .join(" · ")
-        : null,
-    },
+    { label: "Property", value: property ? formatAddress(property) : null },
+    { label: "Value", value: property?.value ? formatMoney(property.value) : null },
+    { label: "Loan", value: property?.loanAmount ? formatMoney(property.loanAmount) : null },
+    { label: "Rent", value: property?.rent ? `${formatMoney(property.rent)}/mo` : null },
+    { label: "Case", value: openCase ? `${openCase.reference} · ${openCase.stage}` : null },
   ].filter((fact): fact is { label: string; value: string } => !!fact.value);
 
   if (closed) {
@@ -165,23 +163,40 @@ export function AcceptPanel({ client }: { client: ClientDetail }) {
 
   return (
     <section className="rounded-lg border bg-card">
-      <div className="space-y-5 p-5 md:p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-base font-semibold">What they asked for</h2>
-          <span className="text-xs text-muted-foreground">
+      {/* The decision sits at the top: it is the one thing this step is for. */}
+      <div className="flex flex-col gap-3 border-b px-5 py-4 sm:flex-row sm:items-center sm:justify-between md:px-6">
+        <div>
+          <h2 className="text-base font-semibold">Enquiry</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             Received {formatDate(client.enquiryReceivedAt)}
-            {client.stale ? ` · waiting ${daysSince(client.enquiryReceivedAt)} days` : ""}
-          </span>
+            {client.stale ? (
+              <span className="text-amber-700 dark:text-amber-400">
+                {" "}· waiting {daysSince(client.enquiryReceivedAt)} days
+              </span>
+            ) : null}
+          </p>
         </div>
+        {pending ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => setDeclineOpen(true)}>
+              <X /> Decline
+            </Button>
+            <Button disabled={accept.isPending} onClick={handleAccept}>
+              <Check /> {accept.isPending ? "Accepting…" : "Accept & send welcome"}
+            </Button>
+          </div>
+        ) : null}
+      </div>
 
+      <div className="space-y-5 p-5 md:p-6">
         {client.enquirySummary ? (
-          <blockquote className="border-l-2 pl-4 text-sm leading-relaxed">{client.enquirySummary}</blockquote>
+          <p className="text-sm leading-relaxed">{client.enquirySummary}</p>
         ) : (
           <p className="text-sm text-muted-foreground">No summary was recorded at intake.</p>
         )}
 
         {facts.length > 0 ? (
-          <dl className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
+          <dl className="grid gap-x-8 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
             {facts.map((fact) => (
               <div key={fact.label} className="grid grid-cols-[6rem_1fr] gap-2">
                 <dt className="text-muted-foreground">{fact.label}</dt>
@@ -227,19 +242,19 @@ export function AcceptPanel({ client }: { client: ClientDetail }) {
           />
         </div>
         {pending ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setTemplateOpen(true)}>
-              <PencilLine /> Welcome email text
-            </Button>
-            <Button variant="outline" onClick={() => setDeclineOpen(true)}>
-              <X /> Decline
-            </Button>
-            <Button disabled={accept.isPending} onClick={handleAccept}>
-              <Check /> {accept.isPending ? "Accepting…" : "Accept & send welcome"}
-            </Button>
-          </div>
+          <p className="text-xs text-muted-foreground sm:text-right">
+            Accepting emails {client.email} and opens the advanced step.{" "}
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 underline-offset-2 hover:text-foreground hover:underline"
+              onClick={() => setTemplateOpen(true)}
+            >
+              <PencilLine className="size-3" /> Edit welcome email text
+            </button>
+          </p>
         ) : null}
       </div>
+
       <WelcomeTemplateDialog open={templateOpen} onOpenChange={setTemplateOpen} clientId={client.id} />
 
       <DeclineDialog
@@ -270,7 +285,7 @@ export function AcceptPanel({ client }: { client: ClientDetail }) {
   );
 }
 
-/** Shown on the advanced step when the welcome email did not go out. */
+/** Compact chip for the client header when the welcome email did not go out. */
 export function WelcomeDeliveryNotice({ client }: { client: ClientDetail }) {
   const qc = useQueryClient();
   const accept = useAcceptClientEnquiry();
@@ -293,17 +308,16 @@ export function WelcomeDeliveryNotice({ client }: { client: ClientDetail }) {
       },
     );
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-700 dark:bg-amber-950/40 sm:flex-row sm:items-center sm:justify-between">
-      <span>
-        <span className="font-medium">Welcome email not sent.</span>{" "}
-        <span className="text-muted-foreground">
-          {delivery.status === "disabled" ? "Email sending is not active." : delivery.error ?? "Delivery failed."}
-        </span>
-      </span>
-      <Button size="sm" variant="outline" disabled={accept.isPending} onClick={resend}>
-        <Mail /> {accept.isPending ? "Sending…" : "Resend welcome"}
+    <span
+      className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 py-0.5 pr-0.5 pl-2 text-xs dark:border-amber-700 dark:bg-amber-950/40"
+      title={delivery.status === "disabled" ? "Email sending is not active." : delivery.error ?? "Delivery failed."}
+    >
+      <Mail className="size-3.5 text-amber-700 dark:text-amber-300" />
+      Welcome email not sent
+      <Button size="xs" variant="ghost" className="h-6 px-1.5 text-xs" disabled={accept.isPending} onClick={resend}>
+        {accept.isPending ? "Sending…" : "Resend"}
       </Button>
-    </div>
+    </span>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   getGetClientQueryKey,
@@ -17,6 +17,8 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { DocumentFile } from "@/components/document-file";
+import { UploadProgress } from "@/components/upload-progress";
+import { documentUploadHeaders, useUpload } from "@/lib/upload";
 import { OnboardingList } from "@/components/onboarding-list";
 import { ACCEPTED_DOCUMENT_TYPES } from "@/components/add/utils";
 
@@ -34,7 +36,7 @@ export function ClientDocuments({ client }: { client: ClientDetail }) {
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const categoryRef = useRef("general");
-  const [uploading, setUploading] = useState(false);
+  const { progress, uploading, send, reset } = useUpload();
   const { data, isLoading } = useListDocuments(
     { clientId: client.id },
     { query: { queryKey: getListDocumentsQueryKey({ clientId: client.id }) } },
@@ -54,33 +56,27 @@ export function ClientDocuments({ client }: { client: ClientDetail }) {
 
   const upload = async (files: FileList | null) => {
     if (!files?.length) return;
-    setUploading(true);
     let uploaded = 0;
     try {
-      for (const file of Array.from(files)) {
+      const picked = Array.from(files);
+      for (const [index, file] of picked.entries()) {
         if (file.size > 50 * 1024 * 1024) throw new Error(`${file.name} is over the 50 MB limit.`);
-        const response = await fetch("/api/documents/upload", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "x-client-id": String(client.id),
-            "x-filename": file.name,
-            "x-content-type": file.type || "application/octet-stream",
+        await send(file, {
+          url: "/api/documents/upload",
+          headers: documentUploadHeaders(file, {
+            "x-client-id": client.id,
             "x-document-category": categoryRef.current,
-          },
-          body: await file.arrayBuffer(),
+          }),
+          index,
+          count: picked.length,
         });
-        if (!response.ok) {
-          const result = await response.json().catch(() => null);
-          throw new Error(result?.error || `Upload failed for ${file.name}`);
-        }
         uploaded += 1;
       }
       toast.add({ title: `${uploaded} document${uploaded === 1 ? "" : "s"} uploaded`, type: "success" });
     } catch (error) {
       toast.add({ title: "Upload failed", description: error instanceof Error ? error.message : undefined, type: "error" });
     } finally {
-      setUploading(false);
+      reset();
       if (inputRef.current) inputRef.current.value = "";
       refresh();
     }
@@ -103,6 +99,7 @@ export function ClientDocuments({ client }: { client: ClientDetail }) {
         accept={ACCEPTED_DOCUMENT_TYPES}
         onChange={(event) => void upload(event.target.files)}
       />
+      <UploadProgress progress={progress} />
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-2">

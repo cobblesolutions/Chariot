@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { ClientApproval } from './clientApproval';
+import type { PortalTermsOfBusiness } from './portalTermsOfBusiness';
 import type { ServiceType } from './serviceType';
 
 export interface PortalCase {
@@ -26,4 +27,5 @@ export interface PortalCase {
   valuationDate: Date | null;
   expectedCompletionDate: Date | null;
   pendingApprovals: ClientApproval[];
+  termsOfBusiness: PortalTermsOfBusiness;
 }

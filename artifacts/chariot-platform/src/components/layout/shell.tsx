@@ -58,6 +58,7 @@ import {
   CheckSquare,
   Activity,
   Settings,
+  TriangleAlert
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useNewCounts, type NewCountKey } from "@/hooks/use-new-counts";
@@ -78,13 +79,7 @@ interface NavItem {
   badge?: NewCountKey;
 }
 
-const addItem: NavItem = {
-  title: "Add",
-  href: "/add",
-  icon: Plus,
-  emphasis: true,
-  badge: "enquiries",
-};
+const addItem: NavItem = { title: "Add", href: "/add", icon: Plus };
 
 /** Sidebar menu, one group per array; the gap between groups is deliberate. */
 const navGroups: NavItem[][] = [
@@ -102,6 +97,7 @@ const navGroups: NavItem[][] = [
       badge: "messages",
     },
     { title: "Task", href: "/tasks", icon: CheckSquare, badge: "tasks" },
+    { title: "Alerts", href: "/alerts", icon: TriangleAlert, badge: "alerts" },
     { title: "Activity", href: "/activity", icon: Activity },
   ],
   [
@@ -233,6 +229,7 @@ const badgeVariant: Record<
   messages: "default",
   tasks: "secondary",
   enquiries: "secondary",
+  alerts: "destructive",
 };
 
 function AppNav({
@@ -312,23 +309,28 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   return (
     <GlobalSearchProvider enabled={!!user && !isClient}>
       <SidebarProvider
+        className="bg-page"
         // Narrow rail: five short menu items plus the four circle buttons below.
-        style={{ "--sidebar-width": "12.1rem" } as React.CSSProperties}
+        // Same surface colour as Card so the rail reads as one more card.
+        style={{ "--sidebar-width": "12.1rem", "--sidebar": "var(--card)" } as React.CSSProperties}
       >
-        <Sidebar collapsible="offcanvas">
+        <Sidebar collapsible="offcanvas" className="rounded-r-xl overflow-hidden shadow-sm">
           <SidebarHeader className="h-24 items-center justify-center px-4">
             {logo}
           </SidebarHeader>
           <SidebarContent>
+            {/* Stock SidebarSeparator's mx-2 + w-full overflows the rail; inset it instead. */}
+            <div className="px-2">
+              <SidebarSeparator className="mx-0" />
+            </div>
             {displayedNavGroups.map((items, index) => (
               <Fragment key={index}>
-                {index > 1 && (
-                  // Stock SidebarSeparator's mx-2 + w-full overflows the rail; inset it instead.
+                {index > 0 && (
                   <div className="px-2">
                     <SidebarSeparator className="mx-0" />
                   </div>
                 )}
-                <SidebarGroup className={index === 0 ? "pt-4" : undefined}>
+                <SidebarGroup className={index === 0 ? "pt-2" : undefined}>
                   <SidebarGroupContent>
                     <AppNav items={items} counts={counts} />
                   </SidebarGroupContent>

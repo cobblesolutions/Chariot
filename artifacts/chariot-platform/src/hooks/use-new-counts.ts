@@ -3,9 +3,11 @@ import {
   useListInbox,
   useListTasks,
   useListClients,
+  useGetAlertSummary,
   getListInboxQueryKey,
   getListTasksQueryKey,
   getListClientsQueryKey,
+  getGetAlertSummaryQueryKey,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/components/auth-provider";
 import { badgeUnread } from "@/components/chat/inbox-model";
@@ -13,7 +15,7 @@ import { badgeUnread } from "@/components/chat/inbox-model";
 /** Menu badges refresh on this cadence so they stay current without a reload. */
 const POLL_MS = 5000;
 
-export type NewCountKey = "messages" | "tasks" | "enquiries";
+export type NewCountKey = "messages" | "tasks" | "enquiries" | "alerts";
 
 /** How much of each thing is new for the signed-in user: the numbers on the menu bubbles. */
 export function useNewCounts(enabled = true): Record<NewCountKey, number> {
@@ -46,14 +48,20 @@ export function useNewCounts(enabled = true): Record<NewCountKey, number> {
     },
   );
 
+  // Red alerts only: the badge is for what needs action, amber waits on the page.
+  const { data: alerts } = useGetAlertSummary({
+    query: { queryKey: getGetAlertSummaryQueryKey(), refetchInterval: 30_000, enabled },
+  });
+
   return useMemo(
     () => ({
+      alerts: alerts?.red ?? 0,
       messages: badgeUnread(inbox ?? []),
       tasks: (tasks ?? []).filter(
         (t) => t.assignedUserId === user?.id && t.status !== "done",
       ).length,
       enquiries: (enquiries ?? []).length,
     }),
-    [inbox, tasks, enquiries, user?.id],
+    [inbox, tasks, enquiries, alerts, user?.id],
   );
 }

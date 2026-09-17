@@ -23,8 +23,11 @@ import {
 import { toast } from "@/components/ui/toast";
 
 export function apiErrorMessage(error: unknown): string | undefined {
-  const data = (error as { data?: { error?: string } } | undefined)?.data;
-  if (data && typeof data.error === "string") return data.error;
+  const data = (error as { data?: { error?: string; incomplete?: string[] } } | undefined)?.data;
+  if (data && typeof data.error === "string") {
+    // A stage hand-off refused because the case can't move on lists what is still open.
+    return data.incomplete?.length ? `${data.error}: ${data.incomplete.join(", ")}` : data.error;
+  }
   return error instanceof Error ? error.message : undefined;
 }
 

@@ -1,4 +1,4 @@
-import { ENQUIRY_TYPES, type EnquiryType } from "@workspace/db";
+import { CLIENT_SOURCES, ENQUIRY_TYPES, type ClientSource, type EnquiryType } from "@workspace/db";
 import { runOpenRouterWorkflow } from "../integrations/openrouter";
 import { logger } from "../lib/logger";
 
@@ -13,18 +13,37 @@ export interface ExtractedEnquiry {
     phone: string | null;
     companyName: string | null;
     companyNumber: string | null;
+    title: string | null;
+    currentAddress: string | null;
+    currentAddressCity: string | null;
+    currentAddressPostcode: string | null;
+    employmentStatus: string | null;
+    employerName: string | null;
+    jobTitle: string | null;
+    annualIncome: number | null;
   };
   property: {
     address: string | null;
+    city: string | null;
+    postcode: string | null;
     value: number | null;
     loanAmount: number | null;
     rent: number | null;
     matterType: string | null;
+    propertyType: string | null;
+    currentLender: string | null;
+    currentBalance: number | null;
+    currentRatePct: number | null;
+    currentRateEndDate: string | null;
+    purchasePrice: number | null;
   };
   enquiry: {
     type: EnquiryType | null;
     timescale: string | null;
     summary: string | null;
+    source: ClientSource | null;
+    introducerName: string | null;
+    introducerContact: string | null;
   };
 }
 
@@ -35,19 +54,32 @@ export interface ExtractionResult {
 }
 
 const EMPTY: ExtractedEnquiry = {
-  client: { name: null, email: null, phone: null, companyName: null, companyNumber: null },
-  property: { address: null, value: null, loanAmount: null, rent: null, matterType: null },
-  enquiry: { type: null, timescale: null, summary: null },
+  client: {
+    name: null, email: null, phone: null, companyName: null, companyNumber: null, title: null,
+    currentAddress: null, currentAddressCity: null, currentAddressPostcode: null,
+    employmentStatus: null, employerName: null, jobTitle: null, annualIncome: null,
+  },
+  property: {
+    address: null, city: null, postcode: null, value: null, loanAmount: null, rent: null, matterType: null, propertyType: null,
+    currentLender: null, currentBalance: null, currentRatePct: null, currentRateEndDate: null, purchasePrice: null,
+  },
+  enquiry: { type: null, timescale: null, summary: null, source: null, introducerName: null, introducerContact: null },
 };
+
+const EMPLOYMENT_STATUSES = ["employed", "self_employed", "company_director", "contractor", "retired", "not_working", "other"] as const;
+const PROPERTY_TYPES = ["house", "flat", "maisonette", "bungalow", "hmo", "commercial", "mixed_use", "land", "other"] as const;
 
 const SYSTEM_INSTRUCTION = `You read enquiry emails received by a UK mortgage broker and return JSON only.
 Return an object with exactly these keys:
 {
-  "client": { "name", "email", "phone", "companyName", "companyNumber" },
-  "property": { "address", "value", "loanAmount", "rent", "matterType" },
-  "enquiry": { "type", "timescale", "summary" }
+  "client": { "name", "email", "phone", "companyName", "companyNumber", "title", "currentAddress", "currentAddressCity", "currentAddressPostcode", "employmentStatus", "employerName", "jobTitle", "annualIncome" },
+  "property": { "address", "city", "postcode", "value", "loanAmount", "rent", "matterType", "propertyType", "currentLender", "currentBalance", "currentRatePct", "currentRateEndDate", "purchasePrice" },
+  "enquiry": { "type", "timescale", "summary", "source", "introducerName", "introducerContact" }
 }
-Rules: use null for anything not stated. "name" is the person enquiring (not the broker). "companyName" is the borrowing limited company/SPV if one is mentioned. "value", "loanAmount" and "rent" are plain numbers in pounds (rent per month). "matterType" is one of "btl", "residential", "commercial", "bridging", "development" or null. "type" is one of ${ENQUIRY_TYPES.map((t) => `"${t}"`).join(", ")} or null. "timescale" is the client's own words about timing. "summary" is one or two sentences, in plain English, on what they want.`;
+Rules: use null for anything not stated; never guess. Amounts are plain numbers in pounds ("285k" = 285000; rent per month); dates are ISO YYYY-MM-DD (a month alone is its first day).
+Client: "name" is the person enquiring (not the broker). "title" only if written (Mr/Mrs/Ms/Dr). "currentAddress"/"currentAddressCity"/"currentAddressPostcode" are where the client lives, only if that is stated and distinct from the property. "employmentStatus" is one of ${EMPLOYMENT_STATUSES.map((t) => `"${t}"`).join(", ")}; "annualIncome" is gross salary/profit per year if mentioned. "companyName"/"companyNumber" are the borrowing limited company/SPV.
+Property: "address" is the street line only, with the town in "city" and the postcode in "postcode". "value" is the property's value, "loanAmount" the borrowing they want, "purchasePrice" the price for a purchase. "matterType" is one of "btl", "residential", "commercial", "bridging", "development". "propertyType" is one of ${PROPERTY_TYPES.map((t) => `"${t}"`).join(", ")}. "currentLender", "currentBalance", "currentRatePct" and "currentRateEndDate" describe the mortgage they already have on it.
+Enquiry: "type" is one of ${ENQUIRY_TYPES.map((t) => `"${t}"`).join(", ")}. "timescale" is the client's own words about timing. "summary" is one or two plain-English sentences on what they want. "source" is how they came to us: "referral" when a person recommended us, "introducer" when an accountant/solicitor/agent/other professional passed them on, "existing_client" if they say they have used us before, "website" if they mention the website or a web form, otherwise "email"; "introducerName" and "introducerContact" name that person or firm and their email/phone when given.`;
 
 /**
  * Read the pasted/forwarded email. Uses the AI workflow when it is active and
@@ -78,28 +110,16 @@ export async function extractEnquiry(input: {
 
 /** AI values win; the heuristic fills anything the model left null. */
 function mergeExtraction(primary: ExtractedEnquiry, fallback: ExtractedEnquiry): ExtractedEnquiry {
-  const pick = <T>(a: T | null, b: T | null) => (a === null || a === "" ? b : a);
-  return {
-    client: {
-      name: pick(primary.client.name, fallback.client.name),
-      email: pick(primary.client.email, fallback.client.email),
-      phone: pick(primary.client.phone, fallback.client.phone),
-      companyName: pick(primary.client.companyName, fallback.client.companyName),
-      companyNumber: pick(primary.client.companyNumber, fallback.client.companyNumber),
-    },
-    property: {
-      address: pick(primary.property.address, fallback.property.address),
-      value: pick(primary.property.value, fallback.property.value),
-      loanAmount: pick(primary.property.loanAmount, fallback.property.loanAmount),
-      rent: pick(primary.property.rent, fallback.property.rent),
-      matterType: pick(primary.property.matterType, fallback.property.matterType),
-    },
-    enquiry: {
-      type: pick(primary.enquiry.type, fallback.enquiry.type),
-      timescale: pick(primary.enquiry.timescale, fallback.enquiry.timescale),
-      summary: pick(primary.enquiry.summary, fallback.enquiry.summary),
-    },
-  };
+  const merged = structuredClone(EMPTY);
+  for (const section of ["client", "property", "enquiry"] as const) {
+    const target = merged[section] as Record<string, unknown>;
+    const a = primary[section] as Record<string, unknown>;
+    const b = fallback[section] as Record<string, unknown>;
+    for (const key of Object.keys(target)) {
+      target[key] = a[key] === null || a[key] === undefined || a[key] === "" ? (b[key] ?? null) : a[key];
+    }
+  }
+  return merged;
 }
 
 const str = (value: unknown): string | null =>
@@ -114,6 +134,16 @@ const num = (value: unknown): number | null => {
 };
 const enquiryType = (value: unknown): EnquiryType | null =>
   typeof value === "string" && (ENQUIRY_TYPES as readonly string[]).includes(value) ? (value as EnquiryType) : null;
+const oneOf = <T extends string>(value: unknown, options: readonly T[]): T | null =>
+  typeof value === "string" && (options as readonly string[]).includes(value) ? (value as T) : null;
+const isoDate = (value: unknown): string | null => {
+  const text = str(value);
+  if (!text) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}-\d{2}$/.test(text)) return `${text}-01`;
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
+};
 
 function normaliseAi(data: Partial<ExtractedEnquiry>): ExtractedEnquiry {
   const client = (data.client ?? {}) as Record<string, unknown>;
@@ -126,18 +156,37 @@ function normaliseAi(data: Partial<ExtractedEnquiry>): ExtractedEnquiry {
       phone: str(client.phone),
       companyName: str(client.companyName),
       companyNumber: str(client.companyNumber),
+      title: str(client.title),
+      currentAddress: str(client.currentAddress),
+      currentAddressCity: str(client.currentAddressCity),
+      currentAddressPostcode: str(client.currentAddressPostcode)?.toUpperCase() ?? null,
+      employmentStatus: oneOf(client.employmentStatus, EMPLOYMENT_STATUSES),
+      employerName: str(client.employerName),
+      jobTitle: str(client.jobTitle),
+      annualIncome: num(client.annualIncome),
     },
     property: {
       address: str(property.address),
+      city: str(property.city),
+      postcode: str(property.postcode)?.toUpperCase() ?? null,
       value: num(property.value),
       loanAmount: num(property.loanAmount),
       rent: num(property.rent),
       matterType: str(property.matterType),
+      propertyType: oneOf(property.propertyType, PROPERTY_TYPES),
+      currentLender: str(property.currentLender),
+      currentBalance: num(property.currentBalance),
+      currentRatePct: num(property.currentRatePct),
+      currentRateEndDate: isoDate(property.currentRateEndDate),
+      purchasePrice: num(property.purchasePrice),
     },
     enquiry: {
       type: enquiryType(enquiry.type),
       timescale: str(enquiry.timescale),
       summary: str(enquiry.summary),
+      source: oneOf(enquiry.source, CLIENT_SOURCES),
+      introducerName: str(enquiry.introducerName),
+      introducerContact: str(enquiry.introducerContact),
     },
   };
 }

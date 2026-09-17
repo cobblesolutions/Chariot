@@ -123,13 +123,14 @@
   scrollbar-width: thin;
 }
 
-/* Full-height workspace pages (messages, tasks). Pads all four sides by the same
-   amount: the normal gutter, or — once the viewport is wider than
-   --container-page — whatever gutter centres a --container-page-wide card, so the
-   top/bottom gaps grow with the left/right ones instead of staying fixed.
-   (Percentage padding resolves against the container's *width* on every side.) */
+/* Full-height workspace pages (messages, tasks). Left/right: the normal gutter,
+   or — once the viewport is wider than --container-page — whatever gutter centres
+   a --container-page-wide card. Top/bottom grow with that gutter but are capped,
+   because percentage padding resolves against the container's *width* on every
+   side and an uncapped value would swallow the card on ultra-wide screens. */
 @utility p-frame {
-  padding: max(--spacing(6), calc((100% - var(--container-page)) / 2));
+  --frame-gutter: max(--spacing(6), calc((100% - var(--container-page)) / 2));
+  padding: min(var(--frame-gutter), --spacing(12)) var(--frame-gutter);
 }
 
 /* scroll-fade */

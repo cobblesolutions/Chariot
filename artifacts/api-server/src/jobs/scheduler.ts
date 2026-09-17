@@ -8,9 +8,11 @@ import {
   tasksTable,
 } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { evaluateAlerts, notifyNewAlerts } from "../services/alerts";
 import { sendChariotEmail } from "../integrations/resend";
 import { renderChariotEmail } from "../integrations/email-template";
 import { STAFF_ROLES } from "../auth/roles";
+import { pollSentAgreements } from "../services/terms-agreements";
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000;
 const OPEN_RENEWAL_STATUSES = new Set(["upcoming", "contacted", "in_progress"]);
@@ -107,8 +109,14 @@ async function runDailyTaskDigest() {
   }
 }
 
+async function runAlerts() {
+  const result = await evaluateAlerts();
+  const emailed = await notifyNewAlerts();
+  if (result.raised || result.resolved || emailed) logger.info({ ...result, emailed }, "Alert rules ran");
+}
+
 async function runChecks() {
-  await Promise.allSettled([runRenewalReminders(), runDailyTaskDigest()]);
+  await Promise.allSettled([runRenewalReminders(), runDailyTaskDigest(), pollSentAgreements(), runAlerts()]);
 }
 
 let started = false;

@@ -15,6 +15,7 @@ import {
   messagesTable,
   threadPreferencesTable,
 } from "@workspace/db";
+import { stageName } from "../services/stages";
 import { requireStaff } from "../auth/session";
 import type { StaffRole } from "../auth/roles";
 
@@ -74,10 +75,10 @@ async function casesById(caseIds: number[]) {
       id: casesTable.id,
       reference: sql<string>`coalesce(${casesTable.displayReference}, ${casesTable.reference})`,
       clientName: clientsTable.name,
-      stage: casesTable.stage,
       stageIndex: casesTable.stageIndex,
       status: casesTable.status,
       assignedTo: casesTable.assignedTo,
+      assignedUserId: casesTable.assignedUserId,
       lenderName: lendersTable.name,
       propertyAddress: casesTable.propertyAddress,
     })
@@ -90,10 +91,11 @@ async function casesById(caseIds: number[]) {
       id: row.id,
       reference: row.reference,
       clientName: row.clientName,
-      stage: row.stage,
+      stage: stageName(row.stageIndex),
       stageIndex: row.stageIndex,
       status: row.status,
       assignedTo: row.assignedTo,
+      assignedUserId: row.assignedUserId ?? null,
       lenderName: row.lenderName ?? null,
       propertyAddress: row.propertyAddress,
     });

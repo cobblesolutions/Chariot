@@ -6,10 +6,21 @@
  * OpenAPI spec version: 1.0.0
  */
 
+/**
+ * @nullable
+ */
+export type CompaniesHouseCompanyRegisteredAddress = {
+  line1: string;
+  city: string;
+  postcode: string;
+} | null;
+
 export interface CompaniesHouseCompany {
   companyNumber: string;
   name: string;
   status: string;
   /** @nullable */
   address?: string | null;
+  /** @nullable */
+  registeredAddress?: CompaniesHouseCompanyRegisteredAddress | null;
 }

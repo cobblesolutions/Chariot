@@ -23,11 +23,13 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { AudioLevelMeter } from "./audio-level-meter";
 import { EmojiPicker } from "./emoji-picker";
 import { useDictation } from "./use-dictation";
+import { documentUploadHeaders, uploadRequest } from "@/lib/upload";
 import { attachmentUrl, formatBytes, isImageAttachment } from "./chat-thread";
 import { avatarColor, initials } from "./format";
 
@@ -66,22 +68,20 @@ type ChatComposerProps = {
 const MAX_ATTACHMENTS = 10;
 const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
-async function uploadAttachment(file: File): Promise<MessageAttachment> {
-  const response = await fetch("/api/chat/attachments", {
-    method: "POST",
-    headers: {
-      "x-filename": file.name,
-      "x-content-type": file.type || "application/octet-stream",
-      "Content-Type": "application/octet-stream",
-    },
-    body: await file.arrayBuffer(),
+function uploadAttachment(
+  file: File,
+  onProgress: (percent: number) => void,
+): Promise<MessageAttachment> {
+  return uploadRequest<MessageAttachment>({
+    url: "/api/chat/attachments",
+    headers: documentUploadHeaders(file),
+    body: file,
+    onProgress,
   });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error ?? `Upload failed (${response.status})`);
-  }
-  return response.json();
 }
+
+/** A file still on its way up, shown as a chip with its own progress bar. */
+type PendingUpload = { name: string; percent: number };
 
 /** iMessage-style composer: "+" for files, a pill field with emoji and a round send arrow. */
 function ChatComposer({
@@ -99,7 +99,7 @@ function ChatComposer({
   const [caret, setCaret] = React.useState(0);
   const [mentionIndex, setMentionIndex] = React.useState(0);
   const [attachments, setAttachments] = React.useState<MessageAttachment[]>([]);
-  const [uploading, setUploading] = React.useState<string[]>([]);
+  const [uploading, setUploading] = React.useState<PendingUpload[]>([]);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -204,9 +204,15 @@ function ChatComposer({
         toast.add({ title: `${file.name} is larger than 25MB`, type: "error" });
         continue;
       }
-      setUploading((names) => [...names, file.name]);
+      setUploading((pending) => [...pending, { name: file.name, percent: 0 }]);
       try {
-        const attachment = await uploadAttachment(file);
+        const attachment = await uploadAttachment(file, (percent) =>
+          setUploading((pending) =>
+            pending.map((item) =>
+              item.name === file.name ? { ...item, percent } : item,
+            ),
+          ),
+        );
         setAttachments((current) => [...current, attachment]);
       } catch (error) {
         toast.add({
@@ -215,9 +221,9 @@ function ChatComposer({
           type: "error",
         });
       } finally {
-        setUploading((names) => {
-          const index = names.indexOf(file.name);
-          return index === -1 ? names : names.toSpliced(index, 1);
+        setUploading((pending) => {
+          const index = pending.findIndex((item) => item.name === file.name);
+          return index === -1 ? pending : pending.toSpliced(index, 1);
         });
       }
     }
@@ -299,14 +305,21 @@ function ChatComposer({
               </AttachmentActions>
             </Attachment>
           ))}
-          {uploading.map((name, index) => (
+          {uploading.map(({ name, percent }, index) => (
             <Attachment key={`${name}-${index}`} size="xs" state="uploading">
               <AttachmentMedia>
                 <Spinner />
               </AttachmentMedia>
               <AttachmentContent>
                 <AttachmentTitle>{name}</AttachmentTitle>
-                <AttachmentDescription>Uploading…</AttachmentDescription>
+                <AttachmentDescription>
+                  {percent >= 100 ? "Processing…" : `Uploading ${percent}%`}
+                </AttachmentDescription>
+                <Progress
+                  value={percent}
+                  className="mt-1 h-0.5 w-32 max-w-full"
+                  aria-label={`Uploading ${name}`}
+                />
               </AttachmentContent>
             </Attachment>
           ))}

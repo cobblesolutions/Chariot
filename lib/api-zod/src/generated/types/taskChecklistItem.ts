@@ -13,6 +13,11 @@ export interface TaskChecklistItem {
      * @nullable
      */
   sourceKey: string | null;
+  /**
+     * Set when a synced step cannot be ticked from the task (it needs a value, a document or a choice on the record) - where to fill it in. Null when the step may be ticked here, which writes through to the case.
+     * @nullable
+     */
+  lockedHint: string | null;
   taskId: number;
   title: string;
   done: boolean;

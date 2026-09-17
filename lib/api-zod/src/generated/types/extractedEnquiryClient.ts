@@ -12,4 +12,12 @@ export type ExtractedEnquiryClient = {
   phone?: string | null;
   companyName?: string | null;
   companyNumber?: string | null;
+  title?: string | null;
+  currentAddress?: string | null;
+  currentAddressCity?: string | null;
+  currentAddressPostcode?: string | null;
+  employmentStatus?: string | null;
+  employerName?: string | null;
+  jobTitle?: string | null;
+  annualIncome?: number | null;
 };

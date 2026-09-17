@@ -9,8 +9,5 @@ import type { CompletionInput } from './completionInput';
 
 export interface AdvanceInput {
   completedRequirementIds: number[];
-  /** Administrator only - move on without the client's confirmation of the submission details. */
-  override?: boolean;
-  overrideReason?: string;
   completion?: CompletionInput | null;
 }

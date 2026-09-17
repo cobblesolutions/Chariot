@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
 import {
-  useGetTermsOfBusiness,
   useUpdateClient,
   useUpdateClientOnboardingItem,
   getListClientsQueryKey,
@@ -21,12 +20,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { CommaInput } from "@/components/ui/comma-input";
 import { DatePicker } from "@/components/date-picker";
 import { OnboardingList } from "@/components/onboarding-list";
-import { TermsAcceptDialog } from "@/components/client/terms-accept-dialog";
-import { ColumnHeader } from "./column-header";
+import { UploadProgress } from "@/components/upload-progress";
+import { documentUploadHeaders, useUpload } from "@/lib/upload";
 import { FormSection, FormSections, countFilled } from "./form-section";
 import { CompanyNameCombobox } from "./company-name-combobox";
 import { AddressFields } from "@/components/address-fields";
 import { OptionSelect } from "./option-select";
+import { NationalitySelect } from "./nationality-select";
+import { RequiredDot } from "@/components/required-dot";
+import { IncomeEvidence } from "./income-evidence";
+import { DocumentChecks } from "./document-checks";
+import { documentFilledClass } from "@/lib/document-filled";
+import { cn } from "@/lib/utils";
+
+/** Document categories the reading system handles (mirrors READERS on the server). */
+const READABLE_CATEGORIES = new Set(["identity", "bank_statements", "proof_income", "credit_report", "portfolio"]);
 import { ENQUIRY_TYPE_OPTIONS, SOURCE_OPTIONS } from "@/lib/enquiry";
 import {
   ACCEPTED_DOCUMENT_TYPES,
@@ -156,33 +164,16 @@ function payloadFromDraft(draft: ClientDraft) {
   };
 }
 
-
-/** The section to open first: the first one with something still missing. */
-function firstIncompleteSection(client: ClientDetail, draft: ClientDraft): string {
-  if (!draft.phone || !draft.currentAddress) return "contact";
-  if (!draft.dateOfBirth) return "personal";
-  if (!draft.employmentStatus || !draft.annualIncome) return "employment";
-  if (client.onboarding.completed < client.onboarding.total) return "onboarding";
-  return "notes";
-}
-
 /** Column 1: the fixed client's full record, editable in place. */
 export function ClientColumn({
   client,
   isClientLoading,
-  needs,
 }: {
   client: ClientDetail | undefined;
   isClientLoading: boolean;
-  needs?: string[];
 }) {
   return (
-    <section className="space-y-6">
-      <ColumnHeader
-        title="Client"
-        status="saved"
-        needs={needs}
-      />
+    <section className="space-y-4">
       <div className="space-y-4">
         {client ? (
           <ClientForm client={client} />
@@ -207,20 +198,89 @@ function ClientForm({ client }: { client: ClientDetail }) {
     draftFromClient(client),
   );
   const seededFor = useRef<number>(client.id);
+  // What the draft was seeded/mirrored with: saves send only the fields that
+  // differ from it (staff's own edits), so values a reader wrote on the server
+  // are never overwritten by a draft that has not caught up with them yet.
+  const baseline = useRef<ClientDraft>(draftFromClient(client));
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
   useEffect(() => {
     // Re-seed only when a different client is loaded, so in-progress edits
     // survive background refetches of the same client.
     if (seededFor.current !== client.id) {
       seededFor.current = client.id;
-      setDraft(draftFromClient(client));
+      baseline.current = draftFromClient(client);
+      setDraft(baseline.current);
     }
   }, [client]);
 
+  const qcInvalidate = () => qc.invalidateQueries({ queryKey: getGetClientQueryKey(client.id) });
+
+  // Readers run in the background after an upload; poll until every readable
+  // document has a result so the reading lines and checks fill in by themselves.
+  const readingPending = client.documents.some(
+    (document) => READABLE_CATEGORIES.has(document.category) && (!document.reading || document.reading.status === "pending"),
+  );
+  useEffect(() => {
+    if (!readingPending) return;
+    const timer = window.setInterval(qcInvalidate, 2500);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readingPending, client.id]);
+
+  // When a reader fills client fields on the server, mirror them into the
+  // draft so the next autosave does not send the still-empty draft values back
+  // over them. A newly completed reading triggers one more fetch first: the
+  // client row in the response that showed the reading may predate its apply.
+  const readingSync = useRef<{ seen: Set<string>; mounted: boolean; pending: Set<string> | null }>({ seen: new Set(), mounted: false, pending: null });
+  useEffect(() => {
+    const sync = readingSync.current;
+    if (sync.pending) {
+      const fields = sync.pending;
+      sync.pending = null;
+      const fresh = draftFromClient(client);
+      setDraft((current) => {
+        const next = { ...current };
+        for (const field of fields) {
+          const key = field as keyof ClientDraft;
+          if (key in fresh && !current[key] && fresh[key]) {
+            next[key] = fresh[key];
+            baseline.current = { ...baseline.current, [key]: fresh[key] };
+          }
+        }
+        return next;
+      });
+    }
+    const applied: string[] = [];
+    for (const document of client.documents) {
+      const reading = document.reading;
+      if (!reading || reading.status !== "completed") continue;
+      const key = `${document.id}:${reading.readAt}`;
+      if (sync.seen.has(key)) continue;
+      sync.seen.add(key);
+      // The seed already reflects readings that finished before the form opened.
+      if (sync.mounted) applied.push(...reading.appliedFields);
+    }
+    sync.mounted = true;
+    if (applied.length > 0) {
+      sync.pending = new Set(applied);
+      qcInvalidate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client]);
+
+  // Yellow = the value on the record was written by a reader and staff have
+  // not changed it (typing removes the colour at once; saving removes it for good).
+  const filledFields = new Set(client.documentFilledFields ?? []);
+  const seed = draftFromClient(client);
+  const fromDocument = (key: keyof ClientDraft) => filledFields.has(key) && draft[key] === seed[key];
+  const fieldClass = (key: keyof ClientDraft) => documentFilledClass(fromDocument(key));
+  const anyFromDocument = (Object.keys(draft) as Array<keyof ClientDraft>).some(fromDocument);
+
   const documentInputRef = useRef<HTMLInputElement>(null);
   const documentCategoryRef = useRef("onboarding");
-  const { data: termsDoc } = useGetTermsOfBusiness();
-  const [termsOpen, setTermsOpen] = useState(false);
+  const documentUpload = useUpload();
 
   const setField =
     <K extends keyof ClientDraft>(key: K) =>
@@ -244,8 +304,16 @@ function ClientForm({ client }: { client: ClientDetail }) {
     validate: (payload) =>
       !payload.name || !payload.email ? "Name and email are required" : null,
     save: async (payload) => {
+      // Partial PATCH: only what staff changed since the seed / last save.
+      const base = payloadFromDraft(baseline.current) as Record<string, unknown>;
+      const changed = Object.fromEntries(
+        Object.entries(payload).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(base[key])),
+      ) as Partial<typeof payload>;
+      const snapshot = draftRef.current;
+      if (Object.keys(changed).length === 0) return;
       try {
-        await updateClient.mutateAsync({ id: client.id, data: payload });
+        await updateClient.mutateAsync({ id: client.id, data: changed });
+        baseline.current = snapshot;
         invalidateClient();
       } catch (error) {
         throw new Error(
@@ -286,27 +354,21 @@ function ClientForm({ client }: { client: ClientDetail }) {
     if (files.length === 0) return;
     let uploaded = 0;
     try {
-      for (const file of files) {
+      for (const [index, file] of files.entries()) {
         if (file.size > 50 * 1024 * 1024) {
           throw new Error(
             `${file.name} is too large. Maximum file size is 50 MB.`,
           );
         }
-        const response = await fetch("/api/documents/upload", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "x-client-id": String(client.id),
-            "x-filename": file.name,
-            "x-content-type": file.type || "application/octet-stream",
+        await documentUpload.send(file, {
+          url: "/api/documents/upload",
+          headers: documentUploadHeaders(file, {
+            "x-client-id": client.id,
             "x-document-category": documentCategoryRef.current,
-          },
-          body: await file.arrayBuffer(),
+          }),
+          index,
+          count: files.length,
         });
-        if (!response.ok) {
-          const data = await response.json().catch(() => null);
-          throw new Error(data?.error || `Upload failed for ${file.name}`);
-        }
         uploaded += 1;
       }
       toast.add({
@@ -321,11 +383,15 @@ function ClientForm({ client }: { client: ClientDetail }) {
         type: "error",
       });
     } finally {
+      documentUpload.reset();
       if (documentInputRef.current) documentInputRef.current.value = "";
     }
   };
 
   const onboarding = client.onboarding;
+  // The one hidden input serves both the onboarding list and proof of income;
+  // the progress line sits under whichever section started the upload.
+  const uploadingIncome = documentCategoryRef.current === "proof_income";
 
   return (
     <form
@@ -342,14 +408,21 @@ function ClientForm({ client }: { client: ClientDetail }) {
         onChange={handleDocumentUpload}
       />
 
-      <FormSections defaultOpen={firstIncompleteSection(client, draft)}>
+      {anyFromDocument ? (
+        <p className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span aria-hidden className="inline-block size-3 rounded-sm border border-yellow-400 bg-yellow-50 dark:border-yellow-600 dark:bg-yellow-950/40" />
+          Yellow fields were read from the client's documents — check them; editing clears the colour.
+        </p>
+      ) : null}
+      <FormSections>
         <FormSection
           id="onboarding"
+          wide
           title="Onboarding & documents"
           filled={onboarding.completed}
           total={onboarding.total}
-          hint="What the case needs before it can proceed. Fields save when you leave them; documents upload immediately."
         >
+          {!uploadingIncome ? <UploadProgress progress={documentUpload.progress} /> : null}
           <OnboardingList
             items={onboarding.items}
             onUpdateItem={handleUpdateOnboarding}
@@ -359,15 +432,10 @@ function ClientForm({ client }: { client: ClientDetail }) {
             }}
             isUpdating={updateOnboarding.isPending}
             documents={client.documents}
+            onReadingChanged={invalidateClient}
             onDocumentDeleted={invalidateClient}
-            terms={{
-              document: termsDoc?.document ?? null,
-              acceptance: client.termsOfBusiness,
-              viewHref: "/api/settings/terms-of-business/document",
-              onMarkAccepted: () => setTermsOpen(true),
-            }}
           />
-          <TermsAcceptDialog open={termsOpen} onOpenChange={setTermsOpen} clientId={client.id} onAccepted={invalidateClient} />
+          <DocumentChecks checks={client.documentChecks} />
         </FormSection>
 
         <FormSection
@@ -389,11 +457,12 @@ function ClientForm({ client }: { client: ClientDetail }) {
                 onChange={setField("title")}
                 options={CLIENT_TITLES}
                 placeholder="—"
+                className={fieldClass("title")}
               />
             </Field>
             <Field>
               <FieldLabel htmlFor="add-client-name">
-                Full Name <span className="text-destructive">*</span>
+                Full Name <RequiredDot />
               </FieldLabel>
               <Input
                 id="add-client-name"
@@ -406,7 +475,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
           </div>
           <Field>
             <FieldLabel htmlFor="add-client-email">
-              Email Address <span className="text-destructive">*</span>
+              Email Address <RequiredDot />
             </FieldLabel>
             <Input
               id="add-client-email"
@@ -419,7 +488,9 @@ function ClientForm({ client }: { client: ClientDetail }) {
           </Field>
           <div className="grid grid-cols-2 gap-4">
             <Field>
-              <FieldLabel htmlFor="add-client-phone">Phone Number</FieldLabel>
+              <FieldLabel htmlFor="add-client-phone">
+                Phone Number <RequiredDot />
+              </FieldLabel>
               <Input
                 id="add-client-phone"
                 value={draft.phone}
@@ -440,6 +511,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
           <AddressFields
             idPrefix="add-client"
             label="Current Address"
+            required
             value={{
               address: draft.currentAddress,
               city: draft.currentAddressCity,
@@ -453,6 +525,11 @@ function ClientForm({ client }: { client: ClientDetail }) {
                 currentAddressPostcode: next.postcode,
               }))
             }
+            classNames={{
+              address: fieldClass("currentAddress"),
+              city: fieldClass("currentAddressCity"),
+              postcode: fieldClass("currentAddressPostcode"),
+            }}
           />
           <AddressFields
             idPrefix="add-client-prev"
@@ -471,6 +548,11 @@ function ClientForm({ client }: { client: ClientDetail }) {
                 previousAddressPostcode: next.postcode,
               }))
             }
+            classNames={{
+              address: fieldClass("previousAddress"),
+              city: fieldClass("previousAddressCity"),
+              postcode: fieldClass("previousAddressPostcode"),
+            }}
           />
         </FormSection>
 
@@ -487,21 +569,24 @@ function ClientForm({ client }: { client: ClientDetail }) {
         >
           <div className="grid grid-cols-2 gap-4">
             <Field>
-              <FieldLabel>Date of Birth</FieldLabel>
+              <FieldLabel>
+                Date of Birth <RequiredDot />
+              </FieldLabel>
               <DatePicker
                 value={draft.dateOfBirth}
                 onChange={setField("dateOfBirth")}
-                className="w-full justify-start"
+                className={cn("w-full justify-start", fieldClass("dateOfBirth"))}
               />
             </Field>
             <Field>
               <FieldLabel htmlFor="add-client-nationality">
                 Nationality
               </FieldLabel>
-              <Input
+              <NationalitySelect
                 id="add-client-nationality"
                 value={draft.nationality}
-                onChange={onInput("nationality")}
+                onChange={setField("nationality")}
+                className={fieldClass("nationality")}
               />
             </Field>
             <Field>
@@ -541,12 +626,31 @@ function ClientForm({ client }: { client: ClientDetail }) {
           ])}
           total={5}
         >
+          <IncomeEvidence
+            client={client}
+            draft={{
+              annualIncome: draft.annualIncome,
+              employerName: draft.employerName,
+              jobTitle: draft.jobTitle,
+              employmentStatus: draft.employmentStatus,
+            }}
+            onApply={(values) => setDraft((current) => ({ ...current, ...values }))}
+            onUpload={() => {
+              documentCategoryRef.current = "proof_income";
+              documentInputRef.current?.click();
+            }}
+            onRefresh={invalidateClient}
+          />
+          {uploadingIncome ? <UploadProgress progress={documentUpload.progress} /> : null}
           <Field>
-            <FieldLabel>Employment Status</FieldLabel>
+            <FieldLabel>
+              Employment Status <RequiredDot />
+            </FieldLabel>
             <OptionSelect
               value={draft.employmentStatus}
               onChange={setField("employmentStatus")}
               options={EMPLOYMENT_STATUSES}
+              className={fieldClass("employmentStatus")}
             />
           </Field>
           <div className="grid grid-cols-2 gap-4">
@@ -556,6 +660,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
                 id="add-client-employer"
                 value={draft.employerName}
                 onChange={onInput("employerName")}
+                className={fieldClass("employerName")}
               />
             </Field>
             <Field>
@@ -564,16 +669,18 @@ function ClientForm({ client }: { client: ClientDetail }) {
                 id="add-client-job"
                 value={draft.jobTitle}
                 onChange={onInput("jobTitle")}
+                className={fieldClass("jobTitle")}
               />
             </Field>
             <Field>
               <FieldLabel htmlFor="add-client-income">
-                Annual Income (£)
+                Annual Income (£) <RequiredDot />
               </FieldLabel>
               <CommaInput
                 id="add-client-income"
                 value={draft.annualIncome}
                 onChange={setField("annualIncome")}
+                className={fieldClass("annualIncome")}
               />
             </Field>
             <Field>
@@ -594,6 +701,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
                 id="add-client-commitments"
                 value={draft.monthlyCommitments}
                 onChange={setField("monthlyCommitments")}
+                className={fieldClass("monthlyCommitments")}
               />
             </Field>
           </div>
@@ -604,7 +712,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
               value={draft.creditHistoryNotes}
               onChange={onInput("creditHistoryNotes")}
               placeholder="Defaults, CCJs, missed payments, IVAs…"
-              className="min-h-[60px]"
+              className={cn("min-h-[60px]", fieldClass("creditHistoryNotes"))}
             />
           </Field>
         </FormSection>
@@ -625,6 +733,19 @@ function ClientForm({ client }: { client: ClientDetail }) {
               id="add-client-company"
               value={draft.companyName}
               onChange={setField("companyName")}
+              onSelect={(company) =>
+                setDraft((current) => ({
+                  ...current,
+                  companyName: company.name,
+                  companyNumber: company.companyNumber,
+                  companyRegisteredAddress:
+                    company.registeredAddress?.line1 ?? current.companyRegisteredAddress,
+                  companyRegisteredCity:
+                    company.registeredAddress?.city ?? current.companyRegisteredCity,
+                  companyRegisteredPostcode:
+                    company.registeredAddress?.postcode ?? current.companyRegisteredPostcode,
+                }))
+              }
             />
           </Field>
           <Field>
@@ -635,6 +756,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
               id="add-client-company-number"
               value={draft.companyNumber}
               onChange={onInput("companyNumber")}
+              className={fieldClass("companyNumber")}
             />
           </Field>
           <AddressFields
@@ -671,6 +793,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
                 onChange={setField("source")}
                 options={SOURCE_OPTIONS}
                 placeholder="Not set"
+                className={fieldClass("source")}
               />
             </Field>
             <Field>
@@ -680,6 +803,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
                 onChange={setField("enquiryType")}
                 options={ENQUIRY_TYPE_OPTIONS}
                 placeholder="Not set"
+                className={fieldClass("enquiryType")}
               />
             </Field>
           </div>
@@ -691,6 +815,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
                   id="add-client-introducer"
                   value={draft.introducerName}
                   onChange={onInput("introducerName")}
+                  className={fieldClass("introducerName")}
                 />
               </Field>
               <Field>
@@ -699,6 +824,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
                   id="add-client-introducer-contact"
                   value={draft.introducerContact}
                   onChange={onInput("introducerContact")}
+                  className={fieldClass("introducerContact")}
                 />
               </Field>
             </div>
@@ -710,7 +836,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
               value={draft.enquirySummary}
               onChange={onInput("enquirySummary")}
               placeholder="What they asked for, in a sentence or two"
-              className="min-h-[60px]"
+              className={cn("min-h-[60px]", fieldClass("enquirySummary"))}
             />
           </Field>
           <Field>
@@ -720,6 +846,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
               value={draft.enquiryTimescale}
               onChange={onInput("enquiryTimescale")}
               placeholder="e.g. exchange by end of October"
+              className={fieldClass("enquiryTimescale")}
             />
           </Field>
           {client.enquiryEmailText ? (

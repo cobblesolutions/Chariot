@@ -42,6 +42,7 @@ import { useAutosave } from "@/components/add/use-autosave";
 import { SaveStatus } from "@/components/add/save-status";
 import { apiErrorMessage } from "@/components/add/utils";
 import { WelcomeTemplateDialog } from "@/components/add/welcome-template-dialog";
+import { TermsOfBusinessPanel } from "./terms-of-business-panel";
 
 interface AdviceDraft {
   lenderId: string;
@@ -97,11 +98,14 @@ export function approvalStatus(latest: ClientApproval | null | undefined) {
  */
 export function AdviceStagePanel({
   caseId,
+  clientId,
   serviceType,
   disabled,
   compact,
 }: {
   caseId: number;
+  /** With `clientId`, the case's Terms of Business section renders at the bottom (the case page); the Add page has its own. */
+  clientId?: number;
   serviceType: string;
   /** Read-only: viewing a past stage or a completed case. */
   disabled?: boolean;
@@ -290,11 +294,10 @@ export function AdviceStagePanel({
           <FileSignature className="size-3.5 shrink-0" />
           {state.termsOfBusiness ? (
             <span className="text-emerald-700 dark:text-emerald-400">
-              Terms of Business accepted {state.termsOfBusiness.via === "portal" ? "in the portal" : state.termsOfBusiness.via === "signed_upload" ? "(signed copy)" : "(recorded by staff)"} · {formatDate(state.termsOfBusiness.acceptedAt)}
-              {state.termsOfBusiness.version ? ` · v${state.termsOfBusiness.version}` : ""}
+              Terms of Business signed {state.termsOfBusiness.via === "docusign" ? "via DocuSign" : state.termsOfBusiness.via === "signed_upload" ? "(signed copy)" : "(recorded by staff)"} · {formatDate(state.termsOfBusiness.signedAt)} · v{state.termsOfBusiness.version}
             </span>
           ) : (
-            <span>Terms of Business not yet accepted — part of the client's onboarding.</span>
+            <span>Terms of Business not yet signed — the case cannot proceed until they are (see the Terms of Business section).</span>
           )}
         </p>
       </section>
@@ -441,6 +444,13 @@ export function AdviceStagePanel({
           ) : null}
         </div>
       </section>
+
+      {clientId != null ? (
+        <section className="space-y-3 border-t pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Terms of Business</p>
+          <TermsOfBusinessPanel caseId={caseId} clientId={clientId} disabled={disabled} />
+        </section>
+      ) : null}
 
       {latest ? (
         <RecordAnswerDialog

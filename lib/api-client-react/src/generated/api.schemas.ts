@@ -153,6 +153,53 @@ export interface Dashboard {
   recentActivity: Activity[];
 }
 
+export type AlertSeverity = typeof AlertSeverity[keyof typeof AlertSeverity];
+
+
+export const AlertSeverity = {
+  red: 'red',
+  amber: 'amber',
+} as const;
+
+export interface Alert {
+  id: number;
+  kind: string;
+  kindLabel: string;
+  severity: AlertSeverity;
+  title: string;
+  detail: string;
+  caseId: number | null;
+  caseReference: string | null;
+  clientId: number | null;
+  clientName: string | null;
+  taskId: number | null;
+  renewalId: number | null;
+  invoiceId: number | null;
+  /** For valuation alerts */
+  submissionId: number | null;
+  assignedUserId: number | null;
+  assignedTo: string | null;
+  raisedAt: string;
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  resolvedAt: string | null;
+  /** Where to go to deal with it. */
+  href: string;
+}
+
+export interface AlertSummary {
+  red: number;
+  amber: number;
+  total: number;
+}
+
+export interface AlertEvaluation {
+  raised: number;
+  resolved: number;
+  open: number;
+  emailed: number;
+}
+
 /**
  * The record this activity is about, when it is not (only) a case.
  */
@@ -173,6 +220,8 @@ export interface ActivityListItem {
   detail: string;
   actorName: string;
   occurredAt: string;
+  /** Machine kind (e.g. case, advice, enquiry, terms). Present on rows from the activity feed. */
+  kind?: string;
   caseId: number | null;
   caseReference: string | null;
   /** The record this activity is about, when it is not (only) a case. */
@@ -281,24 +330,6 @@ export const ClientEnquiryType = {
   other: 'other',
 } as const;
 
-export type TermsAcceptanceVia = typeof TermsAcceptanceVia[keyof typeof TermsAcceptanceVia];
-
-
-export const TermsAcceptanceVia = {
-  portal: 'portal',
-  signed_upload: 'signed_upload',
-  staff: 'staff',
-} as const;
-
-export interface TermsAcceptance {
-  acceptedAt: string;
-  via: TermsAcceptanceVia;
-  version: number | null;
-  note: string | null;
-  /** Staff member who recorded it */
-  acceptedBy: string | null;
-}
-
 export interface Client {
   id: number;
   name: string;
@@ -325,8 +356,9 @@ export interface Client {
   /** True for an enquiry that has waited for acceptance longer than the stale threshold. */
   stale: boolean;
   welcomeDelivery?: WelcomeDelivery | null;
-  termsOfBusiness: TermsAcceptance | null;
   onboardingCompletedAt: string | null;
+  /** Client fields whose current value was written by the document reading system; the UI highlights them until staff save a different value. */
+  documentFilledFields?: string[];
   /** Cases that are not completed or archived. */
   openCases: number;
   /** Sum of loan amounts across open cases. */
@@ -364,12 +396,23 @@ export interface Client {
   notes?: string | null;
 }
 
+/**
+ * @nullable
+ */
+export type CompaniesHouseCompanyRegisteredAddress = {
+  line1: string;
+  city: string;
+  postcode: string;
+} | null;
+
 export interface CompaniesHouseCompany {
   companyNumber: string;
   name: string;
   status: string;
   /** @nullable */
   address?: string | null;
+  /** @nullable */
+  registeredAddress?: CompaniesHouseCompanyRegisteredAddress | null;
 }
 
 export interface CompaniesHouseSearchResults {
@@ -518,11 +561,20 @@ export type ClientInputEnquiryExtracted = { [key: string]: unknown } | null;
  */
 export type ClientInputProperty = {
   address?: string;
+  city?: string | null;
+  postcode?: string | null;
   matterType?: string;
   value?: number;
   loanAmount?: number;
   rent?: number;
   gdv?: number;
+  propertyType?: string | null;
+  purchasePrice?: number | null;
+  currentLender?: string | null;
+  currentBalance?: number | null;
+  currentRatePct?: number | null;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  currentRateEndDate?: string | null;
 } | null;
 
 export interface ClientInput {
@@ -596,14 +648,30 @@ export type ExtractedEnquiryClient = {
   phone?: string | null;
   companyName?: string | null;
   companyNumber?: string | null;
+  title?: string | null;
+  currentAddress?: string | null;
+  currentAddressCity?: string | null;
+  currentAddressPostcode?: string | null;
+  employmentStatus?: string | null;
+  employerName?: string | null;
+  jobTitle?: string | null;
+  annualIncome?: number | null;
 };
 
 export type ExtractedEnquiryProperty = {
   address?: string | null;
+  city?: string | null;
+  postcode?: string | null;
   value?: number | null;
   loanAmount?: number | null;
   rent?: number | null;
   matterType?: string | null;
+  propertyType?: string | null;
+  currentLender?: string | null;
+  currentBalance?: number | null;
+  currentRatePct?: number | null;
+  currentRateEndDate?: string | null;
+  purchasePrice?: number | null;
 };
 
 export type ExtractedEnquiryEnquiryType = typeof ExtractedEnquiryEnquiryType[keyof typeof ExtractedEnquiryEnquiryType] | null;
@@ -619,10 +687,26 @@ export const ExtractedEnquiryEnquiryType = {
   other: 'other',
 } as const;
 
+export type ExtractedEnquiryEnquirySource = typeof ExtractedEnquiryEnquirySource[keyof typeof ExtractedEnquiryEnquirySource] | null;
+
+
+export const ExtractedEnquiryEnquirySource = {
+  email: 'email',
+  phone: 'phone',
+  website: 'website',
+  referral: 'referral',
+  introducer: 'introducer',
+  existing_client: 'existing_client',
+  other: 'other',
+} as const;
+
 export type ExtractedEnquiryEnquiry = {
   type?: ExtractedEnquiryEnquiryType;
   timescale?: string | null;
   summary?: string | null;
+  source?: ExtractedEnquiryEnquirySource;
+  introducerName?: string | null;
+  introducerContact?: string | null;
 };
 
 export interface ExtractedEnquiry {
@@ -767,6 +851,7 @@ export const ClientTimelineItemKind = {
   document: 'document',
   case: 'case',
   email: 'email',
+  enquiry: 'enquiry',
 } as const;
 
 export interface ClientTimelineItem {
@@ -792,30 +877,307 @@ export interface RepeatEnquiryOutput {
   propertyId: number | null;
 }
 
-export interface TermsOfBusinessDocument {
-  filename: string;
-  contentType: string;
-  byteSize: number;
+export type TermsFieldType = typeof TermsFieldType[keyof typeof TermsFieldType];
+
+
+export const TermsFieldType = {
+  text: 'text',
+  textarea: 'textarea',
+  number: 'number',
+  currency: 'currency',
+  date: 'date',
+  select: 'select',
+} as const;
+
+/**
+ * A dynamic field staff fill for each case; `{{key}}` in the body prints its value.
+ */
+export interface TermsTemplateField {
+  /**
+     * @maxLength 40
+     * @pattern ^[a-zA-Z][a-zA-Z0-9_]*$
+     */
+  key: string;
+  /** @maxLength 120 */
+  label: string;
+  type: TermsFieldType;
+  required: boolean;
+  /**
+     * Choices for a select field.
+     * @items.maxLength 200
+     */
+  options?: string[];
+  /** @maxLength 2000 */
+  defaultValue?: string;
+  /** @maxLength 300 */
+  hint?: string;
+}
+
+export interface TermsTemplateInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  title: string;
+  /**
+     * Paragraphs separated by blank lines; `# Heading` lines and `- bullet` lines; `{{token}}` placeholders.
+     * @minLength 1
+     * @maxLength 60000
+     */
+  body: string;
+  /** @maxItems 40 */
+  fields: TermsTemplateField[];
+}
+
+export type TermsTemplate = TermsTemplateInput & ({
   version: number;
-  uploadedAt: string;
-  uploadedBy: string | null;
+  publishedAt: string;
+  publishedBy: string | null;
+});
+
+/**
+ * Where the value comes from.
+ */
+export type TermsPlaceholderGroup = typeof TermsPlaceholderGroup[keyof typeof TermsPlaceholderGroup];
+
+
+export const TermsPlaceholderGroup = {
+  client: 'client',
+  case: 'case',
+  firm: 'firm',
+} as const;
+
+export interface TermsPlaceholder {
+  token: string;
+  description: string;
+  /** Example value */
+  sample: string;
+  /** Where the value comes from. */
+  group: TermsPlaceholderGroup;
+}
+
+export type SignatureMode = typeof SignatureMode[keyof typeof SignatureMode];
+
+
+export const SignatureMode = {
+  off: 'off',
+  mock: 'mock',
+  docusign: 'docusign',
+} as const;
+
+/**
+ * The DocuSign account documents are sent from; null until an administrator connects one.
+ */
+export type SignatureConfigConnection = {
+  account: string;
+  email: string;
+  userName: string;
+  baseUri: string;
+  connectedAt: string;
+  connectedBy: string | null;
+} | null;
+
+export interface SignatureConfig {
+  mode: SignatureMode;
+  /** True when documents can be sent (mock */
+  configured: boolean;
+  /** App environment variables still unset (DOCUSIGN_INTEGRATION_KEY */
+  missing: string[];
+  /** Both app credentials are set */
+  appRegistered: boolean;
+  oauthHost: string;
+  /** What to register as the app's Redirect URI in DocuSign. */
+  redirectUri: string | null;
+  webhookUrl: string | null;
+  hmacEnabled: boolean;
+  /** The DocuSign account documents are sent from; null until an administrator connects one. */
+  connection: SignatureConfigConnection;
+}
+
+export interface DocusignTestResult {
+  ok: boolean;
+  mode: SignatureMode;
+  account: string | null;
+  email: string | null;
+  baseUri: string | null;
+  error: string | null;
 }
 
 export interface TermsOfBusinessState {
-  document: TermsOfBusinessDocument | null;
+  /** The current version; null until an administrator publishes one. */
+  template: TermsTemplate | null;
+  /** Every published version, newest first. */
+  versions: TermsTemplate[];
+  /** Tokens filled from the case and client automatically. */
+  placeholders: TermsPlaceholder[];
+  /** The built-in template, to start from or reset to. */
+  defaults: TermsTemplateInput;
+  signature: SignatureConfig;
 }
 
-export type AcceptTermsInputVia = typeof AcceptTermsInputVia[keyof typeof AcceptTermsInputVia];
+export type TermsAgreementStatus = typeof TermsAgreementStatus[keyof typeof TermsAgreementStatus];
 
 
-export const AcceptTermsInputVia = {
+export const TermsAgreementStatus = {
+  draft: 'draft',
+  sent: 'sent',
+  signed: 'signed',
+  declined: 'declined',
+  voided: 'voided',
+} as const;
+
+export type TermsSignedVia = typeof TermsSignedVia[keyof typeof TermsSignedVia];
+
+
+export const TermsSignedVia = {
+  docusign: 'docusign',
   signed_upload: 'signed_upload',
   staff: 'staff',
 } as const;
 
-export interface AcceptTermsInput {
-  via: AcceptTermsInputVia;
+export type TermsAgreementValues = {[key: string]: string};
+
+/**
+ * One attempt at getting the case's Terms of Business signed.
+ */
+export interface TermsAgreement {
+  id: number;
+  caseId: number;
+  status: TermsAgreementStatus;
+  templateVersion: number;
+  values: TermsAgreementValues;
+  filename: string | null;
+  /** Whether a PDF has been generated (sent). */
+  hasDocument: boolean;
+  /** docusign or docusign_mock */
+  provider: string | null;
+  envelopeId: string | null;
+  /** DocuSign's own status (sent, delivered, completed, declined, voided), or delivery_failed when the email bounced. */
+  envelopeStatus: string | null;
+  lastCheckedAt: string | null;
+  recipientName: string | null;
+  recipientEmail: string | null;
+  sentAt: string | null;
+  sentBy: string | null;
+  signedAt: string | null;
+  signedVia: TermsSignedVia | null;
+  signedNote: string | null;
+  /** Staff member who recorded a signature given outside DocuSign. */
+  signedBy: string | null;
+  /** The signed copy in the case's documents. */
+  signedDocumentId: number | null;
+  declinedAt: string | null;
+  declineReason: string | null;
+  voidedAt: string | null;
+  voidReason: string | null;
+  voidedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Summary of a case's signed Terms of Business.
+ */
+export interface TermsAcceptance {
+  signedAt: string;
+  via: TermsSignedVia;
+  version: number;
+  note: string | null;
+  signedBy: string | null;
+  signedDocumentId: number | null;
+}
+
+/**
+ * Form values — the draft's
+ */
+export type CaseTermsStateValues = {[key: string]: string};
+
+/**
+ * Read-only values taken from the case and client.
+ */
+export type CaseTermsStateAuto = {[key: string]: string};
+
+export type CaseTermsStateRecipient = {
+  name: string;
+  email: string;
+};
+
+export type CaseTermsStateSignature = {
+  mode: SignatureMode;
+  configured: boolean;
+  missing: string[];
+};
+
+export interface CaseTermsState {
+  /** The version the current agreement uses (the current template for a new draft); null when nothing is published. */
+  template: TermsTemplate | null;
+  currentVersion: number | null;
+  agreement: TermsAgreement | null;
+  /** Earlier attempts (declined / voided), newest first. */
+  history: TermsAgreement[];
+  /** Form values — the draft's */
+  values: CaseTermsStateValues;
+  /** Read-only values taken from the case and client. */
+  auto: CaseTermsStateAuto;
+  /** Required fields still blank. */
+  missing: string[];
+  acceptance: TermsAcceptance | null;
+  recipient: CaseTermsStateRecipient;
+  signature: CaseTermsStateSignature;
+}
+
+export type CaseTermsValuesInputValues = {[key: string]: string};
+
+export interface CaseTermsValuesInput {
+  values: CaseTermsValuesInputValues;
+}
+
+export type MarkTermsSignedInputVia = typeof MarkTermsSignedInputVia[keyof typeof MarkTermsSignedInputVia];
+
+
+export const MarkTermsSignedInputVia = {
+  signed_upload: 'signed_upload',
+  staff: 'staff',
+} as const;
+
+export interface MarkTermsSignedInput {
+  via: MarkTermsSignedInputVia;
+  /** @maxLength 500 */
   note?: string;
+  /** The uploaded signed copy (a document on this case) */
+  documentId?: number | null;
+}
+
+export interface VoidTermsInput {
+  /** @maxLength 200 */
+  reason: string;
+}
+
+export type MockSignTermsInputOutcome = typeof MockSignTermsInputOutcome[keyof typeof MockSignTermsInputOutcome];
+
+
+export const MockSignTermsInputOutcome = {
+  signed: 'signed',
+  declined: 'declined',
+  bounced: 'bounced',
+} as const;
+
+export interface MockSignTermsInput {
+  outcome: MockSignTermsInputOutcome;
+  reason?: string;
+}
+
+export interface DocusignWebhookPayload { [key: string]: unknown }
+
+export interface PortalTermsOfBusiness {
+  /** null when nothing has been sent yet. */
+  status: TermsAgreementStatus | null;
+  title: string | null;
+  version: number | null;
+  sentAt: string | null;
+  signedAt: string | null;
+  hasDocument: boolean;
+  provider: string | null;
 }
 
 export interface ExtractInstructionInput {
@@ -888,6 +1250,60 @@ export interface OnboardingSummary {
   items: OnboardingItem[];
 }
 
+export type DocumentCheckStatus = typeof DocumentCheckStatus[keyof typeof DocumentCheckStatus];
+
+
+export const DocumentCheckStatus = {
+  ok: 'ok',
+  mismatch: 'mismatch',
+  attention: 'attention',
+  info: 'info',
+} as const;
+
+export interface DocumentCheck {
+  key: string;
+  label: string;
+  status: DocumentCheckStatus;
+  detail: string;
+}
+
+export type DocumentReadingStatus = typeof DocumentReadingStatus[keyof typeof DocumentReadingStatus];
+
+
+export const DocumentReadingStatus = {
+  pending: 'pending',
+  completed: 'completed',
+  failed: 'failed',
+  unsupported: 'unsupported',
+} as const;
+
+export type DocumentReadingSource = typeof DocumentReadingSource[keyof typeof DocumentReadingSource] | null;
+
+
+export const DocumentReadingSource = {
+  ai: 'ai',
+  heuristic: 'heuristic',
+} as const;
+
+/**
+ * The reader's structured result; for proof_of_income see ProofOfIncomeReading.
+ */
+export type DocumentReadingData = { [key: string]: unknown } | null;
+
+export interface DocumentReading {
+  /** Which extractor ran, e.g. proof_of_income. */
+  reader: string;
+  status: DocumentReadingStatus;
+  source: DocumentReadingSource;
+  model: string | null;
+  /** The reader's structured result; for proof_of_income see ProofOfIncomeReading. */
+  data: DocumentReadingData;
+  error: string | null;
+  /** Client fields this reading filled in. */
+  appliedFields: string[];
+  readAt: string;
+}
+
 export interface Document {
   id: number;
   name: string;
@@ -902,6 +1318,8 @@ export interface Document {
   byteSize?: number | null;
   /** @nullable */
   uploadedAt?: string | null;
+  /** What the document reading system extracted, when the category has a reader. Omitted on list endpoints. */
+  reading?: DocumentReading | null;
 }
 
 export interface Property {
@@ -961,10 +1379,22 @@ export interface CaseDipDocument {
   name: string;
 }
 
+export type UnderwritingRoundRequirementsItem = {
+  id: number;
+  label: string;
+  complete: boolean;
+};
+
 export interface UnderwritingRound {
   round: number;
   emailText: string;
   createdAt: string;
+  /** When everything was provided and sent back to the lender. */
+  sentAt: string | null;
+  sentBy: string | null;
+  /** The case handler's task whose checkboxes are these requirements. */
+  taskId: number | null;
+  requirements: UnderwritingRoundRequirementsItem[];
 }
 
 export interface Case {
@@ -989,6 +1419,7 @@ export interface Case {
   status: string;
   loanAmount: number;
   assignedTo: string;
+  assignedUserId: number | null;
   updatedAt: string;
   skippedStageIndexes: number[];
   procFeePct: number;
@@ -1018,6 +1449,8 @@ export interface Case {
 
 export type ClientDetail = Client & {
   onboarding: OnboardingSummary;
+  /** Cross-document consistency findings from the document reading system (name, DOB, address, income, commitments, ID expiry, adverse credit, account conduct). */
+  documentChecks?: DocumentCheck[];
   documents: Document[];
   properties: Property[];
   cases: Case[];
@@ -1366,9 +1799,6 @@ export interface CompletionInput {
 
 export interface AdvanceInput {
   completedRequirementIds: number[];
-  /** Administrator only - move on without the client's confirmation of the submission details. */
-  override?: boolean;
-  overrideReason?: string;
   completion?: CompletionInput | null;
 }
 
@@ -1377,7 +1807,6 @@ export type ClientApprovalKind = typeof ClientApprovalKind[keyof typeof ClientAp
 
 export const ClientApprovalKind = {
   advice: 'advice',
-  submission_details: 'submission_details',
 } as const;
 
 export type ClientApprovalDeliveryStatus = typeof ClientApprovalDeliveryStatus[keyof typeof ClientApprovalDeliveryStatus];
@@ -1561,7 +1990,6 @@ export type PublicApprovalResultKind = typeof PublicApprovalResultKind[keyof typ
 
 export const PublicApprovalResultKind = {
   advice: 'advice',
-  submission_details: 'submission_details',
 } as const;
 
 export interface PublicApprovalResult {
@@ -1609,9 +2037,6 @@ export type SubmissionDetailsStatePreviousCase = {
 
 export interface SubmissionDetailsState {
   pack: SubmissionPack;
-  approvals: ClientApproval[];
-  latest: ClientApproval | null;
-  confirmed: boolean;
   previousCase: SubmissionDetailsStatePreviousCase;
 }
 
@@ -1638,6 +2063,7 @@ export interface PortalCase {
   valuationDate: string | null;
   expectedCompletionDate: string | null;
   pendingApprovals: ClientApproval[];
+  termsOfBusiness: PortalTermsOfBusiness;
 }
 
 export interface Requirement {
@@ -1750,7 +2176,9 @@ export interface Message {
   createdAt: string;
 }
 
-export type CaseDetail = Case & {
+export type CaseDetail = Case & ({
+  /** The case's signed Terms of Business; null until signed. */
+  termsOfBusiness: TermsAcceptance | null;
   /** Every lender this case has been submitted to, primary first. The case's own lender fields mirror the primary submission. */
   submissions: CaseSubmission[];
   stages: string[];
@@ -1758,7 +2186,7 @@ export type CaseDetail = Case & {
   tasks: Task[];
   messages: Message[];
   draftNotes: string;
-};
+});
 
 export type CaseStressTestArrFeeMode = typeof CaseStressTestArrFeeMode[keyof typeof CaseStressTestArrFeeMode];
 
@@ -2042,6 +2470,8 @@ export interface ExtractUnderwritingInput {
 
 export interface ExtractUnderwritingOutput {
   suggestions: string[];
+  /** The AI model used */
+  model: string | null;
 }
 
 export interface AddUnderwritingRoundInput {
@@ -2065,6 +2495,11 @@ export interface TaskChecklistItem {
      * @nullable
      */
   sourceKey: string | null;
+  /**
+     * Set when a synced step cannot be ticked from the task (it needs a value, a document or a choice on the record) - where to fill it in. Null when the step may be ticked here, which writes through to the case.
+     * @nullable
+     */
+  lockedHint: string | null;
   taskId: number;
   title: string;
   done: boolean;
@@ -2225,6 +2660,309 @@ export type LenderDetail = Lender & {
   contacts: LenderContact[];
   configuredRequirements: string[];
 };
+
+export type IdentityReadingDocumentType = typeof IdentityReadingDocumentType[keyof typeof IdentityReadingDocumentType] | null;
+
+
+export const IdentityReadingDocumentType = {
+  passport: 'passport',
+  driving_licence: 'driving_licence',
+  national_id: 'national_id',
+  residence_permit: 'residence_permit',
+  other: 'other',
+} as const;
+
+export type IdentityReadingConfidence = typeof IdentityReadingConfidence[keyof typeof IdentityReadingConfidence] | null;
+
+
+export const IdentityReadingConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+/**
+ * Reader "identity" (category identity) - passport, driving licence, ID card.
+ */
+export interface IdentityReading {
+  documentType?: IdentityReadingDocumentType;
+  fullName?: string | null;
+  surname?: string | null;
+  givenNames?: string | null;
+  title?: string | null;
+  dateOfBirth?: string | null;
+  nationality?: string | null;
+  gender?: string | null;
+  documentNumber?: string | null;
+  issueDate?: string | null;
+  expiryDate?: string | null;
+  issuingCountry?: string | null;
+  address?: string | null;
+  city?: string | null;
+  postcode?: string | null;
+  confidence?: IdentityReadingConfidence;
+  notes?: string | null;
+}
+
+export interface StatementEntry {
+  date: string | null;
+  description: string;
+  amount: number;
+}
+
+export type StatementCommitmentKind = typeof StatementCommitmentKind[keyof typeof StatementCommitmentKind];
+
+
+export const StatementCommitmentKind = {
+  loan: 'loan',
+  credit_card: 'credit_card',
+  mortgage: 'mortgage',
+  rent: 'rent',
+  car_finance: 'car_finance',
+  insurance: 'insurance',
+  subscription: 'subscription',
+  childcare: 'childcare',
+  other: 'other',
+} as const;
+
+export interface StatementCommitment {
+  payee: string;
+  amount: number;
+  kind: StatementCommitmentKind;
+}
+
+export type BankStatementsReadingConfidence = typeof BankStatementsReadingConfidence[keyof typeof BankStatementsReadingConfidence] | null;
+
+
+export const BankStatementsReadingConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+/**
+ * Reader "bank_statements" (category bank_statements).
+ */
+export interface BankStatementsReading {
+  bankName?: string | null;
+  accountHolder?: string | null;
+  address?: string | null;
+  city?: string | null;
+  postcode?: string | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  salaryCredits?: StatementEntry[];
+  employerName?: string | null;
+  monthlyNetSalary?: number | null;
+  commitments?: StatementCommitment[];
+  monthlyCommitments?: number | null;
+  mortgagePayments?: StatementCommitment[];
+  monthlyRentPaid?: number | null;
+  rentReceived?: StatementEntry[];
+  monthlyRentReceived?: number | null;
+  closingBalance?: number | null;
+  gambling?: boolean | null;
+  returnedPayments?: number | null;
+  overdrawn?: boolean | null;
+  confidence?: BankStatementsReadingConfidence;
+  notes?: string | null;
+}
+
+export interface ReportedAddress {
+  address: string | null;
+  city: string | null;
+  postcode: string | null;
+  from: string | null;
+  to: string | null;
+  current: boolean;
+}
+
+export type AdverseItemKind = typeof AdverseItemKind[keyof typeof AdverseItemKind];
+
+
+export const AdverseItemKind = {
+  default: 'default',
+  ccj: 'ccj',
+  missed_payment: 'missed_payment',
+  arrangement: 'arrangement',
+  iva: 'iva',
+  bankruptcy: 'bankruptcy',
+  debt_management: 'debt_management',
+  other: 'other',
+} as const;
+
+export interface AdverseItem {
+  kind: AdverseItemKind;
+  creditor: string | null;
+  amount: number | null;
+  date: string | null;
+  status: string | null;
+}
+
+export type CreditAccountType = typeof CreditAccountType[keyof typeof CreditAccountType];
+
+
+export const CreditAccountType = {
+  mortgage: 'mortgage',
+  credit_card: 'credit_card',
+  loan: 'loan',
+  car_finance: 'car_finance',
+  current_account: 'current_account',
+  utility: 'utility',
+  telecoms: 'telecoms',
+  bnpl: 'bnpl',
+  other: 'other',
+} as const;
+
+export interface CreditAccount {
+  creditor: string;
+  type: CreditAccountType;
+  balance: number | null;
+  limit: number | null;
+  monthlyPayment: number | null;
+  status: string | null;
+}
+
+export type CreditReportReadingConfidence = typeof CreditReportReadingConfidence[keyof typeof CreditReportReadingConfidence] | null;
+
+
+export const CreditReportReadingConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+/**
+ * Reader "credit_report" (category credit_report).
+ */
+export interface CreditReportReading {
+  provider?: string | null;
+  reportDate?: string | null;
+  fullName?: string | null;
+  dateOfBirth?: string | null;
+  score?: number | null;
+  scoreMax?: number | null;
+  scoreBand?: string | null;
+  addresses?: ReportedAddress[];
+  electoralRoll?: boolean | null;
+  adverse?: AdverseItem[];
+  defaults?: number | null;
+  ccjs?: number | null;
+  missedPayments?: number | null;
+  iva?: boolean | null;
+  bankruptcy?: boolean | null;
+  accounts?: CreditAccount[];
+  totalUnsecuredDebt?: number | null;
+  monthlyCommitments?: number | null;
+  mortgageAccounts?: CreditAccount[];
+  searches?: number | null;
+  summary?: string | null;
+  confidence?: CreditReportReadingConfidence;
+  notes?: string | null;
+}
+
+export interface PortfolioProperty {
+  address: string;
+  city?: string | null;
+  postcode?: string | null;
+  propertyType?: string | null;
+  tenure?: string | null;
+  bedrooms?: number | null;
+  value?: number | null;
+  purchasePrice?: number | null;
+  purchaseDate?: string | null;
+  currentLender?: string | null;
+  currentBalance?: number | null;
+  currentRatePct?: number | null;
+  currentRateEndDate?: string | null;
+  monthlyPayment?: number | null;
+  rent?: number | null;
+  tenancyType?: string | null;
+  notes?: string | null;
+}
+
+export type PortfolioReadingConfidence = typeof PortfolioReadingConfidence[keyof typeof PortfolioReadingConfidence] | null;
+
+
+export const PortfolioReadingConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+/**
+ * Reader "portfolio" (category portfolio) - the client's schedule of properties; apply creates property records.
+ */
+export interface PortfolioReading {
+  properties?: PortfolioProperty[];
+  totalValue?: number | null;
+  totalBorrowing?: number | null;
+  totalMonthlyRent?: number | null;
+  createdPropertyIds?: number[];
+  skipped?: number;
+  confidence?: PortfolioReadingConfidence;
+  notes?: string | null;
+}
+
+export type ProofOfIncomeReadingDocumentType = typeof ProofOfIncomeReadingDocumentType[keyof typeof ProofOfIncomeReadingDocumentType] | null;
+
+
+export const ProofOfIncomeReadingDocumentType = {
+  payslip: 'payslip',
+  p60: 'p60',
+  sa302: 'sa302',
+  tax_year_overview: 'tax_year_overview',
+  accounts: 'accounts',
+  employment_contract: 'employment_contract',
+  bank_statement: 'bank_statement',
+  other: 'other',
+} as const;
+
+export type ProofOfIncomeReadingEmploymentStatus = typeof ProofOfIncomeReadingEmploymentStatus[keyof typeof ProofOfIncomeReadingEmploymentStatus] | null;
+
+
+export const ProofOfIncomeReadingEmploymentStatus = {
+  employed: 'employed',
+  self_employed: 'self_employed',
+  company_director: 'company_director',
+  contractor: 'contractor',
+  retired: 'retired',
+  not_working: 'not_working',
+  other: 'other',
+} as const;
+
+export type ProofOfIncomeReadingPayFrequency = typeof ProofOfIncomeReadingPayFrequency[keyof typeof ProofOfIncomeReadingPayFrequency] | null;
+
+
+export const ProofOfIncomeReadingPayFrequency = {
+  weekly: 'weekly',
+  fortnightly: 'fortnightly',
+  four_weekly: 'four_weekly',
+  monthly: 'monthly',
+  annual: 'annual',
+} as const;
+
+export type ProofOfIncomeReadingConfidence = typeof ProofOfIncomeReadingConfidence[keyof typeof ProofOfIncomeReadingConfidence] | null;
+
+
+export const ProofOfIncomeReadingConfidence = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+} as const;
+
+export interface ProofOfIncomeReading {
+  documentType?: ProofOfIncomeReadingDocumentType;
+  employerName?: string | null;
+  jobTitle?: string | null;
+  employmentStatus?: ProofOfIncomeReadingEmploymentStatus;
+  payFrequency?: ProofOfIncomeReadingPayFrequency;
+  grossPayForPeriod?: number | null;
+  annualGrossIncome?: number | null;
+  periodEnd?: string | null;
+  confidence?: ProofOfIncomeReadingConfidence;
+  notes?: string | null;
+}
 
 export interface DocumentInput {
   clientId: number;
@@ -2573,6 +3311,7 @@ export interface InboxCase {
   stageIndex: number;
   status: string;
   assignedTo: string;
+  assignedUserId: number | null;
   lenderName: string | null;
   propertyAddress: string;
 }
@@ -2805,6 +3544,42 @@ export interface IntegrationStatus {
   openRouter: IntegrationState;
 }
 
+export type ListAlertsParams = {
+scope?: ListAlertsScope;
+status?: ListAlertsStatus;
+};
+
+export type ListAlertsScope = typeof ListAlertsScope[keyof typeof ListAlertsScope];
+
+
+export const ListAlertsScope = {
+  mine: 'mine',
+  all: 'all',
+} as const;
+
+export type ListAlertsStatus = typeof ListAlertsStatus[keyof typeof ListAlertsStatus];
+
+
+export const ListAlertsStatus = {
+  open: 'open',
+  acknowledged: 'acknowledged',
+  resolved: 'resolved',
+} as const;
+
+export type RemindClientOnboarding200Status = typeof RemindClientOnboarding200Status[keyof typeof RemindClientOnboarding200Status];
+
+
+export const RemindClientOnboarding200Status = {
+  sent: 'sent',
+  disabled: 'disabled',
+  failed: 'failed',
+} as const;
+
+export type RemindClientOnboarding200 = {
+  status: RemindClientOnboarding200Status;
+  missing: string[];
+};
+
 export type ListActivitiesParams = {
 /**
  * @minimum 1
@@ -2887,9 +3662,16 @@ export type ListCasesParams = {
 archived?: boolean;
 };
 
-export type GetPortalTermsOfBusiness200 = {
-  document: TermsOfBusinessDocument | null;
-  acceptance: TermsAcceptance | null;
+export type ViewTermsOfBusinessParams = {
+/**
+ * A specific published version; the current one when omitted.
+ */
+version?: number;
+};
+
+export type DocusignCallbackParams = {
+code?: string;
+state?: string;
 };
 
 export type SearchChatMessagesParams = {

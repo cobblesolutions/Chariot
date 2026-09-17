@@ -15,8 +15,10 @@ import companiesHouseRouter from "./companies-house";
 import placesRouter from "./places";
 import enquiryInboundRouter from "./enquiry-inbound";
 import approvalsPublicRouter from "./approvals-public";
+import docusignWebhookRouter from "./docusign-webhook";
 import caseAdviceRouter from "./case-advice";
 import termsOfBusinessRouter from "./terms-of-business";
+import alertsRouter from "./alerts";
 import searchRouter from "./search";
 import usersRouter from "./users";
 import assistantRouter from "./assistant";
@@ -30,6 +32,8 @@ router.use(authRouter);
 router.use(enquiryInboundRouter);
 // One-click Approve / Confirm links from client emails: token is the credential.
 router.use(approvalsPublicRouter);
+// DocuSign calls this without a session; it verifies the envelope with DocuSign itself.
+router.use(docusignWebhookRouter);
 // portalRouter must be registered before the staff-only routers below.
 // Those routers apply `router.use(requireStaff)` unconditionally within
 // their own router instance — in Express, that runs for ANY request that
@@ -46,6 +50,7 @@ router.use(placesRouter);
 router.use(operationsRouter);
 router.use(caseAdviceRouter);
 router.use(termsOfBusinessRouter);
+router.use(alertsRouter);
 router.use(operationsExtraRouter);
 router.use(tasksRouter);
 router.use(clientsCrmRouter);

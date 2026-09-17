@@ -6,14 +6,14 @@ export type EmailPurpose =
   | "onboarding_complete"
   | "advice_approval"
   | "advice_email"
-  | "details_confirmation"
   | "valuation_reminder"
   | "underwriting_requirements"
   | "lender_offer"
   | "invoice"
   | "task_assignment"
   | "daily_task_digest"
-  | "renewal_reminder";
+  | "renewal_reminder"
+  | "alert";
 
 export interface EmailRequest {
   purpose: EmailPurpose;

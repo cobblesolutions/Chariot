@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
+import { UploadProgress } from "@/components/upload-progress";
+import { documentUploadHeaders, useUpload } from "@/lib/upload";
 import {
   Tooltip,
   TooltipContent,
@@ -74,30 +76,22 @@ export function CaseDocumentsPanel({
     query: { queryKey: getListDocumentsQueryKey(params) },
   });
   const [category, setCategory] = useState("general");
-  const [isUploading, setIsUploading] = useState(false);
+  const upload = useUpload();
+  const isUploading = upload.uploading;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setIsUploading(true);
     try {
-      const res = await fetch("/api/documents/upload", {
-        method: "POST",
-        headers: {
-          "x-filename": file.name,
-          "x-content-type": file.type || "application/octet-stream",
+      await upload.send(file, {
+        url: "/api/documents/upload",
+        headers: documentUploadHeaders(file, {
           "x-document-category": category,
-          "x-client-id": String(caseItem.clientId),
-          "x-case-id": String(caseItem.id),
-          "Content-Type": "application/octet-stream",
-        },
-        body: await file.arrayBuffer(),
+          "x-client-id": caseItem.clientId,
+          "x-case-id": caseItem.id,
+        }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Upload failed");
-      }
       toast.add({ title: "Document uploaded", type: "success" });
       qc.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
     } catch (err) {
@@ -107,7 +101,7 @@ export function CaseDocumentsPanel({
         type: "error",
       });
     } finally {
-      setIsUploading(false);
+      upload.reset();
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -155,6 +149,11 @@ export function CaseDocumentsPanel({
           <Upload /> {isUploading ? "Uploading…" : "Upload"}
         </Button>
       </div>
+      {upload.progress ? (
+        <div className="border-b px-4 py-2">
+          <UploadProgress progress={upload.progress} />
+        </div>
+      ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading ? (

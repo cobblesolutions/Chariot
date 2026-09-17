@@ -58,116 +58,73 @@ const FALLBACK: NotificationKind = {
   tone: "neutral",
 };
 
+/**
+ * Keyed by the API's activity `kind` (services/activity-kinds.ts on the
+ * server). Older rows carry no kind and are classified from the title with
+ * the matchers below — the same rules the server uses.
+ */
+export const KINDS: Record<string, NotificationKind> = {
+  case_completed: { group: "cases", label: "Completed", icon: CircleCheckBig, tone: "emerald" },
+  case_archived: { group: "cases", label: "Archived", icon: Archive, tone: "slate" },
+  case_restored: { group: "cases", label: "Restored", icon: ArchiveRestore, tone: "amber" },
+  case_reference: { group: "cases", label: "Reference", icon: Hash, tone: "blue" },
+  stage: { group: "cases", label: "Stage", icon: Milestone, tone: "violet" },
+  case: { group: "cases", label: "Case", icon: Briefcase, tone: "blue" },
+  stress_test: { group: "underwriting", label: "Stress test", icon: Gauge, tone: "rose" },
+  lender_offer: { group: "underwriting", label: "Lender offer", icon: ShieldCheck, tone: "purple" },
+  underwriting: { group: "underwriting", label: "Underwriting", icon: ClipboardList, tone: "purple" },
+  advice: { group: "cases", label: "Advice", icon: BadgeCheck, tone: "violet" },
+  client_flag: { group: "cases", label: "Client", icon: Bell, tone: "amber" },
+  enquiry_accepted: { group: "clients", label: "Accepted", icon: CircleCheckBig, tone: "emerald" },
+  enquiry_closed: { group: "clients", label: "Closed", icon: Archive, tone: "slate" },
+  enquiry: { group: "clients", label: "Enquiry", icon: Inbox, tone: "teal" },
+  welcome: { group: "clients", label: "Welcome", icon: Users, tone: "teal" },
+  terms: { group: "clients", label: "Terms", icon: FileSignature, tone: "teal" },
+  onboarded: { group: "clients", label: "Onboarded", icon: CircleCheckBig, tone: "emerald" },
+  client: { group: "clients", label: "Client", icon: Users, tone: "teal" },
+  property: { group: "properties", label: "Property", icon: Home, tone: "orange" },
+  document: { group: "documents", label: "Document", icon: FileText, tone: "indigo" },
+  invoice: { group: "billing", label: "Invoice", icon: Receipt, tone: "pink" },
+  renewal: { group: "billing", label: "Renewal", icon: CalendarClock, tone: "amber" },
+  payment: { group: "billing", label: "Payment", icon: Banknote, tone: "emerald" },
+  update: FALLBACK,
+};
+
 /** Ordered: the first matcher that hits wins, so specific titles come before generic ones. */
-const MATCHERS: Array<[RegExp, NotificationKind]> = [
-  [
-    /^case completed/i,
-    {
-      group: "cases",
-      label: "Completed",
-      icon: CircleCheckBig,
-      tone: "emerald",
-    },
-  ],
-  [
-    /^case archived/i,
-    { group: "cases", label: "Archived", icon: Archive, tone: "slate" },
-  ],
-  [
-    /^case restored/i,
-    { group: "cases", label: "Restored", icon: ArchiveRestore, tone: "amber" },
-  ],
-  [
-    /^case number/i,
-    { group: "cases", label: "Reference", icon: Hash, tone: "blue" },
-  ],
-  [
-    /^stage completed/i,
-    { group: "cases", label: "Stage", icon: Milestone, tone: "violet" },
-  ],
-  [/^case/i, { group: "cases", label: "Case", icon: Briefcase, tone: "blue" }],
-  [
-    /^stress test/i,
-    { group: "underwriting", label: "Stress test", icon: Gauge, tone: "rose" },
-  ],
-  [
-    /^lender offer/i,
-    {
-      group: "underwriting",
-      label: "Lender offer",
-      icon: ShieldCheck,
-      tone: "purple",
-    },
-  ],
-  [
-    /^(requirement|underwriting)/i,
-    {
-      group: "underwriting",
-      label: "Underwriting",
-      icon: ClipboardList,
-      tone: "purple",
-    },
-  ],
-  [
-    /^(service level confirmed|advice (sent|re-sent)|client approved advice|details (sent|re-sent) for confirmation|client confirmed details|details prefilled)/i,
-    { group: "cases", label: "Advice", icon: BadgeCheck, tone: "violet" },
-  ],
-  [
-    /^(client asked to discuss|client flagged|advanced without client confirmation)/i,
-    { group: "cases", label: "Client", icon: Bell, tone: "amber" },
-  ],
-  [
-    /^enquiry (accepted|reopened)/i,
-    { group: "clients", label: "Accepted", icon: CircleCheckBig, tone: "emerald" },
-  ],
-  [
-    /^(enquiry declined|client lost)/i,
-    { group: "clients", label: "Closed", icon: Archive, tone: "slate" },
-  ],
-  [
-    /^(repeat )?enquiry/i,
-    { group: "clients", label: "Enquiry", icon: Inbox, tone: "teal" },
-  ],
-  [
-    /^welcome email/i,
-    { group: "clients", label: "Welcome", icon: Users, tone: "teal" },
-  ],
-  [
-    /^terms of business/i,
-    { group: "clients", label: "Terms", icon: FileSignature, tone: "teal" },
-  ],
-  [
-    /^onboarding complete/i,
-    { group: "clients", label: "Onboarded", icon: CircleCheckBig, tone: "emerald" },
-  ],
-  [
-    /^client/i,
-    { group: "clients", label: "Client", icon: Users, tone: "teal" },
-  ],
-  [
-    /^propert/i,
-    { group: "properties", label: "Property", icon: Home, tone: "orange" },
-  ],
-  [
-    /^document/i,
-    { group: "documents", label: "Document", icon: FileText, tone: "indigo" },
-  ],
-  [
-    /^invoice/i,
-    { group: "billing", label: "Invoice", icon: Receipt, tone: "pink" },
-  ],
-  [
-    /^renewal/i,
-    { group: "billing", label: "Renewal", icon: CalendarClock, tone: "amber" },
-  ],
-  [
-    /^(payment|application fee)/i,
-    { group: "billing", label: "Payment", icon: Banknote, tone: "emerald" },
-  ],
+const MATCHERS: Array<[RegExp, keyof typeof KINDS]> = [
+  [/^case completed/i, "case_completed"],
+  [/^case archived/i, "case_archived"],
+  [/^case restored/i, "case_restored"],
+  [/^case number/i, "case_reference"],
+  [/^(stage completed|pipeline reordered)/i, "stage"],
+  [/^case/i, "case"],
+  [/^stress test/i, "stress_test"],
+  [/^lender offer/i, "lender_offer"],
+  [/^(requirement|underwriting)/i, "underwriting"],
+  [/^(service level confirmed|advice (sent|re-sent)|client approved advice|details (sent|re-sent) for confirmation|client confirmed details|details prefilled|client instruction)/i, "advice"],
+  [/^(client asked to discuss|client flagged|advanced without client confirmation)/i, "client_flag"],
+  [/^enquiry (accepted|reopened)/i, "enquiry_accepted"],
+  [/^(enquiry declined|client lost)/i, "enquiry_closed"],
+  [/^(repeat )?enquiry/i, "enquiry"],
+  [/^welcome email/i, "welcome"],
+  [/^terms of business/i, "terms"],
+  [/^onboarding complete/i, "onboarded"],
+  [/^client/i, "client"],
+  [/^propert/i, "property"],
+  [/^document/i, "document"],
+  [/^invoice/i, "invoice"],
+  [/^renewal/i, "renewal"],
+  [/^(payment|application fee)/i, "payment"],
 ];
 
 export function classifyNotification(title: string): NotificationKind {
-  return MATCHERS.find(([re]) => re.test(title))?.[1] ?? FALLBACK;
+  const key = MATCHERS.find(([re]) => re.test(title))?.[1];
+  return (key && KINDS[key]) || FALLBACK;
+}
+
+/** The kind the API stored, else what the title reads as. */
+export function notificationKind(act: { title: string; kind?: string | null }): NotificationKind {
+  return (act.kind && KINDS[act.kind]) || classifyNotification(act.title);
 }
 
 export const NOTIFICATION_GROUPS: Array<{
@@ -208,13 +165,13 @@ const ENTITY_HREF: Record<
  * knows it, else the case, else the section it belongs to.
  */
 export function notificationHref(
-  act: Pick<ActivityListItem, "title" | "caseId" | "entityType" | "entityId">,
+  act: Pick<ActivityListItem, "title" | "caseId" | "entityType" | "entityId"> & { kind?: string | null },
 ): string {
   if (act.entityType && act.entityId) {
     return ENTITY_HREF[act.entityType](act.entityId);
   }
   if (act.caseId) return `/cases/${act.caseId}`;
-  const kind = classifyNotification(act.title);
+  const kind = notificationKind(act);
   if (kind.label === "Renewal") return "/renewals";
   return GROUP_HREF[kind.group];
 }

@@ -14,6 +14,7 @@ export interface InboxCase {
   stageIndex: number;
   status: string;
   assignedTo: string;
+  assignedUserId: number | null;
   lenderName: string | null;
   propertyAddress: string;
 }

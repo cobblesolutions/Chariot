@@ -24,7 +24,7 @@ contract in `types.ts`.
      endpoint: "/api/assistant",
      storageKey: `assistant.${user.id}`,
      title: "Assistant", intro: "…", starters: ["…"],
-     uploadAttachment: (file) => …,            // → { id, name, contentType, byteSize }
+     uploadAttachment: (file, onProgress) => …, // → { id, name, contentType, byteSize }; call onProgress(0–100)
      attachmentUrl: (id) => `/api/files/${id}`,
      suggest: (query, signal) => …,            // → SuggestionHit[] from your search
      typeMeta: (type) => ({ label, icon, tile }),

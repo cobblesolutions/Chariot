@@ -325,7 +325,7 @@ export default function MessagesPage() {
           (thread) =>
             thread.key === activeKey ||
             (matchesView(thread, prefs.view) &&
-              matchesFocus(thread, prefs.focus, user?.displayName)),
+              matchesFocus(thread, prefs.focus, user?.id)),
         ),
         search,
       ),

@@ -12,6 +12,7 @@ import { isStaffRole } from "../auth/roles";
 import { renderChariotEmail } from "../integrations/email-template";
 import { sendChariotEmail } from "../integrations/resend";
 import { logger } from "../lib/logger";
+import { checklistStepLock } from "./task-checklists";
 
 export const TASK_STATUSES = ["todo", "in_progress", "done"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
@@ -147,6 +148,8 @@ export const checklistItemView = (row: typeof taskChecklistItemsTable.$inferSele
   done: row.done,
   position: row.position,
   sourceKey: row.sourceKey ?? null,
+  // Synced steps that can't be ticked by hand carry where to fill them in.
+  lockedHint: checklistStepLock(row.sourceKey, row.title),
 });
 
 export const commentView = (row: typeof taskCommentsTable.$inferSelect) => ({

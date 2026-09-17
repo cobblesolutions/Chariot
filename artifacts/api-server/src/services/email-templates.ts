@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { appUsersTable, db, emailTemplatesTable } from "@workspace/db";
 
-export const EMAIL_TEMPLATE_KEYS = ["client_welcome", "advice_email", "details_confirmation"] as const;
+export const EMAIL_TEMPLATE_KEYS = ["client_welcome", "advice_email"] as const;
 export type EmailTemplateKey = (typeof EMAIL_TEMPLATE_KEYS)[number];
 
 export interface EmailTemplateText {
@@ -34,11 +34,6 @@ export const TEMPLATE_PLACEHOLDERS: Record<EmailTemplateKey, Array<{ token: stri
     { token: "monthlyPayment", description: "Monthly payment" },
     { token: "summary", description: "The adviser's written recommendation" },
   ],
-  details_confirmation: [
-    ...BASE_PLACEHOLDERS,
-    { token: "reference", description: "The case reference" },
-    { token: "property", description: "The property address" },
-  ],
 };
 
 /** Built-in text, used until someone saves their own. */
@@ -49,7 +44,7 @@ export const DEFAULT_TEMPLATES: Record<EmailTemplateKey, EmailTemplateText> = {
     body: [
       "Dear {{firstName}},",
       "Thank you for your enquiry. A client portal has been created for you, giving you secure access to your case progress, documents and invoices. Please use the button below to set your password and activate your account.",
-      "Once you are in, please read and accept our Terms of Business, and upload the documents listed under Required information.",
+      "Once you are in, please upload the documents listed under Required information. We will send you our Terms of Business to sign electronically once your case is set up.",
       "For security, the link expires in 24 hours. If you have any questions, just reply to your case handler.",
     ].join("\n\n"),
   },
@@ -60,15 +55,6 @@ export const DEFAULT_TEMPLATES: Record<EmailTemplateKey, EmailTemplateText> = {
       "Dear {{firstName}},",
       "Having reviewed your circumstances, we recommend the following mortgage. The details are set out below.",
       "If you are happy to proceed, please click Approve. If you would like to talk anything through first, click Further discussion and we will come back to you.",
-    ].join("\n\n"),
-  },
-  details_confirmation: {
-    subject: "Please confirm your details — {{reference}}",
-    heading: "Please check your details",
-    body: [
-      "Dear {{firstName}},",
-      "Before we submit your application for {{property}} to the lender, please check the details below are correct.",
-      "If everything is right, click Confirm. If anything is wrong, just reply to this email and we will put it right before submitting.",
     ].join("\n\n"),
   },
 };
@@ -84,10 +70,6 @@ export const SAMPLE_VARS: Record<EmailTemplateKey, TemplateVars> = {
     term: "25 years",
     monthlyPayment: "£1,214",
     summary: "A five-year fix gives you certainty on payments while rates settle, and Aldgate's product has no early-repayment penalty after year three.",
-  },
-  details_confirmation: {
-    reference: "CH-2026-A1B2C3",
-    property: "14 Elm Grove, Leeds LS6 2AB",
   },
 };
 

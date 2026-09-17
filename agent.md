@@ -38,6 +38,14 @@ Chariot Financial Solutions is a mortgage case-management platform with staff an
 - Writes are never executed on the model's say-so. The server emits a `proposal` event (field-level diff) and pauses the turn; the browser sends the decision back as `approvals[toolCallId]` (and `answers[toolCallId]` for questions) on the next request. Keep that contract when adding tools.
 - The browser owns the transcript (localStorage per user) and sends it every turn; the server is stateless.
 
+## Document reading system
+
+- `artifacts/api-server/src/services/document-reading/` turns uploaded files into structured data. `index.ts` holds the reader registry (`READERS`), `readDocument`/`queueDocumentReading` (called after every staff and portal upload) and `readingsForDocuments` (attached as `Document.reading` on `ClientDetail`); `checks.ts` compares readings with each other and the record (`ClientDetail.documentChecks`); `xlsx.ts` turns a spreadsheet's first sheet into CSV text.
+- Readers live in `readers/` and implement `DocumentReader` from `types.ts` (category list, model prompt, `normalise`, text `heuristic`, `merge`, `apply`); shared coercion/date/address/apply helpers are in `readers/shared.ts`. Current readers: `identity` (passport MRZ / driving licence → title, DOB, nationality, address), `bank_statements` (address, employer, net salary, commitments, mortgage/rent DDs, conduct flags), `proof_of_income` (annual income, employer, job title, status), `credit_report` (credit-history notes, commitments, previous address, DOB), `portfolio` (creates property records for the client — category `portfolio`, uploaded in the Add page's property column).
+- Results are stored in `document_readings` (one row per document: status, source `ai`/`heuristic`, `data`, `appliedFields`). `apply` fills only empty fields (`fillEmptyClientFields`); the Add page's "Use these values" button is how staff overwrite typed values. `POST /documents/{id}/read` re-runs a reader.
+- Provenance: `clients.document_filled_fields` lists the fields whose current value a reader wrote (`fillEmptyClientFields` appends in SQL; the client PATCH removes a field when staff save a different value). The Add page shows those inputs in yellow (`DOCUMENT_FILLED_CLASS` in `src/lib/document-filled.ts`) and badges portfolio-created properties "From portfolio". The client form's autosave sends only fields that differ from its seed/last save, so a reader's server-side fill is never overwritten by a stale draft.
+- The model call (`model.ts`) needs only `OPENROUTER_API_KEY` (like the assistant); without it PDFs/Word/text/spreadsheets go through the heuristics, images are reported as unsupported. Add a reader by writing `readers/<name>.ts`, appending it to `READERS`, adding its data schema to `openapi.yaml`, a summary case in `chariot-platform/src/components/document-reading-line.tsx` and the category to `READABLE_CATEGORIES` in `add/client-column.tsx`.
+
 ## Commands
 
 ```bash

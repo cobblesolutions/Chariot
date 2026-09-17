@@ -30,7 +30,12 @@ app.use(
   }),
 );
 app.use(cors({ credentials: true, origin: true }));
-app.use(express.json());
+// Webhooks (DocuSign) check an HMAC over the exact bytes, so keep them alongside the parsed body.
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+  },
+}));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 

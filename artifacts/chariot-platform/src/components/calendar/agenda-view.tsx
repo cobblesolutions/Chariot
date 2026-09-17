@@ -14,6 +14,8 @@ import {
 import { cn } from "@/lib/utils";
 import {
   HOLIDAY_TEXT_CLASS,
+  SHABBAT_TEXT_CLASS,
+  isShabbat,
   dateKey,
   isToday,
   relativeDayLabel,
@@ -81,6 +83,7 @@ export function AgendaView({
           const info = hebrew?.get(dateKey(day));
           const holiday = info?.holidays[0];
           const today = isToday(day);
+          const shabbat = !holiday && isShabbat(day);
           return (
             <section
               key={dateKey(day)}
@@ -90,7 +93,11 @@ export function AgendaView({
                 <span
                   className={cn(
                     "text-sm font-semibold",
-                    today ? "text-primary" : "text-foreground",
+                    today
+                      ? "text-primary"
+                      : shabbat
+                        ? SHABBAT_TEXT_CLASS
+                        : "text-foreground",
                   )}
                 >
                   {relativeDayLabel(day)}

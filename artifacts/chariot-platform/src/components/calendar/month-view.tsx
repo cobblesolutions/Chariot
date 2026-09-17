@@ -12,6 +12,9 @@ import {
   GRID_HEIGHT_CLASS,
   HOLIDAY_TEXT_CLASS,
   HOLIDAY_WASH_CLASS,
+  SHABBAT_TEXT_CLASS,
+  SHABBAT_WASH_CLASS,
+  isShabbat,
   dateKey,
   eventTypeMeta,
   eventsOn,
@@ -77,11 +80,13 @@ export function MonthView({
           const overflow = dayEvents.length - MAX_CHIPS;
           const info = hebrew?.get(key);
           const holiday = info?.holidays[0];
+          const shabbat = !holiday && isShabbat(day);
 
           return (
             <div
               key={key}
               data-testid="month-cell"
+              data-shabbat={shabbat || undefined}
               data-today={today || undefined}
               data-selected={selected || undefined}
               onClick={() => onSelectDate(day)}
@@ -91,8 +96,9 @@ export function MonthView({
                 index % 7 === 6 && "border-r-0",
                 index >= days.length - 7 && "border-b-0",
                 !inMonth && "text-muted-foreground",
-                !inMonth && !holiday && "bg-muted/30",
+                !inMonth && !holiday && !shabbat && "bg-muted/30",
                 holiday && !selected && HOLIDAY_WASH_CLASS,
+                shabbat && !selected && SHABBAT_WASH_CLASS,
                 selected && "bg-primary/5",
               )}
             >
@@ -102,6 +108,10 @@ export function MonthView({
                     "inline-flex size-6 shrink-0 items-center justify-center rounded-full text-sm tabular-nums",
                     today && "bg-primary font-semibold text-primary-foreground",
                     !today && selected && "font-semibold text-primary",
+                    !today &&
+                      !selected &&
+                      shabbat &&
+                      cn("font-medium", SHABBAT_TEXT_CLASS),
                   )}
                 >
                   {day.getDate()}

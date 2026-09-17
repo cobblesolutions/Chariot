@@ -11,5 +11,4 @@ export type ClientApprovalKind = typeof ClientApprovalKind[keyof typeof ClientAp
 
 export const ClientApprovalKind = {
   advice: 'advice',
-  submission_details: 'submission_details',
 } as const;

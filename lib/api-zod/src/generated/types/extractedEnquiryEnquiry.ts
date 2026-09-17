@@ -5,10 +5,14 @@
  * Chariot Financial Solutions case management API
  * OpenAPI spec version: 1.0.0
  */
+import type { ExtractedEnquiryEnquirySource } from './extractedEnquiryEnquirySource';
 import type { ExtractedEnquiryEnquiryType } from './extractedEnquiryEnquiryType';
 
 export type ExtractedEnquiryEnquiry = {
   type?: ExtractedEnquiryEnquiryType;
   timescale?: string | null;
   summary?: string | null;
+  source?: ExtractedEnquiryEnquirySource;
+  introducerName?: string | null;
+  introducerContact?: string | null;
 };

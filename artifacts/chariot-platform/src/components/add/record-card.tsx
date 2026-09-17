@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
-import { Check, Plus } from "lucide-react";
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** Plain list of selectable records, separated by hairlines. */
+/** Rows of selectable records under a picker card's header. */
 export function RecordCardList({ children }: { children: ReactNode }) {
-  return <div className="divide-y border-y">{children}</div>;
+  return <div className="divide-y border-t">{children}</div>;
 }
 
 /** One existing record (a property or a case). Click to load it into the form. */
@@ -33,7 +33,7 @@ export function RecordCard({
       aria-pressed={selected}
       onClick={onSelect}
       className={cn(
-        "flex w-full items-start gap-3 px-2 py-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:bg-muted/50",
+        "flex w-full items-start gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:bg-muted/50",
         selected && "bg-muted/60",
       )}
     >
@@ -63,40 +63,6 @@ export function RecordCard({
           selected ? "opacity-100" : "opacity-0",
         )}
       />
-    </button>
-  );
-}
-
-/** Quiet "start a new one" row at the end of the list. */
-export function AddNewCard({
-  label,
-  onClick,
-  disabled,
-  hint,
-  selected,
-  icon: Icon = Plus,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  hint?: string;
-  selected?: boolean;
-  icon?: typeof Plus;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={selected}
-      className={cn(
-        "flex w-full items-center gap-2 px-2 py-3 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60",
-        selected && "bg-muted/60 text-foreground",
-      )}
-    >
-      <Icon className="size-4 shrink-0" />
-      <span className="flex-1">{label}</span>
-      {disabled && hint ? <span className="text-xs">{hint}</span> : null}
     </button>
   );
 }

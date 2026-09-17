@@ -6,6 +6,7 @@ import { requireStaff } from "../auth/session";
 import { documentStorage } from "../services/document-storage";
 import { syncClientOnboardingDocument } from "../services/client-onboarding";
 import { syncCaseChecklists, syncClientChecklists } from "../services/task-checklists";
+import { queueDocumentReading, readDocument } from "../services/document-reading";
 
 const router: IRouter = Router();
 const allowed = new Set(["application/pdf", "image/jpeg", "image/png", "image/tiff", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain", "text/csv", "audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/webm", "audio/ogg", "audio/aac", "audio/x-m4a"]);
@@ -49,6 +50,8 @@ async function upload(req: any, res: any, clientOnly = false) {
     await syncClientOnboardingDocument(clientId, category, res.locals.authUser.id);
     await syncClientChecklists(clientId);
     if (caseId) await syncCaseChecklists(caseId);
+    // The document reading system extracts what it can (e.g. income from a payslip) in the background.
+    queueDocumentReading(row!.id, res.locals.authUser.displayName);
     res.status(201).json(api.UploadDocumentResponse.parse(view(row!)));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Document upload failed" });
@@ -75,6 +78,15 @@ router.get("/documents", async (req, res) => {
 });
 router.post("/documents", async (req, res): Promise<void> => { const b = api.CreateDocumentMetadataBody.safeParse(req.body); if (!b.success) { res.status(400).json({ error: b.error.message }); return; } if (b.data.caseId) { const [caseRow] = await db.select({ clientId: casesTable.clientId }).from(casesTable).where(eq(casesTable.id, b.data.caseId)); if (caseRow?.clientId !== b.data.clientId) { res.status(409).json({ error: "Selected case does not belong to the selected client" }); return; } } const [row] = await db.insert(documentsTable).values({ ...b.data, caseId: b.data.caseId ?? null, status: b.data.status ?? "required" }).returning(); res.status(201).json(api.CreateDocumentMetadataResponse.parse(view(row!))); });
 router.post("/documents/upload", express.raw({ type: "*/*", limit: "50mb" }), (req, res) => upload(req, res));
+router.post("/documents/:id/read", async (req, res): Promise<void> => {
+  const p = api.ReadDocumentParams.safeParse(req.params);
+  if (!p.success) { res.status(400).json({ error: "Invalid document id" }); return; }
+  const [row] = await db.select().from(documentsTable).where(eq(documentsTable.id, p.data.id));
+  if (!row) { res.status(404).json({ error: "Document not found" }); return; }
+  const reading = await readDocument(row.id, res.locals.authUser.displayName);
+  if (!reading) { res.status(409).json({ error: "No reader handles this document category" }); return; }
+  res.json(api.ReadDocumentResponse.parse({ ...view(row), reading }));
+});
 router.patch("/documents/:id", async (req, res): Promise<void> => { const p = api.UpdateDocumentParams.safeParse(req.params), b = api.UpdateDocumentBody.safeParse(req.body); if (!p.success || !b.success) { res.status(400).json({ error: "Invalid document update" }); return; } const [row] = await db.update(documentsTable).set(b.data).where(eq(documentsTable.id, p.data.id)).returning(); if (!row) { res.status(404).json({ error: "Document not found" }); return; } res.json(api.UpdateDocumentResponse.parse(view(row))); });
  async function serveDocument(req: any, res: any, disposition: "inline" | "attachment") { const id = Number(req.params.id); const [row] = await db.select().from(documentsTable).where(eq(documentsTable.id, id)); if (!row || !row.objectPath) { res.status(404).json({ error: "Document not found" }); return; } try { const bytes = await documentStorage.get(row.objectPath); res.setHeader("Content-Type", row.contentType ?? "application/octet-stream"); res.setHeader("Content-Disposition", `${disposition}; filename="${safeName(row.name).replace(/"/g, "")}"`); res.send(bytes); } catch { res.status(404).json({ error: "Document object not found" }); } }
  router.get("/documents/:id/view", (req, res) => serveDocument(req, res, "inline"));

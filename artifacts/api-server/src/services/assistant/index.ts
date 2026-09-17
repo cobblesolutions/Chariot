@@ -6,14 +6,14 @@ import { createAssistantRouter, createModelClient } from "./core";
 import { systemPrompt } from "./prompt";
 import type { ChariotContext } from "./records";
 import { chariotTools } from "./tools";
+import { DEFAULT_MODEL, DEFAULT_VISION_MODEL } from "./models";
 
 /**
  * Chariot's wiring of the assistant core: OpenRouter + DeepSeek, staff-only,
  * tools over the loopback REST API. `POST /assistant/chat` and
  * `GET /assistant/status` come from `createAssistantRouter`.
  */
-export const DEFAULT_MODEL = "deepseek/deepseek-v4-pro-0813";
-export const DEFAULT_VISION_MODEL = "deepseek/deepseek-v4.1-flash";
+export { DEFAULT_MODEL, DEFAULT_VISION_MODEL } from "./models";
 
 const client = createModelClient({
   apiKey: process.env.OPENROUTER_API_KEY,

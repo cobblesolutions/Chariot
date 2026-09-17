@@ -5,14 +5,10 @@
  * Chariot Financial Solutions case management API
  * OpenAPI spec version: 1.0.0
  */
-import type { ClientApproval } from './clientApproval';
 import type { SubmissionDetailsStatePreviousCase } from './submissionDetailsStatePreviousCase';
 import type { SubmissionPack } from './submissionPack';
 
 export interface SubmissionDetailsState {
   pack: SubmissionPack;
-  approvals: ClientApproval[];
-  latest: ClientApproval | null;
-  confirmed: boolean;
   previousCase: SubmissionDetailsStatePreviousCase;
 }

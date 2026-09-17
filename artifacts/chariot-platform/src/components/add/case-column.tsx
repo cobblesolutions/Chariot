@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { toast } from "@/components/ui/toast";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Plus } from "lucide-react";
 import {
   useCreateCase,
   useCreateCaseSubmission,
@@ -29,6 +29,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { RequiredDot } from "@/components/required-dot";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,16 +45,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AssigneePicker } from "@/components/assignee-picker";
-import { ColumnHeader } from "./column-header";
 import { SubmissionsPanel, submissionProgress } from "./submissions-panel";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { FormSection, FormSections, countFilled } from "./form-section";
-import { AddNewCard, RecordCard, RecordCardList } from "./record-card";
+import { RecordCard, RecordCardList } from "./record-card";
 import { AssigneeSelect } from "./assignee-select";
 import { OptionSelect } from "./option-select";
 import { AdviceStagePanel } from "@/components/case/advice-stage-panel";
 import { SubmissionDetailsPanel } from "@/components/case/submission-details-panel";
+import { TermsOfBusinessPanel } from "@/components/case/terms-of-business-panel";
 import {
   apiErrorMessage,
 } from "./utils";
@@ -93,7 +94,6 @@ export function CaseColumn({
   caseDetail,
   isCaseLoading,
   enquiry,
-  needs,
 }: {
   clientId: number;
   clientName: string;
@@ -107,21 +107,39 @@ export function CaseColumn({
   isCaseLoading: boolean;
   /** What the client asked for at step 1, shown while the case is being set up. */
   enquiry?: { summary: string | null; timescale: string | null } | null;
-  needs?: string[];
 }) {
   const openCases = cases.filter((item) => item.status === "active");
   const [creating, setCreating] = useState(false);
   const showNewForm = !caseId && (creating || openCases.length === 0);
-  const status = caseId ? "saved" : showNewForm ? "draft" : "empty";
 
   return (
-    <section className="space-y-6">
-      <ColumnHeader
-        title="Case"
-        status={status}
-        needs={needs}
-      />
+    <section className="space-y-4">
       <div className="space-y-4">
+        {/* Which case the form below edits, and the way to start one. */}
+        <div className="rounded-lg border bg-card">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+            <h3 className="text-sm font-semibold">Cases</h3>
+            <div className="flex items-center gap-2">
+              {!propertyId ? (
+                <span className="text-xs text-muted-foreground">Select a property first</span>
+              ) : showNewForm ? (
+                <span className="text-xs text-muted-foreground">Unsaved</span>
+              ) : null}
+              <Button
+                type="button"
+                variant={showNewForm && propertyId ? "secondary" : "ghost"}
+                size="sm"
+                disabled={!propertyId}
+                onClick={() => {
+                  onCaseChange(null);
+                  setCreating(true);
+                }}
+              >
+                <Plus /> New case
+              </Button>
+            </div>
+          </div>
+          {openCases.length > 0 ? (
         <RecordCardList>
           {openCases.map((item) => (
             <RecordCard
@@ -142,17 +160,9 @@ export function CaseColumn({
               meta={`Loan ${money(item.loanAmount)} · ${item.assignedTo}`}
             />
           ))}
-          <AddNewCard
-            label="New case"
-            disabled={!propertyId}
-            hint="Select a property first"
-            selected={showNewForm && !!propertyId}
-            onClick={() => {
-              onCaseChange(null);
-              setCreating(true);
-            }}
-          />
         </RecordCardList>
+          ) : null}
+        </div>
 
         {caseId ? (
           caseDetail && caseDetail.id === caseId ? (
@@ -504,9 +514,10 @@ function draftFromCase(
   item: CaseDetail,
   staff: Array<{ id: number; displayName: string }> | undefined,
 ): CaseDraft {
-  const matchingStaff = staff?.find(
-    (member) => member.displayName === item.assignedTo,
-  );
+  // The user id is the durable link; the display-name match only covers cases from before it existed.
+  const matchingStaff = item.assignedUserId != null
+    ? staff?.find((member) => member.id === item.assignedUserId)
+    : staff?.find((member) => member.displayName === item.assignedTo);
   return {
     serviceType: item.serviceType,
     procFeePct: String(item.procFeePct),
@@ -643,14 +654,14 @@ function CaseDetails({
         </div>
       </div>
 
-      <FormSections defaultOpen={caseDetail.stageIndex === 0 ? "advice" : caseDetail.stageIndex === 1 ? "details" : undefined}>
+      <FormSections>
         {caseDetail.stageIndex === 0 ? (
-          <FormSection id="advice" title="Advice & approval" hint="Confirm the service level, write the recommendation and send it to the client.">
+          <FormSection id="advice" wide title="Advice & approval" hint="Confirm the service level, write the recommendation and send it to the client.">
             <AdviceStagePanel caseId={caseDetail.id} serviceType={caseDetail.serviceType} compact />
           </FormSection>
         ) : null}
         {caseDetail.stageIndex === 1 ? (
-          <FormSection id="details" title="Submission details" hint="What goes to the lender. Copy from the last case, then send to the client to confirm.">
+          <FormSection id="details" wide title="Submission details" hint="What goes to the lender, gathered from the forms on this page. Copy empty fields from the last case.">
             <SubmissionDetailsPanel caseId={caseDetail.id} clientId={caseDetail.clientId} compact />
           </FormSection>
         ) : null}
@@ -665,7 +676,9 @@ function CaseDetails({
           total={3}
         >
           <Field>
-            <FieldLabel>Service Level</FieldLabel>
+            <FieldLabel>
+              Service Level <RequiredDot />
+            </FieldLabel>
             <OptionSelect
               value={draft.serviceType}
               onChange={setField("serviceType")}
@@ -697,7 +710,9 @@ function CaseDetails({
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="add-case-broker">Our fee</FieldLabel>
+              <FieldLabel htmlFor="add-case-broker">
+                Our fee <RequiredDot />
+              </FieldLabel>
               <div className="flex gap-2">
                 <div className="w-[120px] shrink-0">
                   <OptionSelect
@@ -737,6 +752,7 @@ function CaseDetails({
 
         <FormSection
           id="submission"
+          wide
           title="Lender submissions"
           filled={caseDetail.submissions.reduce(
             (sum, item) => sum + submissionProgress(item).done,
@@ -770,7 +786,9 @@ function CaseDetails({
             />
           </Field>
           <Field>
-            <FieldLabel>Assigned to</FieldLabel>
+            <FieldLabel>
+              Assigned to <RequiredDot />
+            </FieldLabel>
             <AssigneePicker
               value={draft.assignedUserId}
               onValueChange={setField("assignedUserId")}
@@ -790,6 +808,17 @@ function CaseDetails({
               Reassigning changes the case owner; it does not create a new task.
             </p>
           </Field>
+        </FormSection>
+
+        {/* Last on purpose: the terms are generated from everything above and must be signed before the case proceeds. */}
+        <FormSection
+          id="terms"
+          title="Terms of Business"
+          filled={caseDetail.termsOfBusiness ? 1 : 0}
+          total={1}
+          hint="Fill in the details, preview the document and send it to the client to sign. The signed copy is filed here automatically."
+        >
+          <TermsOfBusinessPanel caseId={caseDetail.id} clientId={caseDetail.clientId} compact />
         </FormSection>
       </FormSections>
 

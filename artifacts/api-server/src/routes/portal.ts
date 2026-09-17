@@ -7,8 +7,8 @@ import {
   RespondPortalApprovalBody,
   RespondPortalApprovalParams,
   RespondPortalApprovalResponse,
-  GetPortalTermsOfBusinessResponse,
-  AcceptPortalTermsOfBusinessResponse,
+  GetPortalCaseTermsOfBusinessParams,
+  GetPortalCaseTermsOfBusinessResponse,
   UpdatePortalPropertyBody,
   UpdatePortalPropertyParams,
   UpdatePortalPropertyResponse,
@@ -27,11 +27,12 @@ import {
 } from "@workspace/db";
 import { requireAuthenticated } from "../auth/session";
 import { documentStorage } from "../services/document-storage";
+import { queueDocumentReading } from "../services/document-reading";
 import { getClientOnboarding, syncClientOnboardingDocument, updateClientOnboardingItem } from "../services/client-onboarding";
 import { STAGES } from "../services/stages";
 import { approvalForCase, approvalView, pendingApprovalsFor, respondToApproval } from "../services/case-advice";
 import { syncCaseChecklists } from "../services/task-checklists";
-import { acceptTerms, getTermsDocument, readTermsDocument, termsAcceptanceView, termsDocumentView } from "../services/terms-of-business";
+import { latestAgreement, portalTermsView, readAgreementDocument } from "../services/terms-agreements";
 
 const router: IRouter = Router();
 router.use(requireAuthenticated);
@@ -84,7 +85,7 @@ router.get("/portal/cases", async (_req, res): Promise<void> => {
       propertyAddress: row.propertyAddress,
       matterType: row.matterType,
       serviceType: row.serviceType,
-      stage: STAGES[stageIndex] ?? row.stage,
+      stage: STAGES[stageIndex]!,
       stageIndex,
       stages: [...STAGES],
       status: row.status,
@@ -96,6 +97,7 @@ router.get("/portal/cases", async (_req, res): Promise<void> => {
       valuationDate: row.valuationDate ? row.valuationDate.toISOString() : null,
       expectedCompletionDate: row.expectedCompletionDate ? row.expectedCompletionDate.toISOString() : null,
       pendingApprovals: pending.get(row.id) ?? [],
+      termsOfBusiness: await portalTermsView(row.id),
     };
   }));
   res.json(ListPortalCasesResponse.parse(views));
@@ -139,47 +141,45 @@ router.post("/portal/approvals/:id/respond", async (req, res): Promise<void> => 
   res.json(RespondPortalApprovalResponse.parse(await approvalView(result.row)));
 });
 
-router.get("/portal/terms-of-business", async (_req, res): Promise<void> => {
+/** A case the signed-in client owns, or null (403 already sent). */
+async function portalCase(req: express.Request, res: express.Response) {
   const user = res.locals.authUser;
   const clientId = user.role === "client" ? await portalClientId(user.id) : undefined;
   if (!clientId) {
     res.status(403).json({ error: "Client portal access required" });
-    return;
+    return null;
   }
-  const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
-  res.json(GetPortalTermsOfBusinessResponse.parse({
-    document: termsDocumentView(await getTermsDocument()),
-    acceptance: client ? await termsAcceptanceView(client) : null,
-  }));
+  const params = GetPortalCaseTermsOfBusinessParams.safeParse(req.params);
+  const [caseRow] = params.success
+    ? await db.select().from(casesTable).where(and(eq(casesTable.id, params.data.id), eq(casesTable.clientId, clientId)))
+    : [];
+  if (!caseRow) {
+    res.status(404).json({ error: "Case not found" });
+    return null;
+  }
+  return caseRow;
+}
+
+/** Where the case's Terms of Business are: waiting for the client's signature (DocuSign emails them) or signed. */
+router.get("/portal/cases/:id/terms-of-business", async (req, res): Promise<void> => {
+  const caseRow = await portalCase(req, res);
+  if (!caseRow) return;
+  res.json(GetPortalCaseTermsOfBusinessResponse.parse(await portalTermsView(caseRow.id)));
 });
 
-router.get("/portal/terms-of-business/document", async (_req, res): Promise<void> => {
-  const user = res.locals.authUser;
-  const clientId = user.role === "client" ? await portalClientId(user.id) : undefined;
-  const found = clientId ? await readTermsDocument() : null;
+/** The client reads their own copy — the signed one once it exists, otherwise the document as sent. */
+router.get("/portal/cases/:id/terms-of-business/document", async (req, res): Promise<void> => {
+  const caseRow = await portalCase(req, res);
+  if (!caseRow) return;
+  const latest = await latestAgreement(caseRow.id);
+  const found = latest ? await readAgreementDocument(latest, true) : null;
   if (!found) {
-    res.status(404).json({ error: "No Terms of Business document is published" });
+    res.status(404).json({ error: "The Terms of Business have not been sent yet" });
     return;
   }
-  res.setHeader("Content-Type", found.doc.contentType);
-  res.setHeader("Content-Disposition", `inline; filename="${found.doc.filename.replace(/[\r\n\\"]/g, "_")}"`);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `inline; filename="${found.filename.replace(/[\r\n\\"]/g, "_")}"`);
   res.send(found.bytes);
-});
-
-/** The client accepts the current Terms of Business — part of onboarding. */
-router.post("/portal/terms-of-business/accept", async (_req, res): Promise<void> => {
-  const user = res.locals.authUser;
-  const clientId = user.role === "client" ? await portalClientId(user.id) : undefined;
-  if (!clientId) {
-    res.status(403).json({ error: "Client portal access required" });
-    return;
-  }
-  if (!(await getTermsDocument())) {
-    res.status(409).json({ error: "The Terms of Business are not available yet — please check back shortly" });
-    return;
-  }
-  const updated = await acceptTerms(clientId, { via: "portal", actor: { id: null, displayName: user.displayName } });
-  res.json(AcceptPortalTermsOfBusinessResponse.parse(await termsAcceptanceView(updated!)));
 });
 
 router.get("/portal/documents", async (_req, res): Promise<void> => {
@@ -322,6 +322,7 @@ router.post("/portal/documents/upload", express.raw({ type: "*/*", limit: "50mb"
     const stored = await documentStorage.put(req.body);
     const [document] = await db.insert(documentsTable).values({ clientId, name, category, status: "uploaded", objectPath: stored.key, contentType, byteSize: stored.size, uploadedByUserId: user.id, uploadedAt: new Date() }).returning();
     await syncClientOnboardingDocument(clientId, category, user.id);
+    queueDocumentReading(document!.id, "Client portal");
     const api = await import("@workspace/api-zod");
     res.status(201).json(api.UploadPortalDocumentResponse.parse({ id: document!.id, name: document!.name, category: document!.category, status: document!.status, clientId, caseId: null, contentType, byteSize: stored.size, uploadedAt: document!.uploadedAt!.toISOString() }));
   } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Document upload failed" }); }

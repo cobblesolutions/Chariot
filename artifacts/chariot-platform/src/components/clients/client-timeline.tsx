@@ -6,7 +6,7 @@ import {
   type ClientTimelineItem,
   type ClientTimelineItemKind,
 } from "@workspace/api-client-react";
-import { Activity, Briefcase, FileText, ListTodo, Mail, MessageSquareText, type LucideIcon } from "lucide-react";
+import { Activity, Briefcase, FileText, ListTodo, Mail, MessageSquareText, type LucideIcon, Inbox } from "lucide-react";
 import { format, isToday, isYesterday } from "date-fns";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,11 +23,12 @@ const KIND_META: Record<ClientTimelineItemKind, { label: string; icon: LucideIco
   document: { label: "Documents", icon: FileText, className: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
   case: { label: "Cases", icon: Briefcase, className: "bg-violet-500/10 text-violet-700 dark:text-violet-300" },
   email: { label: "Emails", icon: Mail, className: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+  enquiry: { label: "Enquiries", icon: Inbox, className: "bg-teal-500/10 text-teal-700 dark:text-teal-300" },
 };
 
 const PAGE = 25;
 
-const FILTERS: ClientTimelineItemKind[] = ["interaction", "activity", "task", "document", "case", "email"];
+const FILTERS: ClientTimelineItemKind[] = ["enquiry", "interaction", "activity", "task", "document", "case", "email"];
 
 function dayLabel(iso: string) {
   const date = new Date(iso);

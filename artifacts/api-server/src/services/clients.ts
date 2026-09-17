@@ -12,6 +12,7 @@ import {
   tasksTable,
   type ClientLifecycle,
 } from "@workspace/db";
+import { recordEnquiry, reopenLatestEnquiry, resolveOpenEnquiries } from "./client-enquiries";
 import { sendChariotEmail } from "../integrations/resend";
 import { renderChariotEmail } from "../integrations/email-template";
 import { logger } from "../lib/logger";
@@ -19,7 +20,6 @@ import { clientProfile } from "./profile-fields";
 import { createAssignmentTask, resolveAssignee, addDays } from "./assignment";
 import type { ExtractedEnquiry } from "./enquiry-extraction";
 import { getEmailTemplate, renderEmailTemplate, templateVarsFor } from "./email-templates";
-import { termsAcceptanceView } from "./terms-of-business";
 
 export type ClientRow = typeof clientsTable.$inferSelect;
 
@@ -53,7 +53,6 @@ export interface WelcomeDeliveryView {
 export interface ClientExtras {
   assignee: ClientAssigneeView | null;
   welcomeDelivery: WelcomeDeliveryView | null;
-  termsOfBusiness: Awaited<ReturnType<typeof termsAcceptanceView>>;
   /** CRM rollups shown on the clients list. */
   openCases: number;
   loanTotal: number;
@@ -64,7 +63,6 @@ export interface ClientExtras {
 export const EMPTY_CLIENT_EXTRAS: ClientExtras = {
   assignee: null,
   welcomeDelivery: null,
-  termsOfBusiness: null,
   openCases: 0,
   loanTotal: 0,
   openTasks: 0,
@@ -107,8 +105,8 @@ export function clientView(row: ClientRow, extras: ClientExtras, onboardingStatu
     outcomeReason: row.outcomeReason ?? null,
     stale: isStaleEnquiry(row),
     welcomeDelivery: extras.welcomeDelivery,
-    termsOfBusiness: extras.termsOfBusiness,
     onboardingCompletedAt: isoOrNull(row.onboardingCompletedAt),
+    documentFilledFields: Array.isArray(row.documentFilledFields) ? (row.documentFilledFields as string[]) : [],
     openCases: extras.openCases,
     loanTotal: extras.loanTotal,
     openTasks: extras.openTasks,
@@ -202,7 +200,6 @@ export async function clientExtrasFor(rows: ClientRow[]): Promise<Map<number, Cl
     result.set(row.id, {
       assignee: user ? { id: user.id, displayName: user.displayName } : null,
       welcomeDelivery: latestByClient.get(row.id) ?? null,
-      termsOfBusiness: await termsAcceptanceView(row),
       openCases: cases?.count ?? 0,
       loanTotal: cases?.loan ?? 0,
       openTasks: openTasks.get(row.id) ?? 0,
@@ -377,6 +374,7 @@ export async function acceptClient(client: ClientRow, actor: { id: number; displ
     outcomeReason: null,
   }).where(eq(clientsTable.id, client.id)).returning();
   const delivery = await issuePortalInvitation(updated!, { senderName: actor.displayName });
+  await resolveOpenEnquiries(client.id, "accepted");
   await completeClientTasks(client.id, [ENQUIRY_REVIEW_KIND], actor.id);
   await db.insert(activitiesTable).values({
     title: "Enquiry accepted",
@@ -479,6 +477,7 @@ export async function declineClient(
     closedAt: new Date(),
     outcomeReason: outcome.reason,
   }).where(eq(clientsTable.id, client.id)).returning();
+  await resolveOpenEnquiries(client.id, outcome.status, outcome.reason);
   await completeClientTasks(client.id, [ENQUIRY_REVIEW_KIND, "client_onboarding", "property_review", ...ADVANCED_KINDS], actor.id);
   await db.insert(activitiesTable).values({
     title: outcome.status === "declined" ? "Enquiry declined" : "Client lost",
@@ -499,6 +498,7 @@ export async function reopenClient(client: ClientRow, actor: { id: number; displ
     outcomeReason: null,
     enquiryReceivedAt: lifecycle === "enquiry" ? new Date() : client.enquiryReceivedAt,
   }).where(eq(clientsTable.id, client.id)).returning();
+  await reopenLatestEnquiry(client.id);
   await db.insert(activitiesTable).values({
     title: "Enquiry reopened",
     detail: `${client.name} was reopened`,
@@ -547,6 +547,18 @@ export async function recordRepeatEnquiry(
       ? { lifecycle: client.acceptedAt ? "onboarding" : "enquiry", closedAt: null, outcomeReason: null }
       : {}),
   }).where(eq(clientsTable.id, client.id));
+  // The history row: an accepted client's repeat enquiry needs no review, a returning enquirer's does.
+  await recordEnquiry(client.id, {
+    source: input.from ? "email" : client.source,
+    enquiryType: extracted?.enquiry.type ?? null,
+    summary,
+    timescale: extracted?.enquiry.timescale ?? null,
+    emailFrom: input.from ?? null,
+    emailSubject: input.subject ?? null,
+    emailText: input.emailText ?? null,
+    extracted,
+    status: client.acceptedAt ? "accepted" : "open",
+  });
 
   let propertyId: number | null = null;
   const property = extracted?.property;

@@ -1,9 +1,9 @@
 import { and, desc, eq, ne } from "drizzle-orm";
 import { activitiesTable, casesTable, clientsTable, db, propertiesTable } from "@workspace/db";
 import { getClientOnboarding } from "./client-onboarding";
-import { DETAILS_CONFIRMED_LABEL, getAdviceRow, latestApproval, listApprovals, type CaseRow } from "./case-advice";
+import { getAdviceRow, latestApproval, type CaseRow } from "./case-advice";
 import { needsAdvice, serviceTypeLabel } from "./service-types";
-import { requirementsTable } from "@workspace/db";
+import { stageName } from "./stages";
 
 export interface SubmissionField {
   key: string;
@@ -209,25 +209,14 @@ export async function prefillFromPrevious(caseRow: CaseRow, actor: { displayName
   return { copied, fromReference };
 }
 
-/** Everything the stage-1 panel needs. */
+/** Everything the stage-1 panel needs: the pack itself and where a prefill could come from. */
 export async function submissionDetailsState(caseRow: CaseRow) {
   const pack = await buildSubmissionPack(caseRow);
-  const approvals = await listApprovals(caseRow.id, "submission_details");
-  const latest = approvals[0] ?? null;
-  const [confirmedRow] = await db
-    .select({ complete: requirementsTable.complete })
-    .from(requirementsTable)
-    .where(and(eq(requirementsTable.caseId, caseRow.id), eq(requirementsTable.label, DETAILS_CONFIRMED_LABEL)));
   const previous = await previousCaseFor(caseRow);
   return {
     pack,
-    approvals,
-    latest,
-    confirmed: !!confirmedRow?.complete,
     previousCase: previous
-      ? { id: previous.id, reference: previous.displayReference || previous.reference, stage: previous.stage, updatedAt: previous.updatedAt.toISOString() }
+      ? { id: previous.id, reference: previous.displayReference || previous.reference, stage: stageName(previous.stageIndex), updatedAt: previous.updatedAt.toISOString() }
       : null,
   };
 }
-
-export { latestApproval };

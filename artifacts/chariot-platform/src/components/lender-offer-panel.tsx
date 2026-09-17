@@ -21,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
+import { UploadProgress } from "@/components/upload-progress";
+import { documentUploadHeaders, useUpload } from "@/lib/upload";
 
 function formatMoney(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
@@ -64,6 +66,7 @@ export function LenderOfferPanel({
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const lastDocumentId = useRef<number | null>(null);
+  const offerUpload = useUpload();
   const [isUploading, setIsUploading] = useState(false);
   const [offerAddress, setOfferAddress] = useState("");
   const [offerClientName, setOfferClientName] = useState("");
@@ -107,28 +110,21 @@ export function LenderOfferPanel({
     }
     setIsUploading(true);
     try {
-      const response = await fetch("/api/documents/upload", {
-        method: "POST",
-        headers: {
-          "x-filename": file.name,
-          "x-content-type": file.type || "application/octet-stream",
+      const uploaded = await offerUpload.send<{ id?: number } | null>(file, {
+        url: "/api/documents/upload",
+        headers: documentUploadHeaders(file, {
           "x-document-category": "LENDER_OFFER",
-          "x-client-id": String(clientId),
-          "x-case-id": String(caseId),
-          "Content-Type": "application/octet-stream",
-        },
-        body: await file.arrayBuffer(),
+          "x-client-id": clientId,
+          "x-case-id": caseId,
+        }),
       });
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error || "Upload failed");
-      }
-      const uploaded = (await response.json()) as { id?: number };
+      // The file is on the server; the rest is reading it, so drop the bar.
+      offerUpload.reset();
       await qc.invalidateQueries({ queryKey: getGetCaseQueryKey(caseId) });
       await qc.invalidateQueries({
         queryKey: getGetCaseLenderOfferReviewQueryKey(caseId),
       });
-      if (!uploaded.id)
+      if (!uploaded?.id)
         throw new Error("Upload response did not include a document id");
 
       const extractionResponse = await fetch(
@@ -170,6 +166,7 @@ export function LenderOfferPanel({
         type: "error",
       });
     } finally {
+      offerUpload.reset();
       setIsUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
@@ -284,6 +281,7 @@ export function LenderOfferPanel({
           className="hidden"
           onChange={handleUpload}
         />
+        <UploadProgress progress={offerUpload.progress} />
       </div>
 
       <div className="space-y-4">

@@ -10,6 +10,7 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { SEARCH_TYPES } from "@/lib/search";
+import { documentUploadHeaders, uploadRequest } from "@/lib/upload";
 import {
   AssistantProvider,
   AssistantWidget,
@@ -60,21 +61,16 @@ function typeMeta(type: string) {
   return { label: meta.label, icon: meta.icon, tile: meta.tile };
 }
 
-async function uploadAttachment(file: File) {
-  const response = await fetch("/api/chat/attachments", {
-    method: "POST",
-    headers: {
-      "x-filename": file.name,
-      "x-content-type": file.type || "application/octet-stream",
-      "Content-Type": "application/octet-stream",
-    },
-    body: await file.arrayBuffer(),
+async function uploadAttachment(
+  file: File,
+  onProgress: (percent: number) => void,
+) {
+  const attachment = await uploadRequest<MessageAttachment>({
+    url: "/api/chat/attachments",
+    headers: documentUploadHeaders(file),
+    body: file,
+    onProgress,
   });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.error ?? `Upload failed (${response.status})`);
-  }
-  const attachment = (await response.json()) as MessageAttachment;
   return {
     id: attachment.id,
     name: attachment.name,

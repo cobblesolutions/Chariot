@@ -106,6 +106,13 @@ export async function primaryStaffForRole(role: StaffRole): Promise<AssigneeStaf
 }
 
 /** Active staff user by id, or null when missing, inactive, or not a staff role. */
+/** Legacy callers still send a display name; resolve it to the user so the id link is kept. */
+export async function activeStaffUserByName(displayName: string): Promise<AssigneeStaffUser | null> {
+  const [row] = await db.select(staffColumns).from(appUsersTable).where(eq(appUsersTable.displayName, displayName.trim()));
+  if (!row || !row.active || !isStaffRole(row.role)) return null;
+  return toAssignee(row);
+}
+
 export async function activeStaffUser(userId: number): Promise<AssigneeStaffUser | null> {
   const [row] = await db.select(staffColumns).from(appUsersTable).where(eq(appUsersTable.id, userId));
   if (!row || !row.active || !isStaffRole(row.role)) return null;

@@ -100,6 +100,18 @@ export const GRID_HEIGHT_CLASS = "h-[29rem] md:h-[44rem]";
 export const HOLIDAY_WASH_CLASS = "bg-stage-6/[0.07] hover:bg-stage-6/[0.12]";
 export const HOLIDAY_TEXT_CLASS = "text-stage-6";
 
+/**
+ * Shabbat: a soft cyan wash (stage-2, also unused by event types) so Saturdays
+ * read differently from holidays. A holiday falling on Shabbat keeps the
+ * holiday colour.
+ */
+export const SHABBAT_WASH_CLASS = "bg-stage-2/[0.07] hover:bg-stage-2/[0.12]";
+export const SHABBAT_TEXT_CLASS = "text-stage-2";
+
+export function isShabbat(d: Date) {
+  return d.getDay() === 6;
+}
+
 /** Week starts on Monday (UK). */
 export const WEEK_OPTIONS = { weekStartsOn: 1 } as const;
 

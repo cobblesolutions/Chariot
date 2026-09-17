@@ -7,6 +7,9 @@ import {
   GRID_HEIGHT_CLASS,
   HOLIDAY_TEXT_CLASS,
   HOLIDAY_WASH_CLASS,
+  SHABBAT_TEXT_CLASS,
+  SHABBAT_WASH_CLASS,
+  isShabbat,
   dateKey,
   eventsOn,
   isToday,
@@ -128,14 +131,17 @@ export function WeekView({
           const selected = isSameDay(day, selectedDate);
           const info = hebrew?.get(dateKey(day));
           const holiday = info?.holidays[0];
+          const shabbat = !holiday && isShabbat(day);
           return (
             <button
               key={dateKey(day)}
               type="button"
+              data-shabbat={shabbat || undefined}
               onClick={() => onSelectDate(day)}
               className={cn(
                 "flex min-w-0 flex-col items-center gap-0.5 border-l py-2 text-xs text-muted-foreground",
                 holiday && !selected && HOLIDAY_WASH_CLASS,
+                shabbat && !selected && SHABBAT_WASH_CLASS,
                 selected && "bg-primary/5",
               )}
             >
@@ -147,6 +153,7 @@ export function WeekView({
                   "inline-flex size-7 items-center justify-center rounded-full text-base font-semibold text-foreground tabular-nums",
                   today && "bg-primary text-primary-foreground",
                   !today && selected && "text-primary",
+                  !today && !selected && shabbat && SHABBAT_TEXT_CLASS,
                 )}
               >
                 {day.getDate()}

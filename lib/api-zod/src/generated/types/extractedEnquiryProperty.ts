@@ -8,8 +8,16 @@
 
 export type ExtractedEnquiryProperty = {
   address?: string | null;
+  city?: string | null;
+  postcode?: string | null;
   value?: number | null;
   loanAmount?: number | null;
   rent?: number | null;
   matterType?: string | null;
+  propertyType?: string | null;
+  currentLender?: string | null;
+  currentBalance?: number | null;
+  currentRatePct?: number | null;
+  currentRateEndDate?: string | null;
+  purchasePrice?: number | null;
 };

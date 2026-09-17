@@ -28,11 +28,10 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { isFullAccess } from "@/lib/roles";
 import { apiErrorMessage } from "./utils";
 
-type TemplateKey = "client_welcome" | "advice_email" | "details_confirmation";
+type TemplateKey = "client_welcome" | "advice_email";
 const TITLES: Record<TemplateKey, { title: string; blurb: string }> = {
   client_welcome: { title: "Welcome email", blurb: 'Sent when an enquiry is accepted. Change the words here — the logo, colours and the "Set up portal access" button are fixed.' },
   advice_email: { title: "Advice email", blurb: "Sent with the recommendation. The advice table and the Approve / Further discussion buttons are fixed; the words around them are yours." },
-  details_confirmation: { title: "Details confirmation email", blurb: 'Sent with the submission details. The details table and the "Confirm my details" button are fixed; the words around them are yours.' },
 };
 /** The email shell is laid out at this width; the preview scales it down to fit. */
 const EMAIL_WIDTH = 600;

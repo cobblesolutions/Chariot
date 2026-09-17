@@ -67,6 +67,8 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
+import { UploadProgress } from "@/components/upload-progress";
+import { documentUploadHeaders, useUpload } from "@/lib/upload";
 import { DatePicker } from "@/components/date-picker";
 import { SubmissionStepOwner } from "@/components/submission-step-owner";
 import { submissionProgress } from "@/components/add/submissions-panel";
@@ -329,7 +331,8 @@ function LenderFlow({
 
   // DIP upload, pinned to this lender.
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const dipUpload = useUpload();
+  const uploading = dipUpload.uploading;
   const uploadDip = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -342,25 +345,16 @@ function LenderFlow({
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
-    setUploading(true);
     try {
-      const res = await fetch("/api/documents/upload", {
-        method: "POST",
-        headers: {
-          "x-filename": file.name,
-          "x-content-type": file.type || "application/octet-stream",
+      await dipUpload.send(file, {
+        url: "/api/documents/upload",
+        headers: documentUploadHeaders(file, {
           "x-document-category": "DIP",
-          "x-client-id": String(caseItem.clientId),
-          "x-case-id": String(caseItem.id),
-          "x-submission-id": String(submission.id),
-          "Content-Type": "application/octet-stream",
-        },
-        body: await file.arrayBuffer(),
+          "x-client-id": caseItem.clientId,
+          "x-case-id": caseItem.id,
+          "x-submission-id": submission.id,
+        }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Upload failed");
-      }
       toast.add({
         title: `DIP uploaded for ${submission.lenderName}`,
         type: "success",
@@ -374,7 +368,7 @@ function LenderFlow({
         type: "error",
       });
     } finally {
-      setUploading(false);
+      dipUpload.reset();
       if (fileRef.current) fileRef.current.value = "";
     }
   };
@@ -581,6 +575,7 @@ function LenderFlow({
                     className="hidden"
                     onChange={uploadDip}
                   />
+                  <UploadProgress progress={dipUpload.progress} />
                 </StepCard>
               );
 

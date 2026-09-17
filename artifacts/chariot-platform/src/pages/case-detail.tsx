@@ -8,8 +8,7 @@ import {
   useSetCaseValuationCompleted,
   useUpdateCase,
   useUpdateCaseRequirement,
-  useExtractUnderwritingRequirements,
-  useAddUnderwritingRound,
+  useMarkUnderwritingRoundSent,
   usePrepareCaseCompletion,
   getListTasksQueryKey,
   getListCalendarEventsQueryKey,
@@ -54,6 +53,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { DatePicker } from "@/components/date-picker";
 import { Checkbox } from "@/components/ui/checkbox";
+import { apiErrorMessage } from "@/components/add/utils";
+import { UnderwritingPanel } from "@/components/case/underwriting-rounds";
 import { useAuth } from "@/components/auth-provider";
 import {
   Dialog,
@@ -321,13 +322,7 @@ export default function CaseDetail() {
   const [newReqLabel, setNewReqLabel] = useState("");
   const addRequirement = useAddCaseRequirement();
   const updateRequirement = useUpdateCaseRequirement();
-  const extractUnderwriting = useExtractUnderwritingRequirements();
-  const addUnderwritingRound = useAddUnderwritingRound();
-  const [underwritingEmail, setUnderwritingEmail] = useState("");
-  const [underwritingSuggestions, setUnderwritingSuggestions] = useState<
-    string[] | null
-  >(null);
-
+  const markRoundSent = useMarkUnderwritingRoundSent();
   const { user } = useAuth();
   const isAdmin = isFullAccess(user?.role);
 
@@ -591,6 +586,22 @@ export default function CaseDetail() {
     );
   };
 
+  const underwritingRounds = caseItem.underwritingRounds;
+  const handleMarkRoundSent = (round: number) => {
+    markRoundSent.mutate(
+      { id, round },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getGetCaseQueryKey(id) });
+          qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
+          toast.add({ title: `Round ${round} marked as sent to the lender`, type: "success" });
+        },
+        onError: (error) =>
+          toast.add({ title: "Couldn't mark the round as sent", description: apiErrorMessage(error, "Tick every item the lender asked for first."), type: "error" }),
+      },
+    );
+  };
+
   const handleToggleUnderwritingCleared = (checked: boolean) => {
     updateCase.mutate(
       { id, data: { underwritingCleared: checked } },
@@ -602,48 +613,6 @@ export default function CaseDetail() {
             title: "Failed to update underwriting status",
             type: "error",
           }),
-      },
-    );
-  };
-
-  const handleAnalyzeUnderwritingEmail = () => {
-    if (!underwritingEmail.trim() || extractUnderwriting.isPending) return;
-    extractUnderwriting.mutate(
-      { id, data: { emailText: underwritingEmail } },
-      {
-        onSuccess: (data) => setUnderwritingSuggestions(data.suggestions),
-        onError: () =>
-          toast.add({ title: "Failed to analyze email", type: "error" }),
-      },
-    );
-  };
-
-  const handleRemoveUnderwritingSuggestion = (index: number) => {
-    setUnderwritingSuggestions((current) =>
-      current ? current.filter((_, i) => i !== index) : current,
-    );
-  };
-
-  const handleConfirmUnderwritingRound = () => {
-    if (!underwritingSuggestions?.length || addUnderwritingRound.isPending)
-      return;
-    addUnderwritingRound.mutate(
-      {
-        id,
-        data: {
-          emailText: underwritingEmail,
-          requirementLabels: underwritingSuggestions,
-        },
-      },
-      {
-        onSuccess: () => {
-          toast.add({ title: "Requirements added", type: "success" });
-          setUnderwritingEmail("");
-          setUnderwritingSuggestions(null);
-          qc.invalidateQueries({ queryKey: getGetCaseQueryKey(id) });
-        },
-        onError: () =>
-          toast.add({ title: "Failed to add requirements", type: "error" }),
       },
     );
   };
@@ -899,7 +868,9 @@ export default function CaseDetail() {
                           ? "Advice & approval"
                           : isDetailsStage
                             ? "Submission details"
-                            : "Stage Requirements"}
+                            : isUnderwritingStage
+                              ? "Underwriting"
+                              : "Stage Requirements"}
                     </CardTitle>
                   )}
                   <CardAction className="flex flex-wrap items-center justify-end gap-2">
@@ -965,6 +936,7 @@ export default function CaseDetail() {
                   ) : isAdviceStage ? (
                     <AdviceStagePanel
                       caseId={id}
+                      clientId={caseItem.clientId}
                       serviceType={caseItem.serviceType}
                       disabled={!isViewingCurrentStage || caseItem.status === "completed"}
                     />
@@ -1004,114 +976,18 @@ export default function CaseDetail() {
                     />
                   ) : (
                     <div>
-                      {isUnderwritingStage &&
-                        isViewingCurrentStage &&
-                        caseItem.status !== "completed" && (
-                          <div className="p-4 border-b space-y-2 bg-muted/20">
-                            <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Paste bank requirements email
-                            </label>
-                            <Textarea
-                              value={underwritingEmail}
-                              onChange={(e) =>
-                                setUnderwritingEmail(e.target.value)
-                              }
-                              placeholder="Paste the lender's underwriting email here..."
-                              className="min-h-[100px]"
-                            />
-                            <div className="flex justify-end">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={handleAnalyzeUnderwritingEmail}
-                                disabled={
-                                  !underwritingEmail.trim() ||
-                                  extractUnderwriting.isPending
-                                }
-                              >
-                                {extractUnderwriting.isPending
-                                  ? "Analyzing..."
-                                  : "Analyze"}
-                              </Button>
-                            </div>
-                            {underwritingSuggestions !== null && (
-                              <div className="rounded-md border bg-card p-3 space-y-2">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                  Review suggested requirements
-                                </p>
-                                {underwritingSuggestions.length === 0 ? (
-                                  <p className="text-sm text-muted-foreground italic">
-                                    No requirements detected — edit the text or
-                                    add them manually below.
-                                  </p>
-                                ) : (
-                                  <ul className="space-y-1.5">
-                                    {underwritingSuggestions.map(
-                                      (suggestion, index) => (
-                                        <li
-                                          key={index}
-                                          className="flex items-center gap-2 text-sm"
-                                        >
-                                          <Input
-                                            value={suggestion}
-                                            onChange={(e) =>
-                                              setUnderwritingSuggestions(
-                                                (current) =>
-                                                  current
-                                                    ? current.map((item, i) =>
-                                                        i === index
-                                                          ? e.target.value
-                                                          : item,
-                                                      )
-                                                    : current,
-                                              )
-                                            }
-                                          />
-                                          <Button
-                                            size="icon-sm"
-                                            variant="ghost"
-                                            className="shrink-0"
-                                            onClick={() =>
-                                              handleRemoveUnderwritingSuggestion(
-                                                index,
-                                              )
-                                            }
-                                          >
-                                            <Plus className="rotate-45" />
-                                          </Button>
-                                        </li>
-                                      ),
-                                    )}
-                                  </ul>
-                                )}
-                                <div className="flex justify-end gap-2 pt-1">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() =>
-                                      setUnderwritingSuggestions(null)
-                                    }
-                                  >
-                                    Cancel
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    onClick={handleConfirmUnderwritingRound}
-                                    disabled={
-                                      !underwritingSuggestions.length ||
-                                      addUnderwritingRound.isPending
-                                    }
-                                  >
-                                    {addUnderwritingRound.isPending
-                                      ? "Adding..."
-                                      : "Confirm & add round"}
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      {stageReqs.length === 0 ? (
+                      {isUnderwritingStage ? (
+                        <UnderwritingPanel
+                          caseId={id}
+                          rounds={underwritingRounds}
+                          underwritingCleared={caseItem.underwritingCleared}
+                          canEdit={isViewingCurrentStage && caseItem.status !== "completed"}
+                          onToggle={handleToggleUnderwritingReq}
+                          onMarkSent={handleMarkRoundSent}
+                          sending={markRoundSent.isPending}
+                          onToggleCleared={handleToggleUnderwritingCleared}
+                        />
+                      ) : stageReqs.length === 0 ? (
                         <Empty>
                           <EmptyHeader>
                             <EmptyDescription>
@@ -1178,41 +1054,6 @@ export default function CaseDetail() {
                             </div>
                           ))}
                         </div>
-                      )}
-                      {isUnderwritingStage && stageReqs.length > 0 && (
-                        <label
-                          className={`flex items-start gap-3 p-4 border-t ${
-                            isViewingCurrentStage &&
-                            caseItem.status !== "completed" &&
-                            underwritingLatestRoundComplete
-                              ? "cursor-pointer"
-                              : "opacity-70"
-                          }`}
-                        >
-                          <Checkbox
-                            className="mt-0.5"
-                            checked={caseItem.underwritingCleared}
-                            onCheckedChange={(checked) =>
-                              handleToggleUnderwritingCleared(checked === true)
-                            }
-                            disabled={
-                              !isViewingCurrentStage ||
-                              caseItem.status === "completed" ||
-                              (!caseItem.underwritingCleared &&
-                                !underwritingLatestRoundComplete)
-                            }
-                          />
-                          <span className="text-sm font-semibold">
-                            Underwriting complete
-                            {!underwritingLatestRoundComplete &&
-                              !caseItem.underwritingCleared && (
-                                <span className="block text-xs font-normal text-muted-foreground mt-0.5">
-                                  Complete the current round's requirements
-                                  first, or paste a new bank email above
-                                </span>
-                              )}
-                          </span>
-                        </label>
                       )}
                     </div>
                   )}

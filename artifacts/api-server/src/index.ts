@@ -1,7 +1,10 @@
+import "./env";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { provisionBootstrapAccounts } from "./auth/bootstrap";
 import { startEmailScheduler } from "./jobs/scheduler";
+import { loadDocusignConnection } from "./integrations/docusign";
+import { removeLegacyFlows } from "./services/legacy-cleanup";
 
 const rawPort = process.env["PORT"];
 
@@ -18,6 +21,8 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 await provisionBootstrapAccounts();
+await removeLegacyFlows().catch((err) => logger.warn({ err }, "Legacy cleanup failed"));
+await loadDocusignConnection();
 startEmailScheduler();
 
 app.listen(port, (err) => {

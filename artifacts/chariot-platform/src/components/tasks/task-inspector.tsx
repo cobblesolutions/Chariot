@@ -514,7 +514,7 @@ export function TaskInspector({
                     <Checkbox
                       id={`check-${item.id}`}
                       checked={item.done}
-                      disabled={!canEdit || !!item.sourceKey}
+                      disabled={!canEdit || !!item.lockedHint}
                       onCheckedChange={(checked) =>
                         mutations.setChecklistItem(task, item.id, {
                           done: checked === true,
@@ -525,18 +525,23 @@ export function TaskInspector({
                       htmlFor={`check-${item.id}`}
                       className={cn(
                         "flex-1 text-sm",
-                        !item.sourceKey && "cursor-pointer",
+                        !item.lockedHint && "cursor-pointer",
                         item.done && "text-muted-foreground line-through",
                       )}
+                      title={item.lockedHint ?? undefined}
                     >
                       {item.title}
                     </label>
                     {item.sourceKey && (
                       <span
                         className="text-[10px] uppercase tracking-wide text-muted-foreground"
-                        title="Ticks itself when this detail is filled in on the Add page"
+                        title={
+                          item.lockedHint
+                            ? `${item.lockedHint} — it ticks itself once recorded`
+                            : "Kept in step with the case: ticking it here marks it on the case too"
+                        }
                       >
-                        auto
+                        {item.lockedHint ? "on the case" : "synced"}
                       </span>
                     )}
                     {canEdit && !item.sourceKey && (

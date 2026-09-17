@@ -20,7 +20,7 @@ import { escapeHtml, getEmailTemplate, renderEmailTemplate, templateVarsFor, typ
 import { STAGES, stageOwnerRole } from "./stages";
 import { stageSection } from "./assignment";
 import { needsAdvice, serviceTypeLabel } from "./service-types";
-import { termsAcceptanceView } from "./terms-of-business";
+import { caseTermsAcceptance } from "./terms-agreements";
 
 export type CaseRow = typeof casesTable.$inferSelect;
 export type ApprovalRow = typeof clientApprovalsTable.$inferSelect;
@@ -33,11 +33,11 @@ export const DETAILS_STAGE_INDEX = STAGES.indexOf("Submission details");
 export const SERVICE_LEVEL_LABEL = "Service level confirmed";
 export const ADVICE_SENT_LABEL = "Advice sent to client";
 export const ADVICE_APPROVED_LABEL = "Client approved advice";
-export const DETAILS_CONFIRMED_LABEL = "Details confirmed by client";
 /** Execution-only: the client's own instruction (lender + product) is on file. */
 export const INSTRUCTION_LABEL = "Client instruction recorded";
 
-export type ApprovalKind = "advice" | "submission_details";
+/** Only the advice is put to the client; the submission details are display-only. */
+export type ApprovalKind = "advice";
 export const APPROVAL_EXPIRY_DAYS = 14;
 
 /** Task kinds for "waiting on the client" work; closed automatically when the answer arrives. */
@@ -395,63 +395,7 @@ export async function sendAdvice(caseRow: CaseRow, actor: { id: number; displayN
   return row;
 }
 
-/**
- * Step 7: snapshot the submission pack, email a Confirm button, and open a
- * waiting-on-client task for the case owner.
- */
-export async function sendSubmissionDetails(
-  caseRow: CaseRow,
-  pack: { sections: Array<{ key: string; title: string; fields: Array<{ key: string; label: string; value: string | null; source: string; missing: boolean }> }>; missing: string[] },
-  actor: { id: number; displayName: string },
-) {
-  const client = await clientFor(caseRow);
-  if (!client) throw new AdviceError("Client not found");
-  const handler = await staffEmail(actor.id);
-  const reference = refOf(caseRow);
-  const { row, token } = await createApproval({ caseId: caseRow.id, kind: "submission_details", snapshot: pack, userId: actor.id });
-
-  const template = await getEmailTemplate("details_confirmation");
-  const vars: TemplateVars = { ...templateVarsFor(client, actor.displayName), reference, property: caseRow.propertyAddress };
-  const rendered = renderEmailTemplate(template, vars);
-  const sections = pack.sections
-    .map((section) =>
-      `<p style="margin:16px 0 4px 0;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#064B3E;font-weight:600;">${escapeHtml(section.title)}</p>` +
-      factsTable(section.fields.map((field) => [field.label, field.value])))
-    .join("");
-  await deliver(row.id, {
-    purpose: "details_confirmation",
-    to: client.email,
-    replyTo: handler?.email,
-    subject: rendered.subject,
-    html: renderChariotEmail({
-      preheader: `Please confirm your details for ${reference}`,
-      heading: rendered.heading,
-      paragraphs: rendered.paragraphs,
-      rawBody: sections + buttonsHtml({ label: "Confirm my details", url: approveUrl(token) }),
-    }),
-  });
-
-  await setRequirement(caseRow.id, DETAILS_STAGE_INDEX, DETAILS_CONFIRMED_LABEL, false, null);
-  await db.insert(activitiesTable).values({
-    caseId: caseRow.id,
-    title: row.version > 1 ? "Details re-sent for confirmation" : "Details sent for confirmation",
-    detail: `${reference}: submission details v${row.version} sent to ${client.name}`,
-    actorName: actor.displayName,
-  });
-  await closeResponseTasks(caseRow.id, "submission_details");
-  await createAssignmentTask({
-    staffUser: handler ? { id: actor.id, displayName: handler.displayName, email: handler.email } : null,
-    title: `Awaiting client confirmation of details — ${reference}`,
-    notes: `Submission details v${row.version} were sent to ${client.name} to confirm.`,
-    caseId: caseRow.id,
-    clientId: caseRow.clientId,
-    kind: responseTaskKind("submission_details"),
-    dueDate: addDays(3),
-  }).catch((error) => logger.warn({ err: error, caseId: caseRow.id }, "Details response task was not created"));
-  return row;
-}
-
-async function deliver(approvalId: number, email: { purpose: "advice_email" | "details_confirmation"; to: string; replyTo?: string; subject: string; html: string }) {
+async function deliver(approvalId: number, email: { purpose: "advice_email"; to: string; replyTo?: string; subject: string; html: string }) {
   try {
     const result = await sendChariotEmail({ purpose: email.purpose, to: [email.to], replyTo: email.replyTo, subject: email.subject, html: email.html });
     await markDelivery(approvalId, result.status === "sent" ? "sent" : "disabled");
@@ -498,11 +442,11 @@ export async function respondToApproval(
   const [caseRow] = await db.select().from(casesTable).where(eq(casesTable.id, row.id === updated.id ? updated.caseId : row.caseId));
   if (!caseRow) return { row: updated, alreadyRecorded: false as const };
   const client = await clientFor(caseRow);
-  const kind = updated.kind as ApprovalKind;
+  const kind: ApprovalKind = "advice";
   const reference = refOf(caseRow);
-  const stageIndex = kind === "advice" ? ADVICE_STAGE_INDEX : DETAILS_STAGE_INDEX;
-  const label = kind === "advice" ? ADVICE_APPROVED_LABEL : DETAILS_CONFIRMED_LABEL;
-  const what = kind === "advice" ? "the advice" : "the submission details";
+  const stageIndex = ADVICE_STAGE_INDEX;
+  const label = ADVICE_APPROVED_LABEL;
+  const what = "the advice";
   const viaText = answer.via === "email" ? "by email link" : answer.via === "portal" ? "in the portal" : `— recorded by ${answer.actor?.displayName ?? "staff"}`;
   const actorName = answer.via === "staff" ? (answer.actor?.displayName ?? "Staff") : (client?.name ?? "Client");
 
@@ -511,9 +455,7 @@ export async function respondToApproval(
   }
   await db.insert(activitiesTable).values({
     caseId: caseRow.id,
-    title: answer.response === "approved"
-      ? (kind === "advice" ? "Client approved advice" : "Client confirmed details")
-      : (kind === "advice" ? "Client asked to discuss the advice" : "Client flagged an issue with the details"),
+    title: answer.response === "approved" ? "Client approved advice" : "Client asked to discuss the advice",
     detail: `${reference}: ${client?.name ?? "the client"} ${answer.response === "approved" ? "approved" : "asked to discuss"} ${what} ${viaText}${updated.note ? ` — "${updated.note}"` : ""}`,
     actorName,
   });
@@ -525,8 +467,8 @@ export async function respondToApproval(
     await createAssignmentTask({
       staffUser: owner.staffUser,
       title: answer.response === "approved"
-        ? `${kind === "advice" ? "Advice approved" : "Details confirmed"} — proceed with ${reference}`
-        : `${kind === "advice" ? "Client wants to discuss the advice" : "Client flagged the details"} — ${reference}`,
+        ? `Advice approved — proceed with ${reference}`
+        : `Client wants to discuss the advice — ${reference}`,
       notes: updated.note?.trim() || (answer.response === "approved"
         ? `${client?.name ?? "The client"} approved ${what} ${viaText}.`
         : `${client?.name ?? "The client"} asked to discuss ${what} ${viaText}. Contact them, then re-send.`),
@@ -569,7 +511,7 @@ export async function adviceState(caseRow: CaseRow) {
     needsAdvice: needsAdvice(caseRow.serviceType),
     mode: needsAdvice(caseRow.serviceType) ? ("advice" as const) : ("instruction" as const),
     instructionRecorded: instructionRecorded(advice),
-    termsOfBusiness: client ? await termsAcceptanceView(client) : null,
+    termsOfBusiness: await caseTermsAcceptance(caseRow.id),
     serviceLevelConfirmedAt: iso(caseRow.serviceLevelConfirmedAt),
     serviceLevelConfirmedBy: await displayNameFor(caseRow.serviceLevelConfirmedByUserId),
     readyToSend: missing.length === 0 && needsAdvice(caseRow.serviceType),

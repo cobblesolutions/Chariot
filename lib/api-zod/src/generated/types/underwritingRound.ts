@@ -5,9 +5,16 @@
  * Chariot Financial Solutions case management API
  * OpenAPI spec version: 1.0.0
  */
+import type { UnderwritingRoundRequirementsItem } from './underwritingRoundRequirementsItem';
 
 export interface UnderwritingRound {
   round: number;
   emailText: string;
   createdAt: Date;
+  /** When everything was provided and sent back to the lender. */
+  sentAt: Date | null;
+  sentBy: string | null;
+  /** The case handler's task whose checkboxes are these requirements. */
+  taskId: number | null;
+  requirements: UnderwritingRoundRequirementsItem[];
 }

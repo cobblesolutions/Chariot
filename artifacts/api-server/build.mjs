@@ -32,6 +32,8 @@ async function buildAll() {
       // Loaded at runtime from node_modules: pdf.js spawns a worker from its own files.
       "pdf-parse",
       "mammoth",
+      // Reads its standard-font AFM files relative to its own directory.
+      "pdfkit",
       "sharp",
       "better-sqlite3",
       "sqlite3",

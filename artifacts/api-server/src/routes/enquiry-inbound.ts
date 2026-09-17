@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { timingSafeEqual } from "node:crypto";
 import { InboundClientEnquiryBody, InboundClientEnquiryResponse } from "@workspace/api-zod";
 import { activitiesTable, clientsTable, db, propertiesTable } from "@workspace/db";
+import { recordEnquiry } from "../services/client-enquiries";
 import { logger } from "../lib/logger";
 import { resolveAssignee } from "../services/assignment";
 import { ensureClientOnboarding } from "../services/client-onboarding";
@@ -81,6 +82,17 @@ router.post("/clients/inbound", async (req, res): Promise<void> => {
     return;
   }
   await ensureClientOnboarding(created.id);
+  await recordEnquiry(created.id, {
+    source: "email",
+    enquiryType: extracted.enquiry.type,
+    summary: extracted.enquiry.summary,
+    timescale: extracted.enquiry.timescale,
+    emailFrom: body.data.from ?? null,
+    emailSubject: body.data.subject ?? null,
+    emailText: body.data.text,
+    extracted,
+    extractionModel: model,
+  });
   const property = extracted.property;
   if (property.address || property.value || property.loanAmount) {
     await db.insert(propertiesTable).values({

@@ -18,6 +18,7 @@ import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { RequiredDot } from "@/components/required-dot";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,10 @@ interface BasicDraft {
   email: string;
   phone: string;
   companyName: string;
+  companyNumber: string;
+  companyRegisteredAddress: string;
+  companyRegisteredCity: string;
+  companyRegisteredPostcode: string;
   source: ClientSource | "";
   introducerName: string;
   introducerContact: string;
@@ -53,6 +58,10 @@ const EMPTY_DRAFT: BasicDraft = {
   email: "",
   phone: "",
   companyName: "",
+  companyNumber: "",
+  companyRegisteredAddress: "",
+  companyRegisteredCity: "",
+  companyRegisteredPostcode: "",
   source: "",
   introducerName: "",
   introducerContact: "",
@@ -161,9 +170,13 @@ export function EnquiryIntake({
             email: result.extracted.client.email ?? "",
             phone: result.extracted.client.phone ?? "",
             companyName: result.extracted.client.companyName ?? "",
-            source: "email",
-            introducerName: "",
-            introducerContact: "",
+            companyNumber: result.extracted.client.companyNumber ?? "",
+            companyRegisteredAddress: "",
+            companyRegisteredCity: "",
+            companyRegisteredPostcode: "",
+            source: result.extracted.enquiry.source ?? "email",
+            introducerName: result.extracted.enquiry.introducerName ?? "",
+            introducerContact: result.extracted.enquiry.introducerContact ?? "",
             enquiryType: result.extracted.enquiry.type ?? "",
             summary: result.extracted.enquiry.summary ?? "",
           });
@@ -180,12 +193,20 @@ export function EnquiryIntake({
     const items: Array<{ label: string; value: string }> = [];
     const { property, enquiry, client } = extracted;
     if (client.companyNumber) items.push({ label: "Company no.", value: client.companyNumber });
-    if (property.address) items.push({ label: "Property", value: property.address });
+    if (client.currentAddress || client.currentAddressPostcode) items.push({ label: "Lives at", value: [client.currentAddress, client.currentAddressCity, client.currentAddressPostcode].filter(Boolean).join(", ") });
+    if (client.employerName || client.jobTitle) items.push({ label: "Work", value: [client.jobTitle, client.employerName].filter(Boolean).join(" at ") });
+    if (client.annualIncome != null) items.push({ label: "Income", value: `${formatMoney(client.annualIncome)}/yr` });
+    if (property.address) items.push({ label: "Property", value: [property.address, property.city, property.postcode].filter(Boolean).join(", ") });
     if (property.value != null) items.push({ label: "Value", value: formatMoney(property.value) });
+    if (property.purchasePrice != null) items.push({ label: "Price", value: formatMoney(property.purchasePrice) });
     if (property.loanAmount != null) items.push({ label: "Loan", value: formatMoney(property.loanAmount) });
     if (property.rent != null) items.push({ label: "Rent", value: `${formatMoney(property.rent)}/mo` });
     if (property.matterType) items.push({ label: "Matter", value: property.matterType.toUpperCase() });
+    if (property.currentLender || property.currentBalance != null) {
+      items.push({ label: "Current mortgage", value: [property.currentLender, property.currentBalance != null ? formatMoney(property.currentBalance) : null, property.currentRatePct != null ? `${property.currentRatePct}%` : null, property.currentRateEndDate ? `ends ${property.currentRateEndDate}` : null].filter(Boolean).join(" · ") });
+    }
     if (enquiry.timescale) items.push({ label: "Timescale", value: enquiry.timescale });
+    if (enquiry.introducerName) items.push({ label: "Introduced by", value: [enquiry.introducerName, enquiry.introducerContact].filter(Boolean).join(" · ") });
     return items;
   }, [extracted]);
 
@@ -247,7 +268,20 @@ export function EnquiryIntake({
           email,
           phone: draft.phone.trim() || undefined,
           companyName: draft.companyName.trim() || undefined,
-          companyNumber: extracted?.client.companyNumber ?? undefined,
+          companyNumber:
+            draft.companyNumber.trim() || extracted?.client.companyNumber || undefined,
+          companyRegisteredAddress: draft.companyRegisteredAddress.trim() || undefined,
+          companyRegisteredCity: draft.companyRegisteredCity.trim() || undefined,
+          companyRegisteredPostcode: draft.companyRegisteredPostcode.trim() || undefined,
+          // Everything else the email said about them goes straight onto the record.
+          title: extracted?.client.title ?? undefined,
+          currentAddress: extracted?.client.currentAddress ?? undefined,
+          currentAddressCity: extracted?.client.currentAddressCity ?? undefined,
+          currentAddressPostcode: extracted?.client.currentAddressPostcode ?? undefined,
+          employmentStatus: extracted?.client.employmentStatus ?? undefined,
+          employerName: extracted?.client.employerName ?? undefined,
+          jobTitle: extracted?.client.jobTitle ?? undefined,
+          annualIncome: extracted?.client.annualIncome ?? undefined,
           assignedUserId: assignee ?? undefined,
           source: draft.source || null,
           introducerName: draft.introducerName.trim() || null,
@@ -262,10 +296,18 @@ export function EnquiryIntake({
             property && (property.address || property.value || property.loanAmount)
               ? {
                   address: property.address ?? "Address to confirm",
+                  city: property.city ?? undefined,
+                  postcode: property.postcode ?? undefined,
                   matterType: property.matterType ?? undefined,
                   value: property.value ?? undefined,
                   loanAmount: property.loanAmount ?? undefined,
                   rent: property.rent ?? undefined,
+                  propertyType: property.propertyType ?? undefined,
+                  purchasePrice: property.purchasePrice ?? undefined,
+                  currentLender: property.currentLender ?? undefined,
+                  currentBalance: property.currentBalance ?? undefined,
+                  currentRatePct: property.currentRatePct ?? undefined,
+                  currentRateEndDate: property.currentRateEndDate ?? undefined,
                 }
               : null,
         },
@@ -351,7 +393,7 @@ export function EnquiryIntake({
           <div className="grid gap-4 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="enquiry-name">
-                Full name <span className="text-destructive">*</span>
+                Full name <RequiredDot />
               </FieldLabel>
               <Input
                 id="enquiry-name"
@@ -363,7 +405,7 @@ export function EnquiryIntake({
             </Field>
             <Field>
               <FieldLabel htmlFor="enquiry-email">
-                Email <span className="text-destructive">*</span>
+                Email <RequiredDot />
               </FieldLabel>
               <Input
                 id="enquiry-email"
@@ -389,6 +431,16 @@ export function EnquiryIntake({
                 id="enquiry-company"
                 value={draft.companyName}
                 onChange={setField("companyName")}
+                onSelect={(company) =>
+                  setDraft((current) => ({
+                    ...current,
+                    companyName: company.name,
+                    companyNumber: company.companyNumber,
+                    companyRegisteredAddress: company.registeredAddress?.line1 ?? "",
+                    companyRegisteredCity: company.registeredAddress?.city ?? "",
+                    companyRegisteredPostcode: company.registeredAddress?.postcode ?? "",
+                  }))
+                }
               />
             </Field>
             <Field>

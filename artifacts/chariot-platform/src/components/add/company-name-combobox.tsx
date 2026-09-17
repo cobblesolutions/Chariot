@@ -13,15 +13,21 @@ import {
   ComboboxList,
 } from "@/components/ui/combobox";
 
-/** Free-text company name with live Companies House suggestions. */
+/**
+ * Free-text company name with live Companies House suggestions. Picking a
+ * suggestion also reports the full record via `onSelect` so the parent form
+ * can fill the company number and registered address.
+ */
 export function CompanyNameCombobox({
   value,
   onChange,
+  onSelect,
   disabled,
   id,
 }: {
   value: string;
   onChange: (value: string) => void;
+  onSelect?: (company: CompaniesHouseCompany) => void;
   disabled?: boolean;
   id?: string;
 }) {
@@ -62,6 +68,7 @@ export function CompanyNameCombobox({
       onValueChange={(company: CompaniesHouseCompany | null) => {
         if (!company) return;
         onChange(company.name);
+        onSelect?.(company);
         setQuery(company.name);
         setShowResults(false);
       }}

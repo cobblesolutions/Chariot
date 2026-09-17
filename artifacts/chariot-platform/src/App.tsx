@@ -19,6 +19,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import Shell from "./components/layout/shell";
 import Dashboard from "./pages/dashboard";
 import ActivityPage from "./pages/activity";
+import AlertsPage from "./pages/alerts";
 import ClientsList from "./pages/clients";
 import ClientDetail from "./pages/client-detail";
 import CasesList from "./pages/cases";
@@ -114,6 +115,7 @@ function ProtectedRoutes() {
           <Route path="/add" component={AddPage} />
           <Route path="/add/:clientId" component={AddPage} />
           <Route path="/activity" component={ActivityPage} />
+          <Route path="/alerts" component={AlertsPage} />
           <Route path="/notifications">
             <Redirect to="/activity" replace />
           </Route>

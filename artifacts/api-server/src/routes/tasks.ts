@@ -29,7 +29,15 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { isFullAccess } from "../auth/roles";
 import { requireStaff } from "../auth/session";
 import { syncTaskStatusToCase } from "../services/case-dates";
-import { applyChecklistItemToCase, syncCaseChecklists } from "../services/task-checklists";
+import { stageName } from "../services/stages";
+import {
+  ChecklistStepLockedError,
+  STAGE_HANDOFF_KIND,
+  applyChecklistItemToCase,
+  checklistStepLock,
+  syncCaseChecklists,
+} from "../services/task-checklists";
+import { advanceCaseStage, refOf } from "./operations";
 import {
   checklistItemView,
   commentView,
@@ -64,6 +72,29 @@ async function loadVisibleTask(taskId: number, res: Response) {
     return null;
   }
   return task;
+}
+
+type TaskRow = typeof tasksTable.$inferSelect;
+
+/**
+ * A stage hand-off task *is* the stage: completing it moves the case on
+ * through the same gate as the Advance button, and is refused — the task
+ * stays open — while the case cannot leave the stage. A hand-off for a stage
+ * the case has already left just closes. Returns the refusal, or null.
+ */
+async function completeStageHandoff(
+  task: TaskRow,
+  user: { id: number; displayName: string },
+): Promise<{ error: string; incomplete?: string[] } | null> {
+  if (task.kind !== STAGE_HANDOFF_KIND || task.caseId == null || task.stageIndex == null) return null;
+  const [caseRow] = await db.select().from(casesTable).where(eq(casesTable.id, task.caseId));
+  if (!caseRow || caseRow.status === "completed" || caseRow.stageIndex !== task.stageIndex) return null;
+  const outcome = await advanceCaseStage(caseRow, user, { completedRequirementIds: [] });
+  if (outcome.ok) return null;
+  const stage = stageName(caseRow.stageIndex);
+  return outcome.incomplete
+    ? { error: `${refOf(caseRow)} can't leave ${stage} yet — finish the steps on the case first`, incomplete: outcome.incomplete }
+    : { error: `${stage} is finished from the case page: ${outcome.error.toLowerCase()}` };
 }
 
 /** Column values that move a task into or out of `done`. */
@@ -137,6 +168,16 @@ router.post("/tasks/bulk", async (req, res): Promise<void> => {
   if (parsed.data.assignedUserId !== undefined) {
     assignee = await taskAssignee(parsed.data.assignedUserId);
     if (!assignee) return invalid(res, "Task assignee must be an active staff user");
+  }
+  if (parsed.data.status === "done") {
+    for (const row of rows) {
+      if (row.status === "done") continue;
+      const refusal = await completeStageHandoff(row, user);
+      if (refusal) {
+        res.status(409).json({ ...refusal, error: `${row.title}: ${refusal.error}` });
+        return;
+      }
+    }
   }
   const ids = rows.map((row) => row.id);
   const updated = await db
@@ -218,6 +259,13 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   }
   const status =
     body.data.status ?? (body.data.completed === true ? "done" : body.data.completed === false ? "todo" : undefined);
+  if (status === "done" && existing.status !== "done") {
+    const refusal = await completeStageHandoff(existing, user);
+    if (refusal) {
+      res.status(409).json(refusal);
+      return;
+    }
+  }
   const [updated] = await db
     .update(tasksTable)
     .set({
@@ -280,20 +328,44 @@ router.patch("/tasks/:id/checklist/:itemId", async (req, res): Promise<void> => 
   if (!params.success || !body.success) return invalid(res);
   const task = await loadVisibleTask(params.data.id, res);
   if (!task) return;
+  const [existing] = await db
+    .select()
+    .from(taskChecklistItemsTable)
+    .where(and(eq(taskChecklistItemsTable.id, params.data.itemId), eq(taskChecklistItemsTable.taskId, task.id)));
+  if (!existing) {
+    res.status(404).json({ error: "Checklist item not found" });
+    return;
+  }
+  // Synced steps that need a value or a document are ticked by the case, not by hand.
+  const lock = body.data.done !== undefined ? checklistStepLock(existing.sourceKey, existing.title) : null;
+  if (lock) {
+    res.status(409).json({ error: `${lock} — this step ticks itself once it is recorded.` });
+    return;
+  }
+  const user = currentUser(res);
+  // A synced step writes through to the case (requirement, lender flag, valuation) before the task is updated,
+  // so a refusal leaves the task as it was.
+  if (body.data.done !== undefined && existing.sourceKey) {
+    try {
+      await applyChecklistItemToCase(task, { sourceKey: existing.sourceKey, title: existing.title, done: body.data.done }, { userId: user.id, displayName: user.displayName });
+    } catch (error) {
+      if (error instanceof ChecklistStepLockedError) {
+        res.status(409).json({ error: error.message });
+        return;
+      }
+      throw error;
+    }
+  }
   const [updated] = await db
     .update(taskChecklistItemsTable)
     .set({ title: body.data.title?.trim(), done: body.data.done })
-    .where(and(eq(taskChecklistItemsTable.id, params.data.itemId), eq(taskChecklistItemsTable.taskId, task.id)))
+    .where(eq(taskChecklistItemsTable.id, existing.id))
     .returning();
   if (!updated) {
     res.status(404).json({ error: "Checklist item not found" });
     return;
   }
-  // A requirement step ticks the requirement on the case too.
-  if (body.data.done !== undefined) {
-    await applyChecklistItemToCase(updated, res.locals.authUser.displayName);
-    if (task.caseId) await syncCaseChecklists(task.caseId);
-  }
+  if (body.data.done !== undefined && task.caseId) await syncCaseChecklists(task.caseId);
   // Ticking the first step means work has started: a "to do" task moves itself to "in progress".
   if (updated.done && normalizeStatus(task.status) === "todo") {
     await db.update(tasksTable).set({ status: "in_progress" }).where(eq(tasksTable.id, task.id));

@@ -148,9 +148,9 @@ export type InboxFocus = {
 export function matchesFocus(
   thread: InboxThread,
   focus: InboxFocus,
-  userName: string | undefined,
+  userId: number | undefined,
 ) {
-  if (focus.myCases && thread.case?.assignedTo !== userName) return false;
+  if (focus.myCases && (userId == null || thread.case?.assignedUserId !== userId)) return false;
   if (
     focus.stages.length > 0 &&
     !focus.stages.includes(thread.case?.stage ?? "")

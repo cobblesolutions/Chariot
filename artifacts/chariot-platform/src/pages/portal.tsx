@@ -7,9 +7,6 @@ import {
   useGetPortalOnboarding,
   getGetPortalOnboardingQueryKey,
   useUpdatePortalOnboardingItem,
-  useGetPortalTermsOfBusiness,
-  getGetPortalTermsOfBusinessQueryKey,
-  useAcceptPortalTermsOfBusiness,
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -40,11 +37,14 @@ import { StageBadge } from "@/components/stage-badge";
 import { Button } from "@/components/ui/button";
 import { useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
+import { UploadProgress } from "@/components/upload-progress";
+import { documentUploadHeaders, useUpload } from "@/lib/upload";
 import { queryClient } from "@/lib/queryClient";
 import { OnboardingList } from "@/components/onboarding-list";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClientPortalProperties } from "@/components/client-portal-properties";
 import { PortalApprovalBlock } from "@/components/portal-approval-block";
+import { PortalTermsBlock } from "@/components/portal-terms-block";
 
 const ACCEPTED_DOCUMENT_TYPES = new Set([
   "application/pdf",
@@ -90,34 +90,18 @@ function ClientPortalView() {
   const { data: onboarding, isLoading: loadingOnboarding } =
     useGetPortalOnboarding();
   const updateOnboarding = useUpdatePortalOnboardingItem();
-  const { data: terms } = useGetPortalTermsOfBusiness();
-  const acceptTerms = useAcceptPortalTermsOfBusiness();
   const [requirementsOpen, setRequirementsOpen] = useState(false);
-
-  const handleAcceptTerms = () =>
-    acceptTerms.mutate(undefined, {
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetPortalOnboardingQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetPortalTermsOfBusinessQueryKey() });
-        toast.add({ title: "Thank you — Terms of Business accepted", type: "success" });
-      },
-      onError: (error) =>
-        toast.add({
-          title: "Couldn't record your acceptance",
-          description: error instanceof Error ? error.message : "Please try again.",
-          type: "error",
-        }),
-    });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const documentCategoryRef = useRef("general");
+  const upload = useUpload();
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
     let uploaded = 0;
     try {
-      for (const file of files) {
+      for (const [index, file] of files.entries()) {
         if (file.size > 50 * 1024 * 1024) {
           throw new Error(
             `${file.name} is too large. Maximum file size is 50MB.`,
@@ -128,20 +112,14 @@ function ClientPortalView() {
             `${file.name} is not a permitted business document type.`,
           );
         }
-        const res = await fetch("/api/portal/documents/upload", {
-          method: "POST",
-          headers: {
-            "x-filename": file.name,
-            "x-content-type": file.type || "application/octet-stream",
+        await upload.send(file, {
+          url: "/api/portal/documents/upload",
+          headers: documentUploadHeaders(file, {
             "x-document-category": documentCategoryRef.current,
-            "Content-Type": "application/octet-stream",
-          },
-          body: await file.arrayBuffer(),
+          }),
+          index,
+          count: files.length,
         });
-        if (!res.ok) {
-          const data = await res.json().catch(() => null);
-          throw new Error(data?.error || `Upload failed for ${file.name}`);
-        }
         uploaded += 1;
       }
       toast.add({
@@ -162,6 +140,7 @@ function ClientPortalView() {
       });
     }
 
+    upload.reset();
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -243,6 +222,7 @@ function ClientPortalView() {
                   <DialogTitle>Required information and documents</DialogTitle>
                 </DialogHeader>
                 <ScrollArea className="pr-1">
+                  <UploadProgress progress={upload.progress} className="mb-3" />
                   <OnboardingList
                     items={onboarding.items}
                     onUpdateItem={handleUpdateOnboarding}
@@ -255,13 +235,6 @@ function ClientPortalView() {
                     documents={documents ?? []}
                     viewHref={(id) => `/api/portal/documents/${id}/view`}
                     downloadHref={(id) => `/api/portal/documents/${id}/download`}
-                    terms={{
-                      document: terms?.document ?? null,
-                      acceptance: terms?.acceptance ?? null,
-                      viewHref: "/api/portal/terms-of-business/document",
-                      onAccept: handleAcceptTerms,
-                      accepting: acceptTerms.isPending,
-                    }}
                   />
                 </ScrollArea>
               </DialogContent>
@@ -318,6 +291,7 @@ function ClientPortalView() {
                         {c.pendingApprovals.map((approval) => (
                           <PortalApprovalBlock key={approval.id} approval={approval} />
                         ))}
+                        <PortalTermsBlock caseId={c.id} terms={c.termsOfBusiness} />
                         <div className="flex justify-between text-xs text-muted-foreground pt-2">
                           <span>Loan: £{c.loanAmount?.toLocaleString()}</span>
                           <span>Updated: {formatDate(c.updatedAt)}</span>

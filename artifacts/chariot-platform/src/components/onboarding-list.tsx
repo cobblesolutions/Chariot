@@ -1,17 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import type {
+  DocumentReading,
   OnboardingItem,
   OnboardingItemUpdateStatus,
 } from "@workspace/api-client-react";
+import { DocumentReadingLine } from "@/components/document-reading-line";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Check, Eye, FileSignature, FileUp, Upload } from "lucide-react";
+import { RequiredDot } from "@/components/required-dot";
+import { Check, FileUp, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { DocumentFile } from "@/components/document-file";
-import { previewDocument } from "@/components/document-preview";
 import {
   Select,
   SelectContent,
@@ -36,7 +35,9 @@ interface OnboardingListProps {
   isUpdating: boolean;
   /** Kept for call-site compatibility; onboarding items are required once a client exists. */
   showNotApplicable?: boolean;
-  documents?: Array<{ id: number; name: string; category: string }>;
+  documents?: Array<OnboardingDocument>;
+  /** Staff: refetch after a re-read. When given, each file shows what the document reading system found. */
+  onReadingChanged?: () => void;
   /** Portal passes its own view route; staff use the default. */
   viewHref?: (id: number) => string;
   downloadHref?: (id: number) => string;
@@ -44,20 +45,13 @@ interface OnboardingListProps {
   onDocumentDeleted?: () => void;
   /** @deprecated Files open their own preview; kept for call sites still passing it. */
   onViewDocument?: (id: number) => void;
-  /** Turns the `terms_business` item into the Terms of Business tile (read, accept / mark accepted, signed copy). */
-  terms?: TermsTileProps;
 }
 
-export interface TermsTileProps {
-  document: { filename: string; version: number } | null;
-  acceptance: { acceptedAt: string; via: string } | null;
-  /** Where the firm's PDF is served for this viewer (staff or portal route). */
-  viewHref: string;
-  /** Portal: the client accepts the terms. */
-  onAccept?: () => void;
-  /** Staff: open the "mark accepted" dialog. */
-  onMarkAccepted?: () => void;
-  accepting?: boolean;
+export interface OnboardingDocument {
+  id: number;
+  name: string;
+  category: string;
+  reading?: DocumentReading | null;
 }
 
 export function OnboardingList({
@@ -67,10 +61,10 @@ export function OnboardingList({
   isUpdating,
   showNotApplicable = true,
   documents = [],
+  onReadingChanged,
   viewHref,
   downloadHref,
   onDocumentDeleted,
-  terms,
 }: OnboardingListProps) {
   if (!items || items.length === 0) {
     return (
@@ -83,39 +77,26 @@ export function OnboardingList({
   const fieldItems = items.filter((item) => item.kind !== "document");
 
   return (
-    <div className="@container space-y-4">
+    <div className="@container space-y-3">
       {documentItems.length > 0 ? (
-        <div className="grid gap-1.5 @2xl:grid-cols-2">
-          {documentItems.map((item) =>
-            item.key === "terms_business" && terms ? (
-              <TermsTile
-                key={item.key}
-                item={item}
-                terms={terms}
-                onUpload={() => onUploadDocument(item.key)}
-                disabled={isUpdating}
-                documents={documents.filter((document) => document.category === item.key)}
-                viewHref={viewHref}
-                downloadHref={downloadHref}
-                onDocumentDeleted={onDocumentDeleted}
-              />
-            ) : (
-              <UploadTile
-                key={item.key}
-                item={item}
-                onUpload={() => onUploadDocument(item.key)}
-                disabled={isUpdating}
-                documents={documents.filter((document) => document.category === item.key)}
-                viewHref={viewHref}
-                downloadHref={downloadHref}
-                onDocumentDeleted={onDocumentDeleted}
-              />
-            ),
-          )}
+        <div className="grid gap-1.5 @xl:grid-cols-2 @5xl:grid-cols-4">
+          {documentItems.map((item) => (
+            <UploadTile
+              key={item.key}
+              item={item}
+              onUpload={() => onUploadDocument(item.key)}
+              disabled={isUpdating}
+              documents={documents.filter((document) => document.category === item.key)}
+              onReadingChanged={onReadingChanged}
+              viewHref={viewHref}
+              downloadHref={downloadHref}
+              onDocumentDeleted={onDocumentDeleted}
+            />
+          ))}
         </div>
       ) : null}
       {fieldItems.length > 0 ? (
-        <Card className="gap-0 divide-y overflow-hidden py-0">
+        <div className="grid gap-x-6 gap-y-2 @3xl:grid-cols-2">
           {fieldItems.map((item) => (
             <OnboardingItemRow
               key={item.key}
@@ -124,7 +105,7 @@ export function OnboardingList({
               disabled={isUpdating}
             />
           ))}
-        </Card>
+        </div>
       ) : null}
     </div>
   );
@@ -140,6 +121,7 @@ function UploadTile({
   onUpload,
   disabled,
   documents,
+  onReadingChanged,
   viewHref,
   downloadHref,
   onDocumentDeleted,
@@ -147,7 +129,8 @@ function UploadTile({
   item: OnboardingItem;
   onUpload: () => void;
   disabled: boolean;
-  documents: Array<{ id: number; name: string; category: string }>;
+  documents: OnboardingDocument[];
+  onReadingChanged?: () => void;
   viewHref?: (id: number) => string;
   downloadHref?: (id: number) => string;
   onDocumentDeleted?: () => void;
@@ -166,7 +149,7 @@ function UploadTile({
         }
       }}
       className={cn(
-        "flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2 transition-colors",
+        "flex min-w-0 items-center gap-2.5 rounded-lg border px-2.5 py-1.5 transition-colors",
         done
           ? "border-emerald-200/70 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/20"
           : "bg-card",
@@ -200,6 +183,16 @@ function UploadTile({
             ))}
           </div>
         ) : null}
+        {onReadingChanged
+          ? documents.map((document) => (
+              <DocumentReadingLine
+                key={`reading-${document.id}`}
+                documentId={document.id}
+                reading={document.reading}
+                onRefresh={onReadingChanged}
+              />
+            ))
+          : null}
       </div>
       <button
         type="button"
@@ -213,114 +206,6 @@ function UploadTile({
       >
         <Upload className="size-4" />
       </button>
-    </div>
-  );
-}
-
-/**
- * The Terms of Business are accepted, not just uploaded: read the firm's PDF,
- * then the client accepts in the portal (or staff mark a signed copy / phone
- * agreement). A signed copy can still be uploaded to the tile.
- */
-function TermsTile({
-  item,
-  terms,
-  onUpload,
-  disabled,
-  documents,
-  viewHref,
-  downloadHref,
-  onDocumentDeleted,
-}: {
-  item: OnboardingItem;
-  terms: TermsTileProps;
-  onUpload: () => void;
-  disabled: boolean;
-  documents: Array<{ id: number; name: string; category: string }>;
-  viewHref?: (id: number) => string;
-  downloadHref?: (id: number) => string;
-  onDocumentDeleted?: () => void;
-}) {
-  const done = item.status === "complete";
-  const detail = item.detail
-    ?? (terms.document
-      ? terms.onAccept ? "Please read the terms, then accept them below" : "Not yet accepted — the client accepts in the portal, or upload a signed copy"
-      : "The firm has not published its Terms of Business yet");
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 flex-col gap-2 rounded-lg border px-3 py-2 transition-colors @2xl:col-span-2",
-        done
-          ? "border-emerald-200/70 bg-emerald-50/40 dark:border-emerald-900 dark:bg-emerald-950/20"
-          : "bg-card",
-      )}
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <span
-          className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-full",
-            done ? "bg-emerald-600 text-white" : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
-          )}
-          aria-label={done ? "Accepted" : "Required"}
-          title={done ? "Accepted" : "Required"}
-        >
-          {done ? <Check className="size-3.5" /> : <FileSignature className="size-3.5" />}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium leading-snug">{item.label}</p>
-          <p className="text-xs text-muted-foreground">{detail}</p>
-          {documents.length > 0 ? (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {documents.map((document) => (
-                <DocumentFile
-                  key={document.id}
-                  id={document.id}
-                  name={document.name}
-                  variant="chip"
-                  viewHref={viewHref?.(document.id)}
-                  downloadHref={downloadHref?.(document.id)}
-                  onDeleted={onDocumentDeleted}
-                />
-              ))}
-            </div>
-          ) : null}
-        </div>
-        <button
-          type="button"
-          onClick={onUpload}
-          disabled={disabled}
-          aria-label="Upload a signed copy of the Terms of Business"
-          title="Upload a signed copy"
-          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-        >
-          <Upload className="size-4" />
-        </button>
-      </div>
-      {/* Actions sit under the text so the tile works in a narrow column as well as a wide one. */}
-      {terms.document || (!done && terms.onMarkAccepted) ? (
-        <div className="flex flex-wrap items-center gap-1.5 pl-10">
-          {terms.document ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => previewDocument(terms.viewHref, terms.document?.filename ?? "Terms of Business", terms.viewHref)}
-            >
-              <Eye /> Read the terms
-            </Button>
-          ) : null}
-          {!done && terms.document && terms.onAccept ? (
-            <Button type="button" size="sm" onClick={terms.onAccept} disabled={disabled || terms.accepting}>
-              <Check /> {terms.accepting ? "Accepting…" : "I accept"}
-            </Button>
-          ) : null}
-          {!done && terms.onMarkAccepted ? (
-            <Button type="button" variant="outline" size="sm" onClick={terms.onMarkAccepted} disabled={disabled}>
-              Mark accepted
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -358,16 +243,11 @@ function OnboardingItemRow({
   };
 
   return (
-    <div className="p-4">
-        <div className="grid gap-2 @lg:grid-cols-[minmax(180px,1fr)_minmax(220px,2fr)] @lg:items-center">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="font-medium text-sm">{item.label}</p>
-              {item.status !== "complete" && (
-                <Badge variant="secondary">Required</Badge>
-              )}
-            </div>
-          </div>
+    <div className="grid gap-1 @lg:grid-cols-[minmax(150px,2fr)_minmax(200px,3fr)] @lg:items-center @lg:gap-3">
+          <p className="flex items-center gap-1.5 text-sm font-medium">
+            {item.label}
+            {item.status !== "complete" ? <RequiredDot /> : null}
+          </p>
           {item.key === "residential_status" ? (
             <Select
               value={localValue}
@@ -396,7 +276,7 @@ function OnboardingItemRow({
               onBlur={handleBlur}
               disabled={disabled}
               placeholder="Enter details..."
-              className="min-h-[80px]"
+              className="min-h-14"
             />
           ) : (
             <Input
@@ -408,7 +288,6 @@ function OnboardingItemRow({
               placeholder="Enter required information"
             />
           )}
-        </div>
     </div>
   );
 }

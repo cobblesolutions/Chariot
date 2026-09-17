@@ -19,6 +19,10 @@ export const STAGES = [
 
 export const SUBMISSION_STAGE_INDEX = STAGES.indexOf("Submission");
 
+/** The stage label for an index; indexes past the end (completed cases) read as the last stage. */
+export const stageName = (stageIndex: number): string =>
+  STAGES[Math.min(Math.max(stageIndex, 0), STAGES.length - 1)]!;
+
 // Which staff role "owns" each pipeline stage: the advice stage belongs to
 // the adviser (always an administrator); details and submission to the case
 // manager; everything from underwriting on to completions. A handoff task

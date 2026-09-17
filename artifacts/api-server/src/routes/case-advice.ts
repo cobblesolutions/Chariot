@@ -14,8 +14,6 @@ import {
   RecordCaseApprovalResponse,
   SendCaseAdviceParams,
   SendCaseAdviceResponse,
-  SendCaseSubmissionDetailsParams,
-  SendCaseSubmissionDetailsResponse,
   UpdateCaseAdviceBody,
   UpdateCaseAdviceParams,
   UpdateCaseAdviceResponse,
@@ -36,10 +34,9 @@ import {
   respondToApproval,
   saveAdvice,
   sendAdvice,
-  sendSubmissionDetails,
   setRequirement,
 } from "../services/case-advice";
-import { buildSubmissionPack, prefillFromPrevious, submissionDetailsState } from "../services/submission-details";
+import { prefillFromPrevious, submissionDetailsState } from "../services/submission-details";
 import { needsAdvice, serviceTypeLabel } from "../services/service-types";
 import { extractInstruction } from "../services/instruction-extraction";
 import { syncCaseChecklists } from "../services/task-checklists";
@@ -206,35 +203,6 @@ router.get("/cases/:id/submission-details", async (req, res): Promise<void> => {
     return;
   }
   res.json(GetCaseSubmissionDetailsResponse.parse(await submissionDetailsState(caseRow)));
-});
-
-router.post("/cases/:id/submission-details/send", async (req, res): Promise<void> => {
-  const params = SendCaseSubmissionDetailsParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
-  const caseRow = await loadCase(params.data.id);
-  if (!caseRow) {
-    res.status(404).json({ error: "Case not found" });
-    return;
-  }
-  const pack = await buildSubmissionPack(caseRow);
-  if (pack.missing.length) {
-    res.status(409).json({ error: "Fill in the missing details before asking the client to confirm", incomplete: pack.missing });
-    return;
-  }
-  try {
-    await sendSubmissionDetails(caseRow, pack, actorOf(res));
-  } catch (error) {
-    if (error instanceof AdviceError) {
-      res.status(409).json({ error: error.message });
-      return;
-    }
-    throw error;
-  }
-  await syncCaseChecklists(caseRow.id);
-  res.json(SendCaseSubmissionDetailsResponse.parse(await submissionDetailsState(caseRow)));
 });
 
 router.post("/cases/:id/prefill-from-previous", async (req, res): Promise<void> => {

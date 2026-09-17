@@ -59,6 +59,8 @@ import {
 } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast";
+import { UploadProgress } from "@/components/upload-progress";
+import { documentUploadHeaders, useUpload } from "@/lib/upload";
 
 const ACCEPTED_DOCUMENT_TYPES = new Set([
   "application/pdf",
@@ -109,7 +111,8 @@ export default function DocumentsPage() {
   );
   const [uploadCaseId, setUploadCaseId] = useState<string>("none");
   const [uploadCategory, setUploadCategory] = useState<string>("general");
-  const [isUploading, setIsUploading] = useState(false);
+  const upload = useUpload();
+  const isUploading = upload.uploading;
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -144,30 +147,15 @@ export default function DocumentsPage() {
       return;
     }
 
-    setIsUploading(true);
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const headers: Record<string, string> = {
-        "x-filename": file.name,
-        "x-content-type": file.type || "application/octet-stream",
-        "x-document-category": uploadCategory,
-        "x-client-id": uploadClientId,
-        "Content-Type": "application/octet-stream",
-      };
-      if (uploadCaseId !== "none") {
-        headers["x-case-id"] = uploadCaseId;
-      }
-
-      const res = await fetch("/api/documents/upload", {
-        method: "POST",
-        headers,
-        body: arrayBuffer,
+      await upload.send(file, {
+        url: "/api/documents/upload",
+        headers: documentUploadHeaders(file, {
+          "x-document-category": uploadCategory,
+          "x-client-id": uploadClientId,
+          "x-case-id": uploadCaseId !== "none" ? uploadCaseId : null,
+        }),
       });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Upload failed");
-      }
 
       toast.add({ title: "Document uploaded successfully", type: "success" });
       qc.invalidateQueries({ queryKey: getListDocumentsQueryKey() });
@@ -178,7 +166,7 @@ export default function DocumentsPage() {
         type: "error",
       });
     } finally {
-      setIsUploading(false);
+      upload.reset();
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -429,6 +417,7 @@ export default function DocumentsPage() {
                   </>
                 )}
               </Button>
+              <UploadProgress progress={upload.progress} className="mt-3" />
             </div>
           </CardContent>
         </Card>

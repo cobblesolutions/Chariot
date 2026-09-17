@@ -16,6 +16,8 @@ import {
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { DocumentFile } from "@/components/document-file";
+import { UploadProgress } from "@/components/upload-progress";
+import { documentUploadHeaders, useUpload } from "@/lib/upload";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -230,7 +232,8 @@ function SubmissionTab({
   const [closeReason, setCloseReason] = useState("");
   const [closing, setClosing] = useState<"withdrawn" | "declined" | null>(null);
   const dipInputRef = useRef<HTMLInputElement>(null);
-  const [isUploadingDip, setIsUploadingDip] = useState(false);
+  const dipUpload = useUpload();
+  const isUploadingDip = dipUpload.uploading;
   const closed = !isOpen(submission);
 
   const setField =
@@ -314,25 +317,16 @@ function SubmissionTab({
       if (dipInputRef.current) dipInputRef.current.value = "";
       return;
     }
-    setIsUploadingDip(true);
     try {
-      const response = await fetch("/api/documents/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "x-filename": file.name,
-          "x-content-type": file.type || "application/octet-stream",
+      await dipUpload.send(file, {
+        url: "/api/documents/upload",
+        headers: documentUploadHeaders(file, {
           "x-document-category": "DIP",
-          "x-client-id": String(caseDetail.clientId),
-          "x-case-id": String(caseDetail.id),
-          "x-submission-id": String(submission.id),
-        },
-        body: await file.arrayBuffer(),
+          "x-client-id": caseDetail.clientId,
+          "x-case-id": caseDetail.id,
+          "x-submission-id": submission.id,
+        }),
       });
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error || "Upload failed");
-      }
       toast.add({ title: `DIP uploaded for ${submission.lenderName}`, type: "success" });
       onChanged();
     } catch (error) {
@@ -342,7 +336,7 @@ function SubmissionTab({
         type: "error",
       });
     } finally {
-      setIsUploadingDip(false);
+      dipUpload.reset();
       if (dipInputRef.current) dipInputRef.current.value = "";
     }
   };
@@ -475,6 +469,7 @@ function SubmissionTab({
               {isUploadingDip ? "Uploading..." : submission.dipDocument ? "Replace" : "Upload"}
             </Button>
           </div>
+          <UploadProgress progress={dipUpload.progress} />
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field>

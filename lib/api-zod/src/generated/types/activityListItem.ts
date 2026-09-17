@@ -13,6 +13,8 @@ export interface ActivityListItem {
   detail: string;
   actorName: string;
   occurredAt: Date;
+  /** Machine kind (e.g. case, advice, enquiry, terms). Present on rows from the activity feed. */
+  kind?: string;
   caseId: number | null;
   caseReference: string | null;
   /** The record this activity is about, when it is not (only) a case. */

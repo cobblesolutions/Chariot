@@ -84,6 +84,8 @@ export function caseChecks(caseDetail: CaseDetail | undefined): Check[] {
       label: "Assigned to a staff member",
       done: !!caseDetail.assignedTo && caseDetail.assignedTo !== "staff_1",
     },
+    // Enforced server-side too: the case cannot leave the opening stages unsigned.
+    { label: "Terms of Business signed", done: !!caseDetail.termsOfBusiness },
   ];
 }
 

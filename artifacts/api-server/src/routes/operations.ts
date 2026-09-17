@@ -101,6 +101,8 @@ import {
   UpdateStageThresholdBody,
   UpdateStageThresholdParams,
   UpdateStageThresholdResponse,
+  MarkUnderwritingRoundSentParams,
+  MarkUnderwritingRoundSentResponse,
 } from "@workspace/api-zod";
 import {
   activitiesTable,
@@ -130,12 +132,13 @@ import { logger } from "../lib/logger";
 import { ensureClientOnboarding, getClientOnboarding, updateClientOnboardingItem } from "../services/client-onboarding";
 import { portfolioRequirementLabel, reconcileCasePortfolioRequirement } from "../services/case-portfolio-requirement";
 import { documentStorage } from "../services/document-storage";
+import { documentChecks, readingsForDocuments } from "../services/document-reading";
 import { runOpenRouterWorkflow } from "../integrations/openrouter";
 import { renewalReminderDates, syncRenewalCalendarEvents } from "../services/renewal-calendar";
 import {
   DEFAULT_ASSIGNEE_SECTIONS,
   SUBMISSION_STEPS,
-  activeStaffUser,
+  activeStaffUser, activeStaffUserByName,
   configuredAssignee,
   createAssignmentTask,
   getDefaultAssignees,
@@ -146,7 +149,10 @@ import {
 } from "../services/assignment";
 import { markCompletionMirrorsDone, setValuationCompleted, syncCaseDate } from "../services/case-dates";
 import { taskViews } from "../services/tasks";
-import { STAGES, stageOwnerRole } from "../services/stages";
+import { STAGES, stageName, stageOwnerRole } from "../services/stages";
+import { createUnderwritingRound, extractUnderwritingRequirements, markRoundSent, RoundIncompleteError, RoundStillOpenError, underwritingRoundsView } from "../services/underwriting";
+import { classifyActivityTitle } from "../services/activity-kinds";
+import { recordEnquiry } from "../services/client-enquiries";
 import {
   CLIENT_PROFILE_KEYS,
   PROPERTY_DETAIL_KEYS,
@@ -175,7 +181,6 @@ import { extractEnquiry, type ExtractedEnquiry } from "../services/enquiry-extra
 import {
   ADVICE_APPROVED_LABEL,
   ADVICE_SENT_LABEL,
-  DETAILS_CONFIRMED_LABEL,
   INSTRUCTION_LABEL,
   SERVICE_LEVEL_LABEL,
   adviceBlockHtml,
@@ -184,6 +189,7 @@ import {
   setRequirement,
 } from "../services/case-advice";
 import { buildSubmissionPack } from "../services/submission-details";
+import { TERMS_SIGNED_LABEL, caseTermsAcceptance } from "../services/terms-agreements";
 import { needsAdvice, serviceTypeLabel } from "../services/service-types";
 import {
   SAMPLE_VARS,
@@ -337,14 +343,16 @@ async function completeAutoHandoffTasks(caseId: number, reference: string, compl
 const DEFAULT_BROKER_FEE_PCT = 0.5;
 
 // Advice (index 0): the adviser confirms the level; advised levels also send
-// the written advice and wait for the client's approval. Details (index 1):
-// the client confirms what will be submitted. Both are ticked by the system
-// as the emails go out and the answers come back.
+// the written advice and wait for the client's approval — ticked by the
+// system as the emails go out and the answers come back.
 const ADVICE_ONLY_LABELS = [ADVICE_SENT_LABEL, ADVICE_APPROVED_LABEL];
 const INSTRUCTION_ONLY_LABELS = [INSTRUCTION_LABEL];
 const stageRequirements: Record<number, string[]> = {
-  0: [SERVICE_LEVEL_LABEL, ...ADVICE_ONLY_LABELS, ...INSTRUCTION_ONLY_LABELS],
-  1: [DETAILS_CONFIRMED_LABEL],
+  // The Terms of Business are signed per case and ticked by the signature flow (services/terms-agreements.ts).
+  0: [SERVICE_LEVEL_LABEL, ...ADVICE_ONLY_LABELS, ...INSTRUCTION_ONLY_LABELS, TERMS_SIGNED_LABEL],
+  // Submission details (index 1) is display-only: the pack has to be complete
+  // (checked in the advance gate), nothing is put to the client.
+  1: [],
   // Submission (index 2) has no plain checklist items — its steps (lender, DIP,
   // case number, portfolio, fee, valuation date, decision requested) are
   // structured fields handled directly on the case, not generic requirements.
@@ -501,7 +509,6 @@ async function completeCaseAndAddToPortfolio(
       .set({
         propertyId: portfolioPropertyId,
         stageIndex: AWAITING_COMPLETION_STAGE_INDEX,
-        stage: stages[AWAITING_COMPLETION_STAGE_INDEX],
         stageStartedAt: completedAt,
         status: "completed",
       })
@@ -591,12 +598,9 @@ export async function caseView(
   thresholdsMap?: Map<number, number | null>,
 ) {
   const thresholds = thresholdsMap ?? (await getStageThresholdsMap());
-  const displayStageIndex = caseRow.stage === "Completed" || caseRow.stage === "Awaiting completion" || caseRow.stageIndex >= stages.length
-    ? AWAITING_COMPLETION_STAGE_INDEX
-    : caseRow.stageIndex;
-  const displayStage = caseRow.stage === "Completed" || caseRow.stage === "Awaiting completion" || caseRow.stageIndex >= stages.length
-    ? stages[AWAITING_COMPLETION_STAGE_INDEX]
-    : caseRow.stage;
+  // The label is derived from the index — there is no separate stage column to drift.
+  const displayStageIndex = caseRow.stageIndex >= stages.length ? AWAITING_COMPLETION_STAGE_INDEX : caseRow.stageIndex;
+  const displayStage = stageName(displayStageIndex);
   const stageThresholdDays = thresholds.get(displayStageIndex) ?? null;
   const stageDays = dayDiff(caseRow.stageStartedAt);
   const procFee = caseRow.loanAmount * (caseRow.procFeePct / 100);
@@ -623,11 +627,7 @@ export async function caseView(
     (primarySubmission ? dipRows.find((row) => row.submissionId === primarySubmission.id) : undefined) ??
     dipRows.find((row) => row.submissionId == null) ??
     dipRows[0];
-  const underwritingRounds = await db
-    .select({ round: underwritingRoundsTable.round, emailText: underwritingRoundsTable.emailText, createdAt: underwritingRoundsTable.createdAt })
-    .from(underwritingRoundsTable)
-    .where(eq(underwritingRoundsTable.caseId, caseRow.id))
-    .orderBy(asc(underwritingRoundsTable.round), asc(underwritingRoundsTable.createdAt));
+  const underwritingRounds = await underwritingRoundsView(caseRow.id);
   return {
     id: caseRow.id,
     reference: refOf(caseRow),
@@ -650,6 +650,7 @@ export async function caseView(
     loanAmount: caseRow.loanAmount,
     propertyValue: caseRow.propertyValue,
     assignedTo: caseRow.assignedTo,
+    assignedUserId: caseRow.assignedUserId ?? null,
     updatedAt: iso(caseRow.updatedAt),
     skippedStageIndexes: (caseRow.skippedStageIndexes as number[] | null) ?? [],
     procFeePct: caseRow.procFeePct,
@@ -671,11 +672,7 @@ export async function caseView(
     applicationFeeConfirmed: caseRow.applicationFeeConfirmed,
     bankDecisionRequested: caseRow.bankDecisionRequested,
     underwritingCleared: caseRow.underwritingCleared,
-    underwritingRounds: underwritingRounds.map((item) => ({
-      round: item.round,
-      emailText: item.emailText,
-      createdAt: iso(item.createdAt),
-    })),
+    underwritingRounds,
   };
 }
 
@@ -690,41 +687,6 @@ async function latestStageRound(caseId: number, stageIndex: number) {
   return { maxRound, latestRoundItems };
 }
 
-/**
- * Heuristic placeholder for the real AI extraction step: splits pasted text
- * into candidate requirement lines. No AI model is called yet — replace this
- * with a real LLM call (see the ai-integrations-openrouter skill) once an
- * API key/integration is wired up. Every suggestion still requires staff
- * confirmation before it becomes a real requirement.
- */
-function extractRequirementSuggestions(emailText: string): string[] {
-  const greetingOrSignoff = /^(dear|to whom|regards|kind regards|best regards|many thanks|hi |hello|thanks|thank you|best[,.]?$|sincerely|yours)/i;
-  const rawLines = emailText.split(/\r?\n/).map((line) =>
-    line.replace(/^[\s*•\u2022\-–—]+/, "").replace(/^\d+[.)]\s*/, "").trim(),
-  );
-  const suggestions: string[] = [];
-  const seen = new Set<string>();
-  let skipNext = false;
-  for (const line of rawLines) {
-    const isGreetingOrSignoff = greetingOrSignoff.test(line);
-    if (skipNext) {
-      skipNext = false;
-      // A short line right after a sign-off is almost always a name/title, not a requirement.
-      if (!isGreetingOrSignoff && line.length > 0 && line.length <= 40) continue;
-    }
-    if (isGreetingOrSignoff) {
-      skipNext = true;
-      continue;
-    }
-    if (line.length < 6 || line.length > 200) continue;
-    const key = line.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    suggestions.push(line);
-    if (suggestions.length >= 20) break;
-  }
-  return suggestions;
-}
 
 /** All staff can view the case pipeline. Task visibility remains limited separately. */
 async function visibleAssignedToNames(user: { id: number; role: string }): Promise<string[] | null> {
@@ -863,7 +825,8 @@ router.get("/dashboard", async (_req, res): Promise<void> => {
     .limit(8);
   const stageMap = new Map<string, number>();
   for (const item of caseRows.filter((item) => item.status !== "completed")) {
-    stageMap.set(item.stage, (stageMap.get(item.stage) ?? 0) + 1);
+    const label = stageName(item.stageIndex);
+    stageMap.set(label, (stageMap.get(label) ?? 0) + 1);
   }
   const now = new Date();
   const data = {
@@ -969,6 +932,7 @@ router.get("/activities", async (req, res): Promise<void> => {
       title: activitiesTable.title,
       detail: activitiesTable.detail,
       actorName: activitiesTable.actorName,
+      kind: activitiesTable.kind,
       occurredAt: activitiesTable.occurredAt,
       caseId: activitiesTable.caseId,
       caseReference: sql<string | null>`coalesce(${casesTable.displayReference}, ${casesTable.reference})`,
@@ -989,6 +953,7 @@ router.get("/activities", async (req, res): Promise<void> => {
         title: item.title,
         detail: await resolveActivityDetail(item),
         actorName: item.actorName,
+        kind: item.kind ?? classifyActivityTitle(item.title),
         occurredAt: iso(item.occurredAt),
         caseId: item.caseId,
         caseReference: item.caseReference ?? null,
@@ -1040,6 +1005,7 @@ export async function clientDetailView(client: typeof clientsTable.$inferSelect)
     getClientOnboarding(client.id),
     clientExtras(client),
   ]);
+  const readings = await readingsForDocuments(documents.map((item) => item.id));
   return {
     ...clientView(client, extras, onboarding.status as "not_started" | "in_progress" | "complete"),
     documents: documents.map((item) => ({
@@ -1047,7 +1013,10 @@ export async function clientDetailView(client: typeof clientsTable.$inferSelect)
       name: item.name,
       category: item.category,
       status: item.status,
+      uploadedAt: item.uploadedAt?.toISOString() ?? null,
+      reading: readings.get(item.id) ?? null,
     })),
+    documentChecks: documentChecks(client, [...readings.values()]),
     properties: properties.map((item) => ({
       id: item.id,
       clientId: item.clientId,
@@ -1154,17 +1123,55 @@ router.post("/clients", async (req, res): Promise<void> => {
     res.status(500).json({ error: "Client was not created" });
     return;
   }
+  await recordEnquiry(created.id, {
+    source: created.source,
+    enquiryType: created.enquiryType,
+    summary: created.enquirySummary,
+    timescale: created.enquiryTimescale,
+    emailFrom: created.enquiryEmailFrom,
+    emailSubject: created.enquiryEmailSubject,
+    emailText: created.enquiryEmailText,
+    extracted: created.enquiryExtracted,
+    extractionModel: created.enquiryExtractionModel,
+    receivedAt: created.enquiryReceivedAt,
+    createdByUserId: res.locals.authUser?.id ?? null,
+  });
   await ensureClientOnboarding(created.id);
   if (parsed.data.property?.address) {
+    const property = parsed.data.property;
     await db.insert(propertiesTable).values({
       clientId: created.id,
-      address: parsed.data.property.address,
-      matterType: parsed.data.property.matterType ?? "Unspecified",
-      value: parsed.data.property.value ?? 0,
-      loanAmount: parsed.data.property.loanAmount ?? 0,
-      rent: parsed.data.property.rent,
-      gdv: parsed.data.property.gdv,
+      address: property.address!,
+      city: property.city ?? null,
+      postcode: property.postcode ?? null,
+      matterType: property.matterType ?? "Unspecified",
+      value: property.value ?? property.purchasePrice ?? 0,
+      loanAmount: property.loanAmount ?? property.currentBalance ?? 0,
+      rent: property.rent,
+      gdv: property.gdv,
+      propertyType: property.propertyType ?? null,
+      purchasePrice: property.purchasePrice ?? null,
+      currentLender: property.currentLender ?? null,
+      currentBalance: property.currentBalance ?? null,
+      currentRatePct: property.currentRatePct ?? null,
+      currentRateEndDate: property.currentRateEndDate ?? null,
     });
+  }
+  // Values the email reader supplied and staff left as they were are marked as
+  // document-filled, so the Add page shows them in yellow like the other readers' fills.
+  const extractedClient = (parsed.data.enquiryExtracted as { client?: Record<string, unknown>; enquiry?: Record<string, unknown> } | null)?.client;
+  const extractedEnquiry = (parsed.data.enquiryExtracted as { enquiry?: Record<string, unknown> } | null)?.enquiry;
+  if (extractedClient || extractedEnquiry) {
+    const body = parsed.data as Record<string, unknown>;
+    const filled = [...CLIENT_PROFILE_KEYS, ...CLIENT_ENQUIRY_KEYS].filter((key) => {
+      const value = body[key];
+      if (value == null || value === "") return false;
+      const fromEmail = extractedClient?.[key] ?? (key === "enquirySummary" ? extractedEnquiry?.summary : key === "enquiryTimescale" ? extractedEnquiry?.timescale : key === "enquiryType" ? extractedEnquiry?.type : extractedEnquiry?.[key]);
+      return fromEmail != null && String(fromEmail) === String(value);
+    });
+    if (filled.length > 0) {
+      await db.update(clientsTable).set({ documentFilledFields: filled }).where(eq(clientsTable.id, created.id));
+    }
   }
   await db.insert(activitiesTable).values({
     title: "Enquiry received",
@@ -1263,6 +1270,16 @@ router.patch("/clients/:id", async (req, res): Promise<void> => {
     }
   }
   // Partial update: anything the caller left out keeps its current value.
+  const profilePatch = pickProvided(parsed.data, CLIENT_PROFILE_KEYS);
+  // A field the document reader filled stops being "from a document" once staff save something else in it.
+  const enquiryPatch = pickProvided(parsed.data, CLIENT_ENQUIRY_KEYS);
+  const filledBefore = Array.isArray(existing.documentFilledFields) ? (existing.documentFilledFields as string[]) : [];
+  const unfilled = filledBefore.filter((field) => {
+    if (!(field in profilePatch) && !(field in enquiryPatch)) return false;
+    const next = field in profilePatch ? (profilePatch as Record<string, unknown>)[field] : (enquiryPatch as Record<string, unknown>)[field];
+    const current = (existing as Record<string, unknown>)[field];
+    return String(next ?? "") !== String(current ?? "");
+  });
   const [updated] = await db
     .update(clientsTable)
     .set({
@@ -1273,7 +1290,11 @@ router.patch("/clients/:id", async (req, res): Promise<void> => {
       ...(assignedUserId !== undefined ? { assignedUserId } : {}),
       ...(parsed.data.nextFollowUpAt !== undefined ? { nextFollowUpAt: parsed.data.nextFollowUpAt } : {}),
       ...pickProvided(parsed.data, CLIENT_ENQUIRY_KEYS),
-      ...pickProvided(parsed.data, CLIENT_PROFILE_KEYS),
+      ...profilePatch,
+      // Removed in SQL so a reader appending at the same moment is not overwritten.
+      ...(unfilled.length > 0
+        ? { documentFilledFields: unfilled.reduce((expr, field) => sql`${expr} - ${field}::text`, sql`coalesce(${clientsTable.documentFilledFields}, '[]'::jsonb)`) }
+        : {}),
     })
     .where(eq(clientsTable.id, params.data.id))
     .returning();
@@ -1530,9 +1551,7 @@ router.post("/settings/email-templates/:key/preview", async (req, res): Promise<
           monthlyPayment: 1214, arrangementFee: 999, summary: sample.summary!,
         }) + `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px 0 8px 0;"><tr><td style="border-radius:6px;background-color:#C46B2B;"><a href="#" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:6px;">Approve</a></td><td style="width:12px;"></td><td style="border-radius:6px;border:1px solid #C46B2B;"><a href="#" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#C46B2B;text-decoration:none;border-radius:6px;">Further discussion</a></td></tr></table>`,
       }
-    : key === "details_confirmation"
-      ? { cta: { label: "Confirm my details", url: "#" } }
-      : { cta: { label: "Set up portal access", url: "#" } };
+    : { cta: { label: "Set up portal access", url: "#" } };
   res.json(PreviewEmailTemplateResponse.parse({
     subject: rendered.subject,
     html: renderChariotEmail({ heading: rendered.heading, paragraphs: rendered.paragraphs, ...fixed }),
@@ -1686,6 +1705,9 @@ router.post("/cases", async (req, res): Promise<void> => {
     res.status(400).json({ error: "No assignee available for this case" });
     return;
   }
+  const assignedUserId = parsed.data.assignedUserId != null || !parsed.data.assignedTo
+    ? assignee.staffUser?.id ?? null
+    : (await activeStaffUserByName(parsed.data.assignedTo))?.id ?? null;
   const reference = `CH-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 6).toUpperCase()}`;
   const [created] = await db
     .insert(casesTable)
@@ -1701,8 +1723,8 @@ router.post("/cases", async (req, res): Promise<void> => {
       rent: parsed.data.rent,
       gdv: parsed.data.gdv,
       assignedTo,
+      assignedUserId,
       lenderId: parsed.data.lenderId,
-      stage: stages[0],
       stageIndex: 0,
       procFeePct: parsed.data.procFeePct ?? DEFAULT_PROC_FEE_PCT,
       brokerFeePct: parsed.data.brokerFeePct ?? DEFAULT_BROKER_FEE_PCT,
@@ -1788,6 +1810,7 @@ export async function caseDetailView(caseRow: typeof casesTable.$inferSelect) {
   return {
     ...base,
     submissions,
+    termsOfBusiness: await caseTermsAcceptance(caseRow.id),
     stages,
     requirements: requirements.map((item) => ({
       id: item.id,
@@ -2011,8 +2034,10 @@ router.patch("/cases/:id", async (req, res): Promise<void> => {
       return;
     }
   }
-  // Reassigning by user id keeps assignedTo (a display name) in step with the staff directory.
+  // Reassigning by user id keeps assignedTo (a display name) in step with the staff directory;
+  // a legacy display-name change is resolved back to the user so the id link is never stale.
   let assignedTo = body.data.assignedTo;
+  let assignedUserId: number | null | undefined;
   if (body.data.assignedUserId !== undefined) {
     const staffUser = await activeStaffUser(body.data.assignedUserId);
     if (!staffUser) {
@@ -2020,6 +2045,9 @@ router.patch("/cases/:id", async (req, res): Promise<void> => {
       return;
     }
     assignedTo = staffUser.displayName;
+    assignedUserId = staffUser.id;
+  } else if (body.data.assignedTo !== undefined) {
+    assignedUserId = (await activeStaffUserByName(body.data.assignedTo))?.id ?? null;
   }
   const oldRef = refOf(existingCase);
   const trimmedCaseNumber = body.data.caseNumber !== undefined ? body.data.caseNumber.trim() : undefined;
@@ -2030,6 +2058,7 @@ router.patch("/cases/:id", async (req, res): Promise<void> => {
     .update(casesTable)
     .set({
       assignedTo,
+      assignedUserId,
       status: body.data.status,
       lenderId: body.data.lenderId,
       lenderCaseNumber: trimmedCaseNumber !== undefined ? (trimmedCaseNumber || null) : undefined,
@@ -2217,11 +2246,7 @@ router.post("/cases/:id/underwriting/extract", async (req, res): Promise<void> =
     res.status(404).json({ error: "Case not found" });
     return;
   }
-  res.json(
-    ExtractUnderwritingRequirementsResponse.parse({
-      suggestions: extractRequirementSuggestions(body.data.emailText),
-    }),
-  );
+  res.json(ExtractUnderwritingRequirementsResponse.parse(await extractUnderwritingRequirements(body.data.emailText)));
 });
 
 router.post("/cases/:id/underwriting/rounds", async (req, res): Promise<void> => {
@@ -2236,65 +2261,55 @@ router.post("/cases/:id/underwriting/rounds", async (req, res): Promise<void> =>
     res.status(404).json({ error: "Case not found" });
     return;
   }
-  const { maxRound, latestRoundItems } = await latestStageRound(caseRow.id, UNDERWRITING_STAGE_INDEX);
-  const latestRoundComplete = maxRound > 0 && latestRoundItems.every((item) => item.complete);
-  const round = maxRound === 0 || latestRoundComplete ? maxRound + 1 : maxRound;
-  const labels = Array.from(new Set(body.data.requirementLabels.map((label) => label.trim()).filter(Boolean)));
-  if (labels.length === 0) {
-    res.status(400).json({ error: "At least one requirement is required" });
+  try {
+    await createUnderwritingRound(
+      caseRow,
+      { emailText: body.data.emailText, labels: body.data.requirementLabels },
+      { id: res.locals.authUser.id, displayName: res.locals.authUser.displayName },
+    );
+  } catch (error) {
+    if (error instanceof RoundStillOpenError) {
+      res.status(409).json({ error: `Round ${error.round} is still open - mark it as sent to the lender before starting a new one` });
+      return;
+    }
+    if (error instanceof Error && error.message === "At least one requirement is required") {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+  const [refreshedCase] = await db.select().from(casesTable).where(eq(casesTable.id, caseRow.id));
+  res.status(201).json(AddUnderwritingRoundResponse.parse(await caseDetailView(refreshedCase!)));
+});
+
+/** Everything the lender asked for is provided and sent back: closes the round and its task. */
+router.post("/cases/:id/underwriting/rounds/:round/sent", async (req, res): Promise<void> => {
+  const params = MarkUnderwritingRoundSentParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid round" });
     return;
   }
-  await db.insert(requirementsTable).values(
-    labels.map((label) => ({
-      caseId: caseRow.id,
-      stageIndex: UNDERWRITING_STAGE_INDEX,
-      label,
-      round,
-    })),
-  );
-  await db.insert(underwritingRoundsTable).values({
-    caseId: caseRow.id,
-    round,
-    emailText: body.data.emailText,
-    createdByUserId: res.locals.authUser.id,
-  });
-  // New outstanding items mean underwriting is no longer cleared, if it had been.
-  if (caseRow.underwritingCleared) {
-    await db.update(casesTable)
-      .set({ underwritingCleared: false, underwritingClearedAt: null })
-      .where(eq(casesTable.id, caseRow.id));
+  const [caseRow] = await db.select().from(casesTable).where(eq(casesTable.id, params.data.id));
+  if (!caseRow) {
+    res.status(404).json({ error: "Case not found" });
+    return;
   }
-  await db.insert(activitiesTable).values({
-    caseId: caseRow.id,
-    title: "Underwriting round added",
-    detail: `${labels.length} requirement${labels.length === 1 ? "" : "s"} added to ${refOf(caseRow)} (round ${round}) from a pasted bank email`,
-    actorName: res.locals.authUser.displayName,
-  });
+  try {
+    const row = await markRoundSent(caseRow, params.data.round, { id: res.locals.authUser.id, displayName: res.locals.authUser.displayName });
+    if (!row) {
+      res.status(404).json({ error: "Round not found" });
+      return;
+    }
+  } catch (error) {
+    if (error instanceof RoundIncompleteError) {
+      res.status(409).json({ error: `${error.open} item${error.open === 1 ? " is" : "s are"} still open in round ${error.round} - tick everything the lender asked for first` });
+      return;
+    }
+    throw error;
+  }
   await syncCaseChecklists(caseRow.id);
   const [refreshedCase] = await db.select().from(casesTable).where(eq(casesTable.id, caseRow.id));
-  const requirements = await db
-    .select()
-    .from(requirementsTable)
-    .where(and(eq(requirementsTable.caseId, caseRow.id), eq(requirementsTable.stageIndex, refreshedCase!.stageIndex)))
-    .orderBy(asc(requirementsTable.round), asc(requirementsTable.id));
-  const base = await caseView(refreshedCase!);
-  res.status(201).json(
-    AddUnderwritingRoundResponse.parse({
-      ...base,
-      stages,
-      requirements: requirements.map((item) => ({
-        id: item.id,
-        stageIndex: item.stageIndex,
-        label: item.label,
-        complete: item.complete,
-        required: item.required,
-        round: item.round,
-      })),
-      tasks: [],
-      messages: [],
-      draftNotes: refreshedCase!.draftNotes,
-    }),
-  );
+  res.json(MarkUnderwritingRoundSentResponse.parse(await caseDetailView(refreshedCase!)));
 });
 
 router.post("/cases/:id/archive", async (req, res): Promise<void> => {
@@ -2760,21 +2775,21 @@ router.post("/cases/:id/valuation", async (req, res): Promise<void> => {
   res.json(SetCaseValuationCompletedResponse.parse(await caseView(updated ?? caseRow)));
 });
 
-router.post("/cases/:id/advance", async (req, res): Promise<void> => {
-  const params = AdvanceCaseParams.safeParse(req.params);
-  const body = AdvanceCaseBody.safeParse(req.body);
-  if (!params.success || !body.success) {
-    res.status(400).json({ error: "Invalid stage request" });
-    return;
-  }
-  const [caseRow] = await db
-    .select()
-    .from(casesTable)
-    .where(eq(casesTable.id, params.data.id));
-  if (!caseRow) {
-    res.status(404).json({ error: "Case not found" });
-    return;
-  }
+export type AdvanceActor = { id: number; displayName: string };
+export type AdvanceInput = import("zod").infer<typeof AdvanceCaseBody>;
+export type AdvanceOutcome =
+  | { ok: true; caseRow: typeof casesTable.$inferSelect }
+  | { ok: false; status: 400 | 409 | 422; error: string; incomplete?: string[] };
+
+/**
+ * Everything that still blocks the case from leaving its current stage, in
+ * the words the Advance button shows. `suppliedRequirementIds` are the
+ * requirements being ticked as part of this very advance.
+ */
+export async function stageBlockers(
+  caseRow: typeof casesTable.$inferSelect,
+  suppliedRequirementIds: number[] = [],
+): Promise<{ incomplete: string[]; allowedCompletedRequirementIds: number[] }> {
   await ensureCompletionActionRequirement(caseRow.id);
   await reconcileCasePortfolioRequirement(caseRow.id, caseRow.lenderId);
   const requirements = await db
@@ -2786,34 +2801,22 @@ router.post("/cases/:id/advance", async (req, res): Promise<void> => {
         eq(requirementsTable.stageIndex, caseRow.stageIndex),
       ),
     );
-  const supplied = new Set(body.data.completedRequirementIds);
+  const supplied = new Set(suppliedRequirementIds);
   const currentRequirementIds = new Set(requirements.map((item) => item.id));
-  const allowedCompletedRequirementIds = body.data.completedRequirementIds.filter((id) =>
-    currentRequirementIds.has(id),
-  );
+  const allowedCompletedRequirementIds = suppliedRequirementIds.filter((id) => currentRequirementIds.has(id));
   const incomplete = requirements.filter(
     (item) => item.required && !item.complete && !supplied.has(item.id),
   );
   const incompleteLabels = incomplete.map((item) => item.label);
-  // Leaving Submission details: everything the lender needs must be filled in,
-  // and the client must have confirmed it — unless an administrator overrides.
-  let overrideReason: string | null = null;
+  // The Terms of Business must actually be signed before the case leaves the
+  // opening stages — ticking the requirement by hand does not stand in for it.
+  if (caseRow.stageIndex <= DETAILS_STAGE_INDEX && !(await caseTermsAcceptance(caseRow.id))) {
+    if (!incompleteLabels.includes(TERMS_SIGNED_LABEL)) incompleteLabels.push(TERMS_SIGNED_LABEL);
+  }
+  // Leaving Submission details: everything the lender needs must be filled in.
   if (caseRow.stageIndex === DETAILS_STAGE_INDEX) {
     const pack = await buildSubmissionPack(caseRow);
     incompleteLabels.push(...pack.missing);
-    const confirmedIndex = incompleteLabels.indexOf(DETAILS_CONFIRMED_LABEL);
-    if (confirmedIndex >= 0 && body.data.override) {
-      if (!isFullAccess(res.locals.authUser.role)) {
-        res.status(403).json({ error: "Only an administrator can proceed without the client's confirmation" });
-        return;
-      }
-      if (!body.data.overrideReason?.trim()) {
-        res.status(400).json({ error: "Give a reason for proceeding without the client's confirmation" });
-        return;
-      }
-      incompleteLabels.splice(confirmedIndex, 1);
-      overrideReason = body.data.overrideReason.trim();
-    }
   }
   if (caseRow.stageIndex === SUBMISSION_STAGE_INDEX) {
     if (!caseRow.lenderId) incompleteLabels.push("Select a lender");
@@ -2836,39 +2839,44 @@ router.post("/cases/:id/advance", async (req, res): Promise<void> => {
       incompleteLabels.push("Pass the stress test");
     }
   }
-  if (incompleteLabels.length > 0) {
-    res.status(409).json({
-      error: "Complete all required items before advancing",
-      incomplete: incompleteLabels,
-    });
-    return;
+  return { incomplete: incompleteLabels, allowedCompletedRequirementIds };
+}
+
+/**
+ * Move the case to its next stage — the one gate shared by the Advance
+ * button and by completing the stage's hand-off task, so the two can never
+ * disagree. Closes the stage's system tasks, opens the next stage's, and
+ * sends the stage-entry email.
+ */
+export async function advanceCaseStage(
+  caseRow: typeof casesTable.$inferSelect,
+  actor: AdvanceActor,
+  input: AdvanceInput,
+  log: Pick<typeof logger, "warn"> = logger,
+): Promise<AdvanceOutcome> {
+  const { incomplete, allowedCompletedRequirementIds } = await stageBlockers(caseRow, input.completedRequirementIds);
+  if (incomplete.length > 0) {
+    return { ok: false, status: 409, error: "Complete all required items before advancing", incomplete };
   }
   if (caseRow.stageIndex === AWAITING_COMPLETION_STAGE_INDEX) {
-    const completion = body.data.completion;
+    const completion = input.completion;
     if (!completion) {
-      res.status(400).json({ error: "Completion renewal details are required" });
-      return;
+      return { ok: false, status: 400, error: "Completion renewal details are required" };
     }
     if (completion.renewalType === "bridging" ? !completion.completionDate : !completion.rateEndDate) {
-      res.status(422).json({
+      return {
+        ok: false,
+        status: 422,
         error: completion.renewalType === "bridging"
           ? "Mortgage completion date is required for a bridging follow-up"
           : "Rate end date is required for renewal reminders",
-      });
-      return;
+      };
     }
     if (!completion.offerSummary.trim()) {
-      res.status(422).json({ error: "Lender offer summary is required" });
-      return;
+      return { ok: false, status: 422, error: "Lender offer summary is required" };
     }
-    const updated = await completeCaseAndAddToPortfolio(
-      caseRow,
-      res.locals.authUser.id,
-      res.locals.authUser.displayName,
-      completion,
-    );
-    res.json(AdvanceCaseResponse.parse(await caseDetailView(updated)));
-    return;
+    const updated = await completeCaseAndAddToPortfolio(caseRow, actor.id, actor.displayName, completion);
+    return { ok: true, caseRow: updated };
   }
   if (allowedCompletedRequirementIds.length) {
     await db
@@ -2883,14 +2891,13 @@ router.post("/cases/:id/advance", async (req, res): Promise<void> => {
       );
   }
   const caseRef = refOf(caseRow);
-  await completeAutoHandoffTasks(caseRow.id, caseRef, res.locals.authUser.id, caseRow.stageIndex);
+  await completeAutoHandoffTasks(caseRow.id, caseRef, actor.id, caseRow.stageIndex);
   const nextIndex = Math.min(caseRow.stageIndex + 1, stages.length - 1);
   const skippedStageIndexes = new Set<number>((caseRow.skippedStageIndexes as number[] | null) ?? []);
   const [updated] = await db
     .update(casesTable)
     .set({
       stageIndex: nextIndex,
-      stage: stages[nextIndex],
       stageStartedAt: new Date(),
       status: "active",
       skippedStageIndexes: [...skippedStageIndexes],
@@ -2906,21 +2913,13 @@ router.post("/cases/:id/advance", async (req, res): Promise<void> => {
     await db.update(clientsTable)
       .set({ lifecycle: "active" })
       .where(and(eq(clientsTable.id, caseRow.clientId), eq(clientsTable.lifecycle, "onboarding")));
-    await completeClientTasks(caseRow.clientId, ADVANCED_KINDS, res.locals.authUser.id);
-    if (overrideReason) {
-      await db.insert(activitiesTable).values({
-        caseId: caseRow.id,
-        title: "Advanced without client confirmation",
-        detail: `${caseRef}: ${res.locals.authUser.displayName} moved to Submission without the client's confirmation of the details — ${overrideReason}`,
-        actorName: res.locals.authUser.displayName,
-      });
-    }
+    await completeClientTasks(caseRow.clientId, ADVANCED_KINDS, actor.id);
   }
   await db.insert(activitiesTable).values({
     caseId: caseRow.id,
     title: "Stage completed",
     detail: `${caseRef} advanced to ${stages[nextIndex]}`,
-    actorName: res.locals.authUser.displayName,
+    actorName: actor.displayName,
   });
   const handoffNotes = `Handed off after completing ${stages[caseRow.stageIndex]}.`;
   const assigneeDefaults = await getDefaultAssignees();
@@ -2932,7 +2931,7 @@ router.post("/cases/:id/advance", async (req, res): Promise<void> => {
     defaults: assigneeDefaults,
     title: `${stages[nextIndex]} — ${caseRef}`,
     notes: handoffNotes,
-  }).catch((error) => logger.warn({ err: error, caseId: caseRow.id }, "Stage task was not created"));
+  }).catch((error) => log.warn({ err: error, caseId: caseRow.id }, "Stage task was not created"));
   if (nextIndex === SUBMISSION_STAGE_INDEX) {
     await createSubmissionStepTasks({
       caseId: caseRow.id,
@@ -2940,7 +2939,7 @@ router.post("/cases/:id/advance", async (req, res): Promise<void> => {
       reference: caseRef,
       notes: handoffNotes,
       defaults: assigneeDefaults,
-    }).catch((error) => logger.warn({ err: error, caseId: caseRow.id }, "Submission step tasks were not created"));
+    }).catch((error) => log.warn({ err: error, caseId: caseRow.id }, "Submission step tasks were not created"));
   }
   const entryEmail = stageEntryEmail[stages[nextIndex]];
   if (entryEmail) {
@@ -2951,10 +2950,38 @@ router.post("/cases/:id/advance", async (req, res): Promise<void> => {
         to: [client.email],
         subject: entryEmail.subject(caseRef),
         html: entryEmail.body(client.name, caseRef),
-      }).catch((error) => req.log.warn({ err: error, caseId: caseRow.id }, "Stage-entry email was not delivered"));
+      }).catch((error) => log.warn({ err: error, caseId: caseRow.id }, "Stage-entry email was not delivered"));
     }
   }
-  res.json(AdvanceCaseResponse.parse(await caseDetailView(updated!)));
+  return { ok: true, caseRow: updated! };
+}
+
+router.post("/cases/:id/advance", async (req, res): Promise<void> => {
+  const params = AdvanceCaseParams.safeParse(req.params);
+  const body = AdvanceCaseBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    res.status(400).json({ error: "Invalid stage request" });
+    return;
+  }
+  const [caseRow] = await db
+    .select()
+    .from(casesTable)
+    .where(eq(casesTable.id, params.data.id));
+  if (!caseRow) {
+    res.status(404).json({ error: "Case not found" });
+    return;
+  }
+  const outcome = await advanceCaseStage(
+    caseRow,
+    { id: res.locals.authUser.id, displayName: res.locals.authUser.displayName },
+    body.data,
+    req.log,
+  );
+  if (!outcome.ok) {
+    res.status(outcome.status).json(outcome.incomplete ? { error: outcome.error, incomplete: outcome.incomplete } : { error: outcome.error });
+    return;
+  }
+  res.json(AdvanceCaseResponse.parse(await caseDetailView(outcome.caseRow)));
 });
 
 

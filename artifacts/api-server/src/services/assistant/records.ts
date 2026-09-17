@@ -204,7 +204,6 @@ const META: Record<string, RecordMeta<ChariotContext>> = {
       "lifecycle",
       "onboardingStatus",
     ],
-    omit: ["advancedInfo"],
     media: async (ctx, row) =>
       documentsMedia(
         Array.isArray(row.documents)

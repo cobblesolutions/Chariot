@@ -78,7 +78,6 @@ export const clientsTable = pgTable(
     onboardingStatus: text("onboarding_status")
       .notNull()
       .default("not_started"),
-    advancedInfo: jsonb("advanced_info").notNull().default({}),
     // Personal
     title: text("title"),
     dateOfBirth: date("date_of_birth", { mode: "string" }),
@@ -143,6 +142,12 @@ export const clientsTable = pgTable(
     tobNote: text("tob_note"),
     /** Set once, the first time every onboarding item is complete; the notifications fire then. */
     onboardingCompletedAt: timestamp("onboarding_completed_at", { withTimezone: true }),
+    /**
+     * Client fields whose current value was written by the document reading
+     * system (not typed by staff). The UI shows them highlighted; a field
+     * leaves the list as soon as staff save a different value for it.
+     */
+    documentFilledFields: jsonb("document_filled_fields").notNull().default([]),
     // CRM: kept in sync by the interaction log (see clientInteractionsTable).
     lastContactedAt: timestamp("last_contacted_at", { withTimezone: true }),
     nextFollowUpAt: date("next_follow_up_at", { mode: "string" }),
@@ -402,7 +407,6 @@ export const casesTable = pgTable(
     /** Scope step 5: the adviser (an administrator) confirms the service level before advice goes out. */
     serviceLevelConfirmedAt: timestamp("service_level_confirmed_at", { withTimezone: true }),
     serviceLevelConfirmedByUserId: integer("service_level_confirmed_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
-    stage: text("stage").notNull().default("Advice & approval"),
     stageIndex: integer("stage_index").notNull().default(0),
     stageStartedAt: timestamp("stage_started_at", { withTimezone: true })
       .notNull()
@@ -413,7 +417,9 @@ export const casesTable = pgTable(
     propertyValue: money("property_value").notNull(),
     rent: money("rent"),
     gdv: money("gdv"),
+    /** Display snapshot of the case handler; `assignedUserId` is the link that survives renames. */
     assignedTo: text("assigned_to").notNull(),
+    assignedUserId: integer("assigned_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
     lenderId: integer("lender_id").references(() => lendersTable.id),
     lenderCaseNumber: text("lender_case_number"),
     /** Reference shown across the app once a lender case number is set; falls back to `reference` when null. */
@@ -457,6 +463,7 @@ export const casesTable = pgTable(
     uniqueIndex("cases_reference_idx").on(table.reference),
     index("cases_client_updated_idx").on(table.clientId, table.updatedAt),
     index("cases_lender_idx").on(table.lenderId),
+    index("cases_assigned_user_idx").on(table.assignedUserId),
   ],
 );
 
@@ -530,8 +537,29 @@ export const clientApprovalsTable = pgTable(
 );
 
 /**
+ * UNUSED — superseded by `terms_of_business_templates` (2026-09-17). Kept in
+ * the schema only so a push does not need to drop it; remove it in a later
+ * `push-force`.
+ */
+export const termsOfBusinessVersionsTable = pgTable(
+  "terms_of_business_versions",
+  {
+    id: serial("id").primaryKey(),
+    version: integer("version").notNull(),
+    objectPath: text("object_path").notNull(),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    publishedByUserId: integer("published_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("terms_of_business_versions_version_idx").on(table.version)],
+);
+
+/**
  * Firm-wide settings that are not per user or per case: one row per key with a
- * JSON value (e.g. the current Terms of Business document reference).
+ * JSON value. Currently holds `docusign_connection` (the signed-in DocuSign
+ * account's tokens — see integrations/docusign.ts).
  */
 export const firmSettingsTable = pgTable("firm_settings", {
   id: serial("id").primaryKey(),
@@ -543,6 +571,129 @@ export const firmSettingsTable = pgTable("firm_settings", {
     .defaultNow()
     .$onUpdate(() => new Date()),
 }, (table) => [uniqueIndex("firm_settings_key_idx").on(table.key)]);
+
+export const TERMS_FIELD_TYPES = ["text", "textarea", "number", "currency", "date", "select"] as const;
+export type TermsFieldType = (typeof TERMS_FIELD_TYPES)[number];
+
+/** A dynamic field the template asks staff to fill for each client; `{{key}}` in the body is replaced by the value. */
+export interface TermsTemplateField {
+  key: string;
+  label: string;
+  type: TermsFieldType;
+  required: boolean;
+  /** Choices for `select`. */
+  options?: string[];
+  defaultValue?: string;
+  hint?: string;
+}
+
+/**
+ * The firm's Terms of Business as an editable template: a body with
+ * {{tokens}} and the dynamic fields staff fill per client. Every published
+ * version is kept — an agreement records the version it was generated from.
+ * The current version is the highest number.
+ */
+export const termsOfBusinessTemplatesTable = pgTable(
+  "terms_of_business_templates",
+  {
+    id: serial("id").primaryKey(),
+    version: integer("version").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    fields: jsonb("fields").$type<TermsTemplateField[]>().notNull().default([]),
+    publishedByUserId: integer("published_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("terms_of_business_templates_version_idx").on(table.version)],
+);
+
+export const TERMS_AGREEMENT_STATUSES = ["draft", "sent", "signed", "declined", "voided"] as const;
+export type TermsAgreementStatus = (typeof TERMS_AGREEMENT_STATUSES)[number];
+
+export const TERMS_SIGNED_VIAS = ["docusign", "signed_upload", "staff"] as const;
+export type TermsSignedVia = (typeof TERMS_SIGNED_VIAS)[number];
+
+/**
+ * The Terms of Business for one case: the field values staff filled in, the
+ * generated PDF, and where it is in the signature flow. One row per attempt;
+ * the newest is the case's current agreement and earlier declined / voided
+ * ones stay as history. Once signed, the signed copy is filed in the case's
+ * documents (`signed_document_id`). Every case signs its own terms — nothing
+ * is recorded on the client.
+ */
+export const caseTermsAgreementsTable = pgTable(
+  "case_terms_agreements",
+  {
+    id: serial("id").primaryKey(),
+    caseId: integer("case_id").notNull().references(() => casesTable.id, { onDelete: "cascade" }),
+    /** Denormalised from the case so the signed document can be filed without a join. */
+    clientId: integer("client_id").notNull().references(() => clientsTable.id, { onDelete: "cascade" }),
+    templateVersion: integer("template_version").notNull(),
+    values: jsonb("values").$type<Record<string, string>>().notNull().default({}),
+    status: text("status").$type<TermsAgreementStatus>().notNull().default("draft"),
+    /** The generated (unsigned) PDF. */
+    objectPath: text("object_path"),
+    filename: text("filename"),
+    byteSize: integer("byte_size"),
+    signedDocumentId: integer("signed_document_id").references(() => documentsTable.id, { onDelete: "set null" }),
+    /** docusign | docusign_mock */
+    provider: text("provider"),
+    envelopeId: text("envelope_id"),
+    envelopeStatus: text("envelope_status"),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    recipientName: text("recipient_name"),
+    recipientEmail: text("recipient_email"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    sentByUserId: integer("sent_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
+    signedAt: timestamp("signed_at", { withTimezone: true }),
+    /** How the signature arrived: DocuSign, a signed copy uploaded by staff, or recorded by staff. */
+    signedVia: text("signed_via").$type<TermsSignedVia>(),
+    signedNote: text("signed_note"),
+    signedByUserId: integer("signed_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
+    declinedAt: timestamp("declined_at", { withTimezone: true }),
+    declineReason: text("decline_reason"),
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    voidReason: text("void_reason"),
+    voidedByUserId: integer("voided_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
+    createdByUserId: integer("created_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("case_terms_agreements_case_idx").on(table.caseId, table.createdAt),
+    index("case_terms_agreements_client_idx").on(table.clientId, table.createdAt),
+    index("case_terms_agreements_envelope_idx").on(table.envelopeId),
+  ],
+);
+
+/**
+ * One row per enquiry a client has made. The `enquiry_*` columns on clients
+ * hold the latest one (what the Add page and CRM read); this is the history,
+ * so a repeat enquiry no longer erases the previous email.
+ */
+export const clientEnquiriesTable = pgTable(
+  "client_enquiries",
+  {
+    id: serial("id").primaryKey(),
+    clientId: integer("client_id").notNull().references(() => clientsTable.id, { onDelete: "cascade" }),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    source: text("source"),
+    enquiryType: text("enquiry_type"),
+    summary: text("summary"),
+    timescale: text("timescale"),
+    emailFrom: text("email_from"),
+    emailSubject: text("email_subject"),
+    emailText: text("email_text"),
+    extracted: jsonb("extracted"),
+    extractionModel: text("extraction_model"),
+    /** open | accepted | declined | lost */
+    status: text("status").notNull().default("open"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    outcomeReason: text("outcome_reason"),
+    createdByUserId: integer("created_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
+  },
+  (table) => [index("client_enquiries_client_idx").on(table.clientId, table.receivedAt)],
+);
 
 /**
  * Editable copy for outbound emails. Only the words are stored — the branded
@@ -673,6 +824,11 @@ export const underwritingRoundsTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /** The case handler's task whose checkboxes are this round's requirements. */
+    taskId: integer("task_id").references(() => tasksTable.id, { onDelete: "set null" }),
+    /** Everything provided and sent back to the lender; the next round may start. */
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    sentByUserId: integer("sent_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
   },
   (table) => [index("underwriting_rounds_case_idx").on(table.caseId, table.round)],
 );
@@ -815,6 +971,34 @@ export const documentsTable = pgTable("documents", {
 }, (table) => [
   index("documents_client_idx").on(table.clientId),
   index("documents_case_idx").on(table.caseId),
+]);
+
+export const DOCUMENT_READING_STATUSES = ["pending", "completed", "failed", "unsupported"] as const;
+export type DocumentReadingStatus = (typeof DOCUMENT_READING_STATUSES)[number];
+
+/**
+ * What the document reading system extracted from an uploaded file. One row
+ * per document; `reader` names the extractor that ran (e.g. proof_of_income)
+ * and `data` is that reader's structured result. `appliedFields` records
+ * which client fields were filled from it so staff can see where a value came from.
+ */
+export const documentReadingsTable = pgTable("document_readings", {
+  id: serial("id").primaryKey(),
+  documentId: integer("document_id")
+    .notNull()
+    .references(() => documentsTable.id, { onDelete: "cascade" }),
+  reader: text("reader").notNull(),
+  status: text("status").notNull().default("pending"),
+  /** "ai" when a model produced the result, "heuristic" for the text-pattern fallback. */
+  source: text("source"),
+  model: text("model"),
+  data: jsonb("data"),
+  error: text("error"),
+  appliedFields: jsonb("applied_fields").notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+}, (table) => [
+  uniqueIndex("document_readings_document_idx").on(table.documentId),
 ]);
 
 export const lenderOfferReviewsTable = pgTable(
@@ -1174,6 +1358,8 @@ export const activitiesTable = pgTable("activities", {
   title: text("title").notNull(),
   detail: text("detail").notNull(),
   actorName: text("actor_name").notNull().default("System"),
+  /** Machine kind (services/activity-kinds.ts); rows without one are classified from the title when read. */
+  kind: text("kind"),
   // Optional pointer at the record the activity is about, so the notifications
   // page can deep-link to it (cases already have caseId above).
   entityType: text("entity_type").$type<ActivityEntityType>(),
@@ -1185,3 +1371,37 @@ export const activitiesTable = pgTable("activities", {
 
 export const ACTIVITY_ENTITY_TYPES = ["client", "property", "invoice", "renewal", "document"] as const;
 export type ActivityEntityType = (typeof ACTIVITY_ENTITY_TYPES)[number];
+
+/**
+ * Things that need a person's attention, raised by the rules in
+ * services/alerts.ts. `dedupe_key` identifies the condition so it is raised
+ * once, acknowledged ("seen"), and resolved when the condition clears.
+ */
+export const alertsTable = pgTable(
+  "alerts",
+  {
+    id: serial("id").primaryKey(),
+    kind: text("kind").notNull(),
+    /** red | amber */
+    severity: text("severity").notNull(),
+    title: text("title").notNull(),
+    detail: text("detail").notNull().default(""),
+    dedupeKey: text("dedupe_key").notNull(),
+    caseId: integer("case_id").references(() => casesTable.id, { onDelete: "cascade" }),
+    clientId: integer("client_id").references(() => clientsTable.id, { onDelete: "cascade" }),
+    taskId: integer("task_id").references(() => tasksTable.id, { onDelete: "cascade" }),
+    renewalId: integer("renewal_id").references(() => renewalsTable.id, { onDelete: "cascade" }),
+    invoiceId: integer("invoice_id").references(() => invoicesTable.id, { onDelete: "cascade" }),
+    assignedUserId: integer("assigned_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
+    raisedAt: timestamp("raised_at", { withTimezone: true }).notNull().defaultNow(),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    acknowledgedByUserId: integer("acknowledged_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    /** When the assignee was told (red only emails); set for every alert so nothing is sent twice. */
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("alerts_dedupe_key_idx").on(table.dedupeKey),
+    index("alerts_open_idx").on(table.resolvedAt, table.assignedUserId),
+  ],
+);

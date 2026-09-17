@@ -22,6 +22,7 @@ import {
   taskCommentsTable,
   tasksTable,
 } from "@workspace/db";
+import { STAGES } from "../services/stages";
 import { requireStaff } from "../auth/session";
 import { isFullAccess, STAFF_ROLES } from "../auth/roles";
 import { formatAddress } from "../lib/address";
@@ -204,7 +205,7 @@ const searchCases: Source = async ({ terms, limit }) => {
     field("propertyAddress", "Property", casesTable.propertyAddress),
     field("matterType", "Matter type", casesTable.matterType),
     field("serviceType", "Service type", casesTable.serviceType),
-    field("stage", "Stage", casesTable.stage),
+    field("stage", "Stage", sql`(array[${sql.join(STAGES.map((stage) => sql`${stage}`), sql`, `)}]::text[])[least(${casesTable.stageIndex}, ${STAGES.length - 1}) + 1]`),
     field("status", "Status", casesTable.status),
     field("assignedTo", "Assigned to", casesTable.assignedTo),
     field("loanAmount", "Loan amount", casesTable.loanAmount),
@@ -302,12 +303,6 @@ const searchClients: Source = async ({ terms, limit }) => {
     ),
     field("onboardingStatus", "Onboarding", clientsTable.onboardingStatus),
     field("notes", "Notes", clientsTable.notes),
-    field(
-      "advancedInfo",
-      "Additional info",
-      jsonValues(clientsTable.advancedInfo),
-      { raw: true },
-    ),
   ];
   const rows = await db
     .select({

@@ -16,4 +16,5 @@ export const ClientTimelineItemKind = {
   document: 'document',
   case: 'case',
   email: 'email',
+  enquiry: 'enquiry',
 } as const;

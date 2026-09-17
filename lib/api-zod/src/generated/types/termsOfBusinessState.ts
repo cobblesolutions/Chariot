@@ -5,8 +5,19 @@
  * Chariot Financial Solutions case management API
  * OpenAPI spec version: 1.0.0
  */
-import type { TermsOfBusinessDocument } from './termsOfBusinessDocument';
+import type { SignatureConfig } from './signatureConfig';
+import type { TermsPlaceholder } from './termsPlaceholder';
+import type { TermsTemplate } from './termsTemplate';
+import type { TermsTemplateInput } from './termsTemplateInput';
 
 export interface TermsOfBusinessState {
-  document: TermsOfBusinessDocument | null;
+  /** The current version; null until an administrator publishes one. */
+  template: TermsTemplate | null;
+  /** Every published version, newest first. */
+  versions: TermsTemplate[];
+  /** Tokens filled from the case and client automatically. */
+  placeholders: TermsPlaceholder[];
+  /** The built-in template, to start from or reset to. */
+  defaults: TermsTemplateInput;
+  signature: SignatureConfig;
 }

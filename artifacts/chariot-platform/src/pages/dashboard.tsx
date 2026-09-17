@@ -5,6 +5,8 @@ import {
   useListTasks,
   useListInbox,
   useListCalendarEvents,
+  useGetAlertSummary,
+  getGetAlertSummaryQueryKey,
   getGetDashboardQueryKey,
   getListTasksQueryKey,
   getListInboxQueryKey,
@@ -842,6 +844,7 @@ export default function Dashboard() {
       refetchInterval: SLOW_POLL_MS,
     },
   });
+  const { data: alertSummary } = useGetAlertSummary({ query: { queryKey: getGetAlertSummaryQueryKey(), refetchInterval: 30_000 } });
   const { toggleDone } = useTaskMutations();
 
   const groups = useMemo(
@@ -877,6 +880,12 @@ export default function Dashboard() {
   const dueCount = groups.overdue.length + groups.today.length;
 
   const summaryParts: ReactNode[] = [];
+  if (alertSummary && alertSummary.red > 0)
+    summaryParts.push(
+      <Link key="alerts" href="/alerts" className="font-medium text-red-600 hover:underline dark:text-red-400">
+        {plural(alertSummary.red, "alert")} need{alertSummary.red === 1 ? "s" : ""} action
+      </Link>,
+    );
   if (groups.overdue.length > 0)
     summaryParts.push(
       <span

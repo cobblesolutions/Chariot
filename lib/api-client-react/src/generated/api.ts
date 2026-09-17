@@ -20,11 +20,13 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
-  AcceptTermsInput,
   ActivityPage,
   AddRequirementInput,
   AddUnderwritingRoundInput,
   AdvanceInput,
+  Alert,
+  AlertEvaluation,
+  AlertSummary,
   AssistantChatRequest,
   AssistantStatus,
   AuthUser,
@@ -44,6 +46,8 @@ import type {
   CaseSubmission,
   CaseSubmissionInput,
   CaseSubmissionUpdate,
+  CaseTermsState,
+  CaseTermsValuesInput,
   CaseUpdate,
   CaseValuationInput,
   ChangePasswordInput,
@@ -72,6 +76,9 @@ import type {
   Document,
   DocumentInput,
   DocumentUpdate,
+  DocusignCallbackParams,
+  DocusignTestResult,
+  DocusignWebhookPayload,
   EmailTemplate,
   EmailTemplateInput,
   EmailTemplatePreview,
@@ -84,7 +91,6 @@ import type {
   ExtractUnderwritingOutput,
   ForgotPasswordInput,
   GetPlaceAddressParams,
-  GetPortalTermsOfBusiness200,
   GlobalSearchParams,
   GlobalSearchResults,
   HealthStatus,
@@ -106,15 +112,18 @@ import type {
   LenderOfferReviewInput,
   LenderOfferReviewResponse,
   ListActivitiesParams,
+  ListAlertsParams,
   ListCasesParams,
   ListClientsParams,
   ListDocumentsParams,
   LoginInput,
+  MarkTermsSignedInput,
   Message,
   MessageAttachment,
   MessageInput,
   MessageReaction,
   MessageReactionInput,
+  MockSignTermsInput,
   OnboardingItemUpdate,
   OnboardingSummary,
   PaymentInput,
@@ -125,6 +134,7 @@ import type {
   PortalApprovalInput,
   PortalCase,
   PortalPropertyInput,
+  PortalTermsOfBusiness,
   PrefillResult,
   Property,
   PropertyDetail,
@@ -136,6 +146,7 @@ import type {
   PublicApprovalInput,
   PublicApprovalResult,
   RecordApprovalInput,
+  RemindClientOnboarding200,
   Renewal,
   RenewalInput,
   RenewalStatusInput,
@@ -145,6 +156,7 @@ import type {
   ResetPasswordInput,
   SearchChatMessagesParams,
   SearchCompaniesHouseParams,
+  SignatureConfig,
   StaffAccount,
   StaffProfile,
   StaffUser,
@@ -161,8 +173,8 @@ import type {
   TaskIdList,
   TaskInput,
   TaskUpdate,
-  TermsAcceptance,
   TermsOfBusinessState,
+  TermsTemplateInput,
   ThreadPreferences,
   ThreadPreferencesInput,
   ThreadReadInput,
@@ -173,7 +185,9 @@ import type {
   UpdateRequirementInput,
   UpdateStageThresholdInput,
   UpdateUserInput,
-  VoidInvoiceInput
+  ViewTermsOfBusinessParams,
+  VoidInvoiceInput,
+  VoidTermsInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1358,6 +1372,427 @@ export function useGetDashboard<TData = Awaited<ReturnType<typeof getDashboard>>
 
 
 
+
+export const getListAlertsUrl = (params?: ListAlertsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/alerts?${stringifiedParams}` : `/api/alerts`
+}
+
+/**
+ * Things that need a person. Workers see their own; administrators can see everyone's.
+ */
+export const listAlerts = async (params?: ListAlertsParams, options?: Parameters<typeof customFetch>[1]): Promise<Alert[]> => {
+
+  return customFetch<Alert[]>(getListAlertsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAlertsQueryKey = (params?: ListAlertsParams,) => {
+    return [
+    `/api/alerts`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAlertsQueryOptions = <TData = Awaited<ReturnType<typeof listAlerts>>, TError = ErrorType<unknown>>(params?: ListAlertsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAlerts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAlertsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAlerts>>> = ({ signal }) => listAlerts(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAlerts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAlertsQueryResult = NonNullable<Awaited<ReturnType<typeof listAlerts>>>
+export type ListAlertsQueryError = ErrorType<unknown>
+
+
+
+export function useListAlerts<TData = Awaited<ReturnType<typeof listAlerts>>, TError = ErrorType<unknown>>(
+ params?: ListAlertsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAlerts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAlertsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetAlertSummaryUrl = () => {
+
+
+
+
+  return `/api/alerts/summary`
+}
+
+export const getAlertSummary = async ( options?: Parameters<typeof customFetch>[1]): Promise<AlertSummary> => {
+
+  return customFetch<AlertSummary>(getGetAlertSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAlertSummaryQueryKey = () => {
+    return [
+    `/api/alerts/summary`
+    ] as const;
+    }
+
+
+export const getGetAlertSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getAlertSummary>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAlertSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAlertSummaryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAlertSummary>>> = ({ signal }) => getAlertSummary({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAlertSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAlertSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getAlertSummary>>>
+export type GetAlertSummaryQueryError = ErrorType<unknown>
+
+
+
+export function useGetAlertSummary<TData = Awaited<ReturnType<typeof getAlertSummary>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAlertSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAlertSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getEvaluateAlertsUrl = () => {
+
+
+
+
+  return `/api/alerts/evaluate`
+}
+
+/**
+ * Run the alert rules now (administrators). The scheduler runs them every 15 minutes anyway.
+ */
+export const evaluateAlerts = async ( options?: Parameters<typeof customFetch>[1]): Promise<AlertEvaluation> => {
+
+  return customFetch<AlertEvaluation>(getEvaluateAlertsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getEvaluateAlertsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof evaluateAlerts>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof evaluateAlerts>>, TError,void, TContext> => {
+
+const mutationKey = ['evaluateAlerts'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof evaluateAlerts>>, void> = () => {
+
+
+          return  evaluateAlerts(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EvaluateAlertsMutationResult = NonNullable<Awaited<ReturnType<typeof evaluateAlerts>>>
+
+    export type EvaluateAlertsMutationError = ErrorType<void>
+
+    export const useEvaluateAlerts = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof evaluateAlerts>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof evaluateAlerts>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getEvaluateAlertsMutationOptions(options));
+    }
+
+export const getRecheckAlertUrl = (id: number,) => {
+
+
+
+
+  return `/api/alerts/${id}/recheck`
+}
+
+/**
+ * Re-run the rules for this alert after fixing its cause from the card; it resolves at once if the rule no longer fires.
+ */
+export const recheckAlert = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<Alert> => {
+
+  return customFetch<Alert>(getRecheckAlertUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRecheckAlertMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recheckAlert>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof recheckAlert>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['recheckAlert'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof recheckAlert>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  recheckAlert(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RecheckAlertMutationResult = NonNullable<Awaited<ReturnType<typeof recheckAlert>>>
+
+    export type RecheckAlertMutationError = ErrorType<void>
+
+    export const useRecheckAlert = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof recheckAlert>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof recheckAlert>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRecheckAlertMutationOptions(options));
+    }
+
+export const getRemindClientOnboardingUrl = (id: number,) => {
+
+
+
+
+  return `/api/clients/${id}/onboarding/remind`
+}
+
+/**
+ * Email the client what is still missing from their onboarding, with a portal link.
+ */
+export const remindClientOnboarding = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<RemindClientOnboarding200> => {
+
+  return customFetch<RemindClientOnboarding200>(getRemindClientOnboardingUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRemindClientOnboardingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof remindClientOnboarding>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof remindClientOnboarding>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['remindClientOnboarding'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof remindClientOnboarding>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  remindClientOnboarding(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemindClientOnboardingMutationResult = NonNullable<Awaited<ReturnType<typeof remindClientOnboarding>>>
+
+    export type RemindClientOnboardingMutationError = ErrorType<void>
+
+    export const useRemindClientOnboarding = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof remindClientOnboarding>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof remindClientOnboarding>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRemindClientOnboardingMutationOptions(options));
+    }
+
+export const getAcknowledgeAlertUrl = (id: number,) => {
+
+
+
+
+  return `/api/alerts/${id}/acknowledge`
+}
+
+export const acknowledgeAlert = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<Alert> => {
+
+  return customFetch<Alert>(getAcknowledgeAlertUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getAcknowledgeAlertMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acknowledgeAlert>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acknowledgeAlert>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['acknowledgeAlert'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acknowledgeAlert>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  acknowledgeAlert(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcknowledgeAlertMutationResult = NonNullable<Awaited<ReturnType<typeof acknowledgeAlert>>>
+
+    export type AcknowledgeAlertMutationError = ErrorType<void>
+
+    export const useAcknowledgeAlert = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acknowledgeAlert>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof acknowledgeAlert>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getAcknowledgeAlertMutationOptions(options));
+    }
 
 export const getListActivitiesUrl = (params?: ListActivitiesParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -4721,7 +5156,7 @@ export const getGetCaseSubmissionDetailsUrl = (id: number,) => {
 }
 
 /**
- * The structured details pack that will be submitted, what is still missing, and the client's confirmation state.
+ * The structured details pack that will be submitted and what is still missing (display-only; nothing is sent to the client).
  */
 export const getCaseSubmissionDetails = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<SubmissionDetailsState> => {
 
@@ -4785,74 +5220,6 @@ export function useGetCaseSubmissionDetails<TData = Awaited<ReturnType<typeof ge
 
 
 
-
-export const getSendCaseSubmissionDetailsUrl = (id: number,) => {
-
-
-
-
-  return `/api/cases/${id}/submission-details/send`
-}
-
-/**
- * Snapshots the pack and asks the client to confirm it (email button + portal).
- */
-export const sendCaseSubmissionDetails = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<SubmissionDetailsState> => {
-
-  return customFetch<SubmissionDetailsState>(getSendCaseSubmissionDetailsUrl(id),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-
-
-export const getSendCaseSubmissionDetailsMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendCaseSubmissionDetails>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof sendCaseSubmissionDetails>>, TError,{id: number}, TContext> => {
-
-const mutationKey = ['sendCaseSubmissionDetails'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendCaseSubmissionDetails>>, {id: number}> = (props) => {
-          const {id} = props ?? {};
-
-          return  sendCaseSubmissionDetails(id,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type SendCaseSubmissionDetailsMutationResult = NonNullable<Awaited<ReturnType<typeof sendCaseSubmissionDetails>>>
-
-    export type SendCaseSubmissionDetailsMutationError = ErrorType<void>
-
-    export const useSendCaseSubmissionDetails = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendCaseSubmissionDetails>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof sendCaseSubmissionDetails>>,
-        TError,
-        {id: number},
-        TContext
-      > => {
-      return useMutation(getSendCaseSubmissionDetailsMutationOptions(options));
-    }
 
 export const getPrefillCaseFromPreviousUrl = (id: number,) => {
 
@@ -5146,7 +5513,7 @@ export const addUnderwritingRound = async (id: number,
 
 
 
-export const getAddUnderwritingRoundMutationOptions = <TError = ErrorType<unknown>,
+export const getAddUnderwritingRoundMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addUnderwritingRound>>, TError,{id: number;data: BodyType<AddUnderwritingRoundInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof addUnderwritingRound>>, TError,{id: number;data: BodyType<AddUnderwritingRoundInput>}, TContext> => {
 
@@ -5175,9 +5542,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type AddUnderwritingRoundMutationResult = NonNullable<Awaited<ReturnType<typeof addUnderwritingRound>>>
     export type AddUnderwritingRoundMutationBody = BodyType<AddUnderwritingRoundInput>
-    export type AddUnderwritingRoundMutationError = ErrorType<unknown>
+    export type AddUnderwritingRoundMutationError = ErrorType<void>
 
-    export const useAddUnderwritingRound = <TError = ErrorType<unknown>,
+    export const useAddUnderwritingRound = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addUnderwritingRound>>, TError,{id: number;data: BodyType<AddUnderwritingRoundInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof addUnderwritingRound>>,
@@ -5186,6 +5553,76 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getAddUnderwritingRoundMutationOptions(options));
+    }
+
+export const getMarkUnderwritingRoundSentUrl = (id: number,
+    round: number,) => {
+
+
+
+
+  return `/api/cases/${id}/underwriting/rounds/${round}/sent`
+}
+
+/**
+ * Everything the lender asked for in this round has been provided and sent back; closes the round and its task. The next round may then start.
+ */
+export const markUnderwritingRoundSent = async (id: number,
+    round: number, options?: Parameters<typeof customFetch>[1]): Promise<CaseDetail> => {
+
+  return customFetch<CaseDetail>(getMarkUnderwritingRoundSentUrl(id,round),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getMarkUnderwritingRoundSentMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, TError,{id: number;round: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, TError,{id: number;round: number}, TContext> => {
+
+const mutationKey = ['markUnderwritingRoundSent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, {id: number;round: number}> = (props) => {
+          const {id,round} = props ?? {};
+
+          return  markUnderwritingRoundSent(id,round,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkUnderwritingRoundSentMutationResult = NonNullable<Awaited<ReturnType<typeof markUnderwritingRoundSent>>>
+
+    export type MarkUnderwritingRoundSentMutationError = ErrorType<void>
+
+    export const useMarkUnderwritingRoundSent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, TError,{id: number;round: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markUnderwritingRoundSent>>,
+        TError,
+        {id: number;round: number},
+        TContext
+      > => {
+      return useMutation(getMarkUnderwritingRoundSentMutationOptions(options));
     }
 
 export const getArchiveCaseUrl = (id: number,) => {
@@ -5318,7 +5755,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getRestoreCaseMutationOptions(options));
     }
 
-export const getGetEmailTemplateUrl = (key: 'client_welcome' | 'advice_email' | 'details_confirmation',) => {
+export const getGetEmailTemplateUrl = (key: 'client_welcome' | 'advice_email',) => {
 
 
 
@@ -5326,7 +5763,7 @@ export const getGetEmailTemplateUrl = (key: 'client_welcome' | 'advice_email' | 
   return `/api/settings/email-templates/${key}`
 }
 
-export const getEmailTemplate = async (key: 'client_welcome' | 'advice_email' | 'details_confirmation', options?: Parameters<typeof customFetch>[1]): Promise<EmailTemplate> => {
+export const getEmailTemplate = async (key: 'client_welcome' | 'advice_email', options?: Parameters<typeof customFetch>[1]): Promise<EmailTemplate> => {
 
   return customFetch<EmailTemplate>(getGetEmailTemplateUrl(key),
   {
@@ -5341,14 +5778,14 @@ export const getEmailTemplate = async (key: 'client_welcome' | 'advice_email' | 
 
 
 
-export const getGetEmailTemplateQueryKey = (key: 'client_welcome' | 'advice_email' | 'details_confirmation',) => {
+export const getGetEmailTemplateQueryKey = (key: 'client_welcome' | 'advice_email',) => {
     return [
     `/api/settings/email-templates/${key}`
     ] as const;
     }
 
 
-export const getGetEmailTemplateQueryOptions = <TData = Awaited<ReturnType<typeof getEmailTemplate>>, TError = ErrorType<unknown>>(key: 'client_welcome' | 'advice_email' | 'details_confirmation', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEmailTemplate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetEmailTemplateQueryOptions = <TData = Awaited<ReturnType<typeof getEmailTemplate>>, TError = ErrorType<unknown>>(key: 'client_welcome' | 'advice_email', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEmailTemplate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -5372,7 +5809,7 @@ export type GetEmailTemplateQueryError = ErrorType<unknown>
 
 
 export function useGetEmailTemplate<TData = Awaited<ReturnType<typeof getEmailTemplate>>, TError = ErrorType<unknown>>(
- key: 'client_welcome' | 'advice_email' | 'details_confirmation', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEmailTemplate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ key: 'client_welcome' | 'advice_email', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEmailTemplate>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
@@ -5389,7 +5826,7 @@ export function useGetEmailTemplate<TData = Awaited<ReturnType<typeof getEmailTe
 
 
 
-export const getUpdateEmailTemplateUrl = (key: 'client_welcome' | 'advice_email' | 'details_confirmation',) => {
+export const getUpdateEmailTemplateUrl = (key: 'client_welcome' | 'advice_email',) => {
 
 
 
@@ -5400,7 +5837,7 @@ export const getUpdateEmailTemplateUrl = (key: 'client_welcome' | 'advice_email'
 /**
  * Administrator only. Saves the subject, heading and body text; the branded layout is fixed.
  */
-export const updateEmailTemplate = async (key: 'client_welcome' | 'advice_email' | 'details_confirmation',
+export const updateEmailTemplate = async (key: 'client_welcome' | 'advice_email',
     emailTemplateInput: EmailTemplateInput, options?: Parameters<typeof customFetch>[1]): Promise<EmailTemplate> => {
 
   return customFetch<EmailTemplate>(getUpdateEmailTemplateUrl(key),
@@ -5417,8 +5854,8 @@ export const updateEmailTemplate = async (key: 'client_welcome' | 'advice_email'
 
 
 export const getUpdateEmailTemplateMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email' | 'details_confirmation';data: BodyType<EmailTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof updateEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email' | 'details_confirmation';data: BodyType<EmailTemplateInput>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email';data: BodyType<EmailTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email';data: BodyType<EmailTemplateInput>}, TContext> => {
 
 const mutationKey = ['updateEmailTemplate'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -5430,7 +5867,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateEmailTemplate>>, {key: 'client_welcome' | 'advice_email' | 'details_confirmation';data: BodyType<EmailTemplateInput>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateEmailTemplate>>, {key: 'client_welcome' | 'advice_email';data: BodyType<EmailTemplateInput>}> = (props) => {
           const {key,data} = props ?? {};
 
           return  updateEmailTemplate(key,data,requestOptions)
@@ -5448,17 +5885,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateEmailTemplateMutationError = ErrorType<unknown>
 
     export const useUpdateEmailTemplate = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email' | 'details_confirmation';data: BodyType<EmailTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email';data: BodyType<EmailTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof updateEmailTemplate>>,
         TError,
-        {key: 'client_welcome' | 'advice_email' | 'details_confirmation';data: BodyType<EmailTemplateInput>},
+        {key: 'client_welcome' | 'advice_email';data: BodyType<EmailTemplateInput>},
         TContext
       > => {
       return useMutation(getUpdateEmailTemplateMutationOptions(options));
     }
 
-export const getResetEmailTemplateUrl = (key: 'client_welcome' | 'advice_email' | 'details_confirmation',) => {
+export const getResetEmailTemplateUrl = (key: 'client_welcome' | 'advice_email',) => {
 
 
 
@@ -5469,7 +5906,7 @@ export const getResetEmailTemplateUrl = (key: 'client_welcome' | 'advice_email' 
 /**
  * Administrator only. Removes the stored text so the built-in default is used again.
  */
-export const resetEmailTemplate = async (key: 'client_welcome' | 'advice_email' | 'details_confirmation', options?: Parameters<typeof customFetch>[1]): Promise<EmailTemplate> => {
+export const resetEmailTemplate = async (key: 'client_welcome' | 'advice_email', options?: Parameters<typeof customFetch>[1]): Promise<EmailTemplate> => {
 
   return customFetch<EmailTemplate>(getResetEmailTemplateUrl(key),
   {
@@ -5485,8 +5922,8 @@ export const resetEmailTemplate = async (key: 'client_welcome' | 'advice_email' 
 
 
 export const getResetEmailTemplateMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email' | 'details_confirmation'}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof resetEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email' | 'details_confirmation'}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email'}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email'}, TContext> => {
 
 const mutationKey = ['resetEmailTemplate'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -5498,7 +5935,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetEmailTemplate>>, {key: 'client_welcome' | 'advice_email' | 'details_confirmation'}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetEmailTemplate>>, {key: 'client_welcome' | 'advice_email'}> = (props) => {
           const {key} = props ?? {};
 
           return  resetEmailTemplate(key,requestOptions)
@@ -5516,17 +5953,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ResetEmailTemplateMutationError = ErrorType<unknown>
 
     export const useResetEmailTemplate = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email' | 'details_confirmation'}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email'}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof resetEmailTemplate>>,
         TError,
-        {key: 'client_welcome' | 'advice_email' | 'details_confirmation'},
+        {key: 'client_welcome' | 'advice_email'},
         TContext
       > => {
       return useMutation(getResetEmailTemplateMutationOptions(options));
     }
 
-export const getPreviewEmailTemplateUrl = (key: 'client_welcome' | 'advice_email' | 'details_confirmation',) => {
+export const getPreviewEmailTemplateUrl = (key: 'client_welcome' | 'advice_email',) => {
 
 
 
@@ -5537,7 +5974,7 @@ export const getPreviewEmailTemplateUrl = (key: 'client_welcome' | 'advice_email
 /**
  * Render unsaved text inside the branded shell, with a real client's details when clientId is given.
  */
-export const previewEmailTemplate = async (key: 'client_welcome' | 'advice_email' | 'details_confirmation',
+export const previewEmailTemplate = async (key: 'client_welcome' | 'advice_email',
     emailTemplatePreviewInput: EmailTemplatePreviewInput, options?: Parameters<typeof customFetch>[1]): Promise<EmailTemplatePreview> => {
 
   return customFetch<EmailTemplatePreview>(getPreviewEmailTemplateUrl(key),
@@ -5554,8 +5991,8 @@ export const previewEmailTemplate = async (key: 'client_welcome' | 'advice_email
 
 
 export const getPreviewEmailTemplateMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email' | 'details_confirmation';data: BodyType<EmailTemplatePreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof previewEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email' | 'details_confirmation';data: BodyType<EmailTemplatePreviewInput>}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email';data: BodyType<EmailTemplatePreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email';data: BodyType<EmailTemplatePreviewInput>}, TContext> => {
 
 const mutationKey = ['previewEmailTemplate'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -5567,7 +6004,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewEmailTemplate>>, {key: 'client_welcome' | 'advice_email' | 'details_confirmation';data: BodyType<EmailTemplatePreviewInput>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewEmailTemplate>>, {key: 'client_welcome' | 'advice_email';data: BodyType<EmailTemplatePreviewInput>}> = (props) => {
           const {key,data} = props ?? {};
 
           return  previewEmailTemplate(key,data,requestOptions)
@@ -5585,11 +6022,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type PreviewEmailTemplateMutationError = ErrorType<unknown>
 
     export const usePreviewEmailTemplate = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email' | 'details_confirmation';data: BodyType<EmailTemplatePreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewEmailTemplate>>, TError,{key: 'client_welcome' | 'advice_email';data: BodyType<EmailTemplatePreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof previewEmailTemplate>>,
         TError,
-        {key: 'client_welcome' | 'advice_email' | 'details_confirmation';data: BodyType<EmailTemplatePreviewInput>},
+        {key: 'client_welcome' | 'advice_email';data: BodyType<EmailTemplatePreviewInput>},
         TContext
       > => {
       return useMutation(getPreviewEmailTemplateMutationOptions(options));
@@ -5666,7 +6103,7 @@ export function useGetTermsOfBusiness<TData = Awaited<ReturnType<typeof getTerms
 
 
 
-export const getUploadTermsOfBusinessUrl = () => {
+export const getPublishTermsOfBusinessUrl = () => {
 
 
 
@@ -5675,16 +6112,16 @@ export const getUploadTermsOfBusinessUrl = () => {
 }
 
 /**
- * Administrator only. Replaces the firm-wide Terms of Business PDF; the version increments. Send the file bytes with x-filename and x-content-type headers.
+ * Administrator only. Publishes a new version of the template; earlier versions are kept so a case can always show the version it signed.
  */
-export const uploadTermsOfBusiness = async (uploadTermsOfBusinessBody: Blob, options?: Parameters<typeof customFetch>[1]): Promise<TermsOfBusinessState> => {
+export const publishTermsOfBusiness = async (termsTemplateInput: TermsTemplateInput, options?: Parameters<typeof customFetch>[1]): Promise<TermsOfBusinessState> => {
 
-  return customFetch<TermsOfBusinessState>(getUploadTermsOfBusinessUrl(),
+  return customFetch<TermsOfBusinessState>(getPublishTermsOfBusinessUrl(),
   {
     ...options,
     method: 'PUT',
-    headers: { 'Content-Type': 'application/octet-stream', ...options?.headers },
-    body: uploadTermsOfBusinessBody
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(termsTemplateInput)
   }
 );}
 
@@ -5692,11 +6129,11 @@ export const uploadTermsOfBusiness = async (uploadTermsOfBusinessBody: Blob, opt
 
 
 
-export const getUploadTermsOfBusinessMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadTermsOfBusiness>>, TError,{data: BodyType<Blob>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof uploadTermsOfBusiness>>, TError,{data: BodyType<Blob>}, TContext> => {
+export const getPublishTermsOfBusinessMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishTermsOfBusiness>>, TError,{data: BodyType<TermsTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishTermsOfBusiness>>, TError,{data: BodyType<TermsTemplateInput>}, TContext> => {
 
-const mutationKey = ['uploadTermsOfBusiness'];
+const mutationKey = ['publishTermsOfBusiness'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -5706,10 +6143,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadTermsOfBusiness>>, {data: BodyType<Blob>}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishTermsOfBusiness>>, {data: BodyType<TermsTemplateInput>}> = (props) => {
           const {data} = props ?? {};
 
-          return  uploadTermsOfBusiness(data,requestOptions)
+          return  publishTermsOfBusiness(data,requestOptions)
         }
 
 
@@ -5719,32 +6156,110 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type UploadTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof uploadTermsOfBusiness>>>
-    export type UploadTermsOfBusinessMutationBody = BodyType<Blob>
-    export type UploadTermsOfBusinessMutationError = ErrorType<unknown>
+    export type PublishTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof publishTermsOfBusiness>>>
+    export type PublishTermsOfBusinessMutationBody = BodyType<TermsTemplateInput>
+    export type PublishTermsOfBusinessMutationError = ErrorType<void>
 
-    export const useUploadTermsOfBusiness = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadTermsOfBusiness>>, TError,{data: BodyType<Blob>}, TContext>, request?: SecondParameter<typeof customFetch>}
+    export const usePublishTermsOfBusiness = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishTermsOfBusiness>>, TError,{data: BodyType<TermsTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof uploadTermsOfBusiness>>,
+        Awaited<ReturnType<typeof publishTermsOfBusiness>>,
         TError,
-        {data: BodyType<Blob>},
+        {data: BodyType<TermsTemplateInput>},
         TContext
       > => {
-      return useMutation(getUploadTermsOfBusinessMutationOptions(options));
+      return useMutation(getPublishTermsOfBusinessMutationOptions(options));
     }
 
-export const getViewTermsOfBusinessUrl = () => {
+export const getPreviewTermsOfBusinessUrl = () => {
 
 
 
 
-  return `/api/settings/terms-of-business/document`
+  return `/api/settings/terms-of-business/preview`
 }
 
-export const viewTermsOfBusiness = async ( options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+/**
+ * Renders the given (unsaved) template as a PDF with sample values.
+ */
+export const previewTermsOfBusiness = async (termsTemplateInput: TermsTemplateInput, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
 
-  return customFetch<Blob>(getViewTermsOfBusinessUrl(),
+  return customFetch<Blob>(getPreviewTermsOfBusinessUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(termsTemplateInput)
+  }
+);}
+
+
+
+
+
+export const getPreviewTermsOfBusinessMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewTermsOfBusiness>>, TError,{data: BodyType<TermsTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewTermsOfBusiness>>, TError,{data: BodyType<TermsTemplateInput>}, TContext> => {
+
+const mutationKey = ['previewTermsOfBusiness'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewTermsOfBusiness>>, {data: BodyType<TermsTemplateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  previewTermsOfBusiness(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof previewTermsOfBusiness>>>
+    export type PreviewTermsOfBusinessMutationBody = BodyType<TermsTemplateInput>
+    export type PreviewTermsOfBusinessMutationError = ErrorType<unknown>
+
+    export const usePreviewTermsOfBusiness = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewTermsOfBusiness>>, TError,{data: BodyType<TermsTemplateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof previewTermsOfBusiness>>,
+        TError,
+        {data: BodyType<TermsTemplateInput>},
+        TContext
+      > => {
+      return useMutation(getPreviewTermsOfBusinessMutationOptions(options));
+    }
+
+export const getViewTermsOfBusinessUrl = (params?: ViewTermsOfBusinessParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/settings/terms-of-business/document?${stringifiedParams}` : `/api/settings/terms-of-business/document`
+}
+
+/**
+ * A published version rendered with sample values.
+ */
+export const viewTermsOfBusiness = async (params?: ViewTermsOfBusinessParams, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getViewTermsOfBusinessUrl(params),
   {
     ...options,
     method: 'GET'
@@ -5757,23 +6272,23 @@ export const viewTermsOfBusiness = async ( options?: Parameters<typeof customFet
 
 
 
-export const getViewTermsOfBusinessQueryKey = () => {
+export const getViewTermsOfBusinessQueryKey = (params?: ViewTermsOfBusinessParams,) => {
     return [
-    `/api/settings/terms-of-business/document`
+    `/api/settings/terms-of-business/document`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getViewTermsOfBusinessQueryOptions = <TData = Awaited<ReturnType<typeof viewTermsOfBusiness>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof viewTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getViewTermsOfBusinessQueryOptions = <TData = Awaited<ReturnType<typeof viewTermsOfBusiness>>, TError = ErrorType<void>>(params?: ViewTermsOfBusinessParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof viewTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getViewTermsOfBusinessQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getViewTermsOfBusinessQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof viewTermsOfBusiness>>> = ({ signal }) => viewTermsOfBusiness({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof viewTermsOfBusiness>>> = ({ signal }) => viewTermsOfBusiness(params, { signal, ...requestOptions });
 
 
 
@@ -5788,11 +6303,11 @@ export type ViewTermsOfBusinessQueryError = ErrorType<void>
 
 
 export function useViewTermsOfBusiness<TData = Awaited<ReturnType<typeof viewTermsOfBusiness>>, TError = ErrorType<void>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof viewTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ViewTermsOfBusinessParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof viewTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getViewTermsOfBusinessQueryOptions(options)
+  const queryOptions = getViewTermsOfBusinessQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -5805,86 +6320,20 @@ export function useViewTermsOfBusiness<TData = Awaited<ReturnType<typeof viewTer
 
 
 
-export const getAcceptClientTermsUrl = (id: number,) => {
+export const getConnectDocusignUrl = () => {
 
 
 
 
-  return `/api/clients/${id}/terms-of-business/accept`
+  return `/api/settings/docusign/connect`
 }
 
 /**
- * Staff record that the client accepted the Terms of Business outside the portal (signed copy received, or agreed by phone).
+ * Administrator only. Browser navigation — sends the administrator to DocuSign to sign in to the firm's account (OAuth authorization code); DocuSign returns them to the callback.
  */
-export const acceptClientTerms = async (id: number,
-    acceptTermsInput: AcceptTermsInput, options?: Parameters<typeof customFetch>[1]): Promise<ClientDetail> => {
+export const connectDocusign = async ( options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
-  return customFetch<ClientDetail>(getAcceptClientTermsUrl(id),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(acceptTermsInput)
-  }
-);}
-
-
-
-
-
-export const getAcceptClientTermsMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptClientTerms>>, TError,{id: number;data: BodyType<AcceptTermsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof acceptClientTerms>>, TError,{id: number;data: BodyType<AcceptTermsInput>}, TContext> => {
-
-const mutationKey = ['acceptClientTerms'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptClientTerms>>, {id: number;data: BodyType<AcceptTermsInput>}> = (props) => {
-          const {id,data} = props ?? {};
-
-          return  acceptClientTerms(id,data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type AcceptClientTermsMutationResult = NonNullable<Awaited<ReturnType<typeof acceptClientTerms>>>
-    export type AcceptClientTermsMutationBody = BodyType<AcceptTermsInput>
-    export type AcceptClientTermsMutationError = ErrorType<unknown>
-
-    export const useAcceptClientTerms = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptClientTerms>>, TError,{id: number;data: BodyType<AcceptTermsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof acceptClientTerms>>,
-        TError,
-        {id: number;data: BodyType<AcceptTermsInput>},
-        TContext
-      > => {
-      return useMutation(getAcceptClientTermsMutationOptions(options));
-    }
-
-export const getGetPortalTermsOfBusinessUrl = () => {
-
-
-
-
-  return `/api/portal/terms-of-business`
-}
-
-export const getPortalTermsOfBusiness = async ( options?: Parameters<typeof customFetch>[1]): Promise<GetPortalTermsOfBusiness200> => {
-
-  return customFetch<GetPortalTermsOfBusiness200>(getGetPortalTermsOfBusinessUrl(),
+  return customFetch<unknown>(getConnectDocusignUrl(),
   {
     ...options,
     method: 'GET'
@@ -5897,42 +6346,42 @@ export const getPortalTermsOfBusiness = async ( options?: Parameters<typeof cust
 
 
 
-export const getGetPortalTermsOfBusinessQueryKey = () => {
+export const getConnectDocusignQueryKey = () => {
     return [
-    `/api/portal/terms-of-business`
+    `/api/settings/docusign/connect`
     ] as const;
     }
 
 
-export const getGetPortalTermsOfBusinessQueryOptions = <TData = Awaited<ReturnType<typeof getPortalTermsOfBusiness>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getConnectDocusignQueryOptions = <TData = Awaited<ReturnType<typeof connectDocusign>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof connectDocusign>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetPortalTermsOfBusinessQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getConnectDocusignQueryKey();
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalTermsOfBusiness>>> = ({ signal }) => getPortalTermsOfBusiness({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof connectDocusign>>> = ({ signal }) => connectDocusign({ signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalTermsOfBusiness>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof connectDocusign>>, TError, TData> & { queryKey: QueryKey }
 }
 
-export type GetPortalTermsOfBusinessQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalTermsOfBusiness>>>
-export type GetPortalTermsOfBusinessQueryError = ErrorType<unknown>
+export type ConnectDocusignQueryResult = NonNullable<Awaited<ReturnType<typeof connectDocusign>>>
+export type ConnectDocusignQueryError = ErrorType<void>
 
 
 
-export function useGetPortalTermsOfBusiness<TData = Awaited<ReturnType<typeof getPortalTermsOfBusiness>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useConnectDocusign<TData = Awaited<ReturnType<typeof connectDocusign>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof connectDocusign>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetPortalTermsOfBusinessQueryOptions(options)
+  const queryOptions = getConnectDocusignQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -5945,17 +6394,27 @@ export function useGetPortalTermsOfBusiness<TData = Awaited<ReturnType<typeof ge
 
 
 
-export const getViewPortalTermsOfBusinessUrl = () => {
+export const getDocusignCallbackUrl = (params?: DocusignCallbackParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/portal/terms-of-business/document`
+  return stringifiedParams.length > 0 ? `/api/settings/docusign/callback?${stringifiedParams}` : `/api/settings/docusign/callback`
 }
 
-export const viewPortalTermsOfBusiness = async ( options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+/**
+ * Where DocuSign sends the administrator back. Exchanges the code for tokens, stores the connection, and redirects to Settings with `?docusign=connected` or `?docusign=error&reason=…`.
+ */
+export const docusignCallback = async (params?: DocusignCallbackParams, options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
 
-  return customFetch<Blob>(getViewPortalTermsOfBusinessUrl(),
+  return customFetch<unknown>(getDocusignCallbackUrl(params),
   {
     ...options,
     method: 'GET'
@@ -5968,42 +6427,42 @@ export const viewPortalTermsOfBusiness = async ( options?: Parameters<typeof cus
 
 
 
-export const getViewPortalTermsOfBusinessQueryKey = () => {
+export const getDocusignCallbackQueryKey = (params?: DocusignCallbackParams,) => {
     return [
-    `/api/portal/terms-of-business/document`
+    `/api/settings/docusign/callback`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getViewPortalTermsOfBusinessQueryOptions = <TData = Awaited<ReturnType<typeof viewPortalTermsOfBusiness>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof viewPortalTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getDocusignCallbackQueryOptions = <TData = Awaited<ReturnType<typeof docusignCallback>>, TError = ErrorType<void>>(params?: DocusignCallbackParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof docusignCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getViewPortalTermsOfBusinessQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getDocusignCallbackQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof viewPortalTermsOfBusiness>>> = ({ signal }) => viewPortalTermsOfBusiness({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof docusignCallback>>> = ({ signal }) => docusignCallback(params, { signal, ...requestOptions });
 
 
 
 
 
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof viewPortalTermsOfBusiness>>, TError, TData> & { queryKey: QueryKey }
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof docusignCallback>>, TError, TData> & { queryKey: QueryKey }
 }
 
-export type ViewPortalTermsOfBusinessQueryResult = NonNullable<Awaited<ReturnType<typeof viewPortalTermsOfBusiness>>>
-export type ViewPortalTermsOfBusinessQueryError = ErrorType<void>
+export type DocusignCallbackQueryResult = NonNullable<Awaited<ReturnType<typeof docusignCallback>>>
+export type DocusignCallbackQueryError = ErrorType<void>
 
 
 
-export function useViewPortalTermsOfBusiness<TData = Awaited<ReturnType<typeof viewPortalTermsOfBusiness>>, TError = ErrorType<void>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof viewPortalTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useDocusignCallback<TData = Awaited<ReturnType<typeof docusignCallback>>, TError = ErrorType<void>>(
+ params?: DocusignCallbackParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof docusignCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getViewPortalTermsOfBusinessQueryOptions(options)
+  const queryOptions = getDocusignCallbackQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -6016,20 +6475,20 @@ export function useViewPortalTermsOfBusiness<TData = Awaited<ReturnType<typeof v
 
 
 
-export const getAcceptPortalTermsOfBusinessUrl = () => {
+export const getDisconnectDocusignUrl = () => {
 
 
 
 
-  return `/api/portal/terms-of-business/accept`
+  return `/api/settings/docusign/disconnect`
 }
 
 /**
- * The signed-in client accepts the current Terms of Business.
+ * Administrator only. Forgets the connected DocuSign account. Envelopes already sent keep working through DocuSign's own emails but can no longer be tracked until an account is connected again.
  */
-export const acceptPortalTermsOfBusiness = async ( options?: Parameters<typeof customFetch>[1]): Promise<TermsAcceptance> => {
+export const disconnectDocusign = async ( options?: Parameters<typeof customFetch>[1]): Promise<SignatureConfig> => {
 
-  return customFetch<TermsAcceptance>(getAcceptPortalTermsOfBusinessUrl(),
+  return customFetch<SignatureConfig>(getDisconnectDocusignUrl(),
   {
     ...options,
     method: 'POST'
@@ -6042,11 +6501,11 @@ export const acceptPortalTermsOfBusiness = async ( options?: Parameters<typeof c
 
 
 
-export const getAcceptPortalTermsOfBusinessMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptPortalTermsOfBusiness>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof acceptPortalTermsOfBusiness>>, TError,void, TContext> => {
+export const getDisconnectDocusignMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectDocusign>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectDocusign>>, TError,void, TContext> => {
 
-const mutationKey = ['acceptPortalTermsOfBusiness'];
+const mutationKey = ['disconnectDocusign'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
       options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
       options
@@ -6056,10 +6515,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptPortalTermsOfBusiness>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectDocusign>>, void> = () => {
 
 
-          return  acceptPortalTermsOfBusiness(requestOptions)
+          return  disconnectDocusign(requestOptions)
         }
 
 
@@ -6069,20 +6528,999 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
   return  { mutationFn, ...mutationOptions }}
 
-    export type AcceptPortalTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof acceptPortalTermsOfBusiness>>>
+    export type DisconnectDocusignMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectDocusign>>>
 
-    export type AcceptPortalTermsOfBusinessMutationError = ErrorType<void>
+    export type DisconnectDocusignMutationError = ErrorType<unknown>
 
-    export const useAcceptPortalTermsOfBusiness = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptPortalTermsOfBusiness>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    export const useDisconnectDocusign = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectDocusign>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
-        Awaited<ReturnType<typeof acceptPortalTermsOfBusiness>>,
+        Awaited<ReturnType<typeof disconnectDocusign>>,
         TError,
         void,
         TContext
       > => {
-      return useMutation(getAcceptPortalTermsOfBusinessMutationOptions(options));
+      return useMutation(getDisconnectDocusignMutationOptions(options));
     }
+
+export const getTestDocusignConnectionUrl = () => {
+
+
+
+
+  return `/api/settings/terms-of-business/docusign/test`
+}
+
+/**
+ * Administrator only. Checks the connected DocuSign account still answers and reports it.
+ */
+export const testDocusignConnection = async ( options?: Parameters<typeof customFetch>[1]): Promise<DocusignTestResult> => {
+
+  return customFetch<DocusignTestResult>(getTestDocusignConnectionUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getTestDocusignConnectionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testDocusignConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testDocusignConnection>>, TError,void, TContext> => {
+
+const mutationKey = ['testDocusignConnection'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testDocusignConnection>>, void> = () => {
+
+
+          return  testDocusignConnection(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestDocusignConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof testDocusignConnection>>>
+
+    export type TestDocusignConnectionMutationError = ErrorType<unknown>
+
+    export const useTestDocusignConnection = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testDocusignConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testDocusignConnection>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getTestDocusignConnectionMutationOptions(options));
+    }
+
+export const getGetCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/terms-of-business`
+}
+
+/**
+ * The case's Terms of Business — the template version in use, the form values, the read-only values from the case, and the current agreement's signature status.
+ */
+export const getCaseTermsOfBusiness = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<CaseTermsState> => {
+
+  return customFetch<CaseTermsState>(getGetCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCaseTermsOfBusinessQueryKey = (id: number,) => {
+    return [
+    `/api/cases/${id}/terms-of-business`
+    ] as const;
+    }
+
+
+export const getGetCaseTermsOfBusinessQueryOptions = <TData = Awaited<ReturnType<typeof getCaseTermsOfBusiness>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCaseTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCaseTermsOfBusinessQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCaseTermsOfBusiness>>> = ({ signal }) => getCaseTermsOfBusiness(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCaseTermsOfBusiness>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCaseTermsOfBusinessQueryResult = NonNullable<Awaited<ReturnType<typeof getCaseTermsOfBusiness>>>
+export type GetCaseTermsOfBusinessQueryError = ErrorType<unknown>
+
+
+
+export function useGetCaseTermsOfBusiness<TData = Awaited<ReturnType<typeof getCaseTermsOfBusiness>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCaseTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCaseTermsOfBusinessQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/terms-of-business`
+}
+
+/**
+ * Saves the form values on the open draft (starting one when there is none).
+ */
+export const saveCaseTermsOfBusiness = async (id: number,
+    caseTermsValuesInput: CaseTermsValuesInput, options?: Parameters<typeof customFetch>[1]): Promise<CaseTermsState> => {
+
+  return customFetch<CaseTermsState>(getSaveCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(caseTermsValuesInput)
+  }
+);}
+
+
+
+
+
+export const getSaveCaseTermsOfBusinessMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveCaseTermsOfBusiness>>, TError,{id: number;data: BodyType<CaseTermsValuesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveCaseTermsOfBusiness>>, TError,{id: number;data: BodyType<CaseTermsValuesInput>}, TContext> => {
+
+const mutationKey = ['saveCaseTermsOfBusiness'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveCaseTermsOfBusiness>>, {id: number;data: BodyType<CaseTermsValuesInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  saveCaseTermsOfBusiness(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveCaseTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof saveCaseTermsOfBusiness>>>
+    export type SaveCaseTermsOfBusinessMutationBody = BodyType<CaseTermsValuesInput>
+    export type SaveCaseTermsOfBusinessMutationError = ErrorType<void>
+
+    export const useSaveCaseTermsOfBusiness = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveCaseTermsOfBusiness>>, TError,{id: number;data: BodyType<CaseTermsValuesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveCaseTermsOfBusiness>>,
+        TError,
+        {id: number;data: BodyType<CaseTermsValuesInput>},
+        TContext
+      > => {
+      return useMutation(getSaveCaseTermsOfBusinessMutationOptions(options));
+    }
+
+export const getDiscardCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/terms-of-business`
+}
+
+/**
+ * Discards the open draft.
+ */
+export const discardCaseTermsOfBusiness = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<CaseTermsState> => {
+
+  return customFetch<CaseTermsState>(getDiscardCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDiscardCaseTermsOfBusinessMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof discardCaseTermsOfBusiness>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof discardCaseTermsOfBusiness>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['discardCaseTermsOfBusiness'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof discardCaseTermsOfBusiness>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  discardCaseTermsOfBusiness(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DiscardCaseTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof discardCaseTermsOfBusiness>>>
+
+    export type DiscardCaseTermsOfBusinessMutationError = ErrorType<unknown>
+
+    export const useDiscardCaseTermsOfBusiness = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof discardCaseTermsOfBusiness>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof discardCaseTermsOfBusiness>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDiscardCaseTermsOfBusinessMutationOptions(options));
+    }
+
+export const getPreviewCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/terms-of-business/preview`
+}
+
+/**
+ * The document as it would be sent with these values (or the saved ones when the body is empty). Nothing is stored.
+ */
+export const previewCaseTermsOfBusiness = async (id: number,
+    caseTermsValuesInput?: CaseTermsValuesInput, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getPreviewCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(caseTermsValuesInput)
+  }
+);}
+
+
+
+
+
+export const getPreviewCaseTermsOfBusinessMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewCaseTermsOfBusiness>>, TError,{id: number;data?: BodyType<CaseTermsValuesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewCaseTermsOfBusiness>>, TError,{id: number;data?: BodyType<CaseTermsValuesInput>}, TContext> => {
+
+const mutationKey = ['previewCaseTermsOfBusiness'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewCaseTermsOfBusiness>>, {id: number;data?: BodyType<CaseTermsValuesInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  previewCaseTermsOfBusiness(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewCaseTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof previewCaseTermsOfBusiness>>>
+    export type PreviewCaseTermsOfBusinessMutationBody = BodyType<CaseTermsValuesInput> | undefined
+    export type PreviewCaseTermsOfBusinessMutationError = ErrorType<unknown>
+
+    export const usePreviewCaseTermsOfBusiness = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewCaseTermsOfBusiness>>, TError,{id: number;data?: BodyType<CaseTermsValuesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof previewCaseTermsOfBusiness>>,
+        TError,
+        {id: number;data?: BodyType<CaseTermsValuesInput>},
+        TContext
+      > => {
+      return useMutation(getPreviewCaseTermsOfBusinessMutationOptions(options));
+    }
+
+export const getSendCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/terms-of-business/send`
+}
+
+/**
+ * Generates the document from the values (saving them first when given) and sends it to the client for signature through DocuSign.
+ */
+export const sendCaseTermsOfBusiness = async (id: number,
+    caseTermsValuesInput?: CaseTermsValuesInput, options?: Parameters<typeof customFetch>[1]): Promise<CaseTermsState> => {
+
+  return customFetch<CaseTermsState>(getSendCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(caseTermsValuesInput)
+  }
+);}
+
+
+
+
+
+export const getSendCaseTermsOfBusinessMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendCaseTermsOfBusiness>>, TError,{id: number;data?: BodyType<CaseTermsValuesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendCaseTermsOfBusiness>>, TError,{id: number;data?: BodyType<CaseTermsValuesInput>}, TContext> => {
+
+const mutationKey = ['sendCaseTermsOfBusiness'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendCaseTermsOfBusiness>>, {id: number;data?: BodyType<CaseTermsValuesInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  sendCaseTermsOfBusiness(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendCaseTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof sendCaseTermsOfBusiness>>>
+    export type SendCaseTermsOfBusinessMutationBody = BodyType<CaseTermsValuesInput> | undefined
+    export type SendCaseTermsOfBusinessMutationError = ErrorType<void>
+
+    export const useSendCaseTermsOfBusiness = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendCaseTermsOfBusiness>>, TError,{id: number;data?: BodyType<CaseTermsValuesInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendCaseTermsOfBusiness>>,
+        TError,
+        {id: number;data?: BodyType<CaseTermsValuesInput>},
+        TContext
+      > => {
+      return useMutation(getSendCaseTermsOfBusinessMutationOptions(options));
+    }
+
+export const getViewCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/terms-of-business/document`
+}
+
+/**
+ * The document as sent (unsigned). The signed copy is a document on the case (`signedDocumentId`).
+ */
+export const viewCaseTermsOfBusiness = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getViewCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getViewCaseTermsOfBusinessQueryKey = (id: number,) => {
+    return [
+    `/api/cases/${id}/terms-of-business/document`
+    ] as const;
+    }
+
+
+export const getViewCaseTermsOfBusinessQueryOptions = <TData = Awaited<ReturnType<typeof viewCaseTermsOfBusiness>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof viewCaseTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getViewCaseTermsOfBusinessQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof viewCaseTermsOfBusiness>>> = ({ signal }) => viewCaseTermsOfBusiness(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof viewCaseTermsOfBusiness>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ViewCaseTermsOfBusinessQueryResult = NonNullable<Awaited<ReturnType<typeof viewCaseTermsOfBusiness>>>
+export type ViewCaseTermsOfBusinessQueryError = ErrorType<void>
+
+
+
+export function useViewCaseTermsOfBusiness<TData = Awaited<ReturnType<typeof viewCaseTermsOfBusiness>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof viewCaseTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getViewCaseTermsOfBusinessQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getRefreshCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/terms-of-business/refresh`
+}
+
+/**
+ * Asks DocuSign for the envelope's current status and applies it (completed → filed and signed).
+ */
+export const refreshCaseTermsOfBusiness = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<CaseTermsState> => {
+
+  return customFetch<CaseTermsState>(getRefreshCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRefreshCaseTermsOfBusinessMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshCaseTermsOfBusiness>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshCaseTermsOfBusiness>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['refreshCaseTermsOfBusiness'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshCaseTermsOfBusiness>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  refreshCaseTermsOfBusiness(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshCaseTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof refreshCaseTermsOfBusiness>>>
+
+    export type RefreshCaseTermsOfBusinessMutationError = ErrorType<unknown>
+
+    export const useRefreshCaseTermsOfBusiness = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshCaseTermsOfBusiness>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshCaseTermsOfBusiness>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRefreshCaseTermsOfBusinessMutationOptions(options));
+    }
+
+export const getVoidCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/terms-of-business/void`
+}
+
+/**
+ * Withdraws the signature request so the details can be changed and the document sent again.
+ */
+export const voidCaseTermsOfBusiness = async (id: number,
+    voidTermsInput: VoidTermsInput, options?: Parameters<typeof customFetch>[1]): Promise<CaseTermsState> => {
+
+  return customFetch<CaseTermsState>(getVoidCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(voidTermsInput)
+  }
+);}
+
+
+
+
+
+export const getVoidCaseTermsOfBusinessMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidCaseTermsOfBusiness>>, TError,{id: number;data: BodyType<VoidTermsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof voidCaseTermsOfBusiness>>, TError,{id: number;data: BodyType<VoidTermsInput>}, TContext> => {
+
+const mutationKey = ['voidCaseTermsOfBusiness'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof voidCaseTermsOfBusiness>>, {id: number;data: BodyType<VoidTermsInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  voidCaseTermsOfBusiness(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VoidCaseTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof voidCaseTermsOfBusiness>>>
+    export type VoidCaseTermsOfBusinessMutationBody = BodyType<VoidTermsInput>
+    export type VoidCaseTermsOfBusinessMutationError = ErrorType<unknown>
+
+    export const useVoidCaseTermsOfBusiness = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidCaseTermsOfBusiness>>, TError,{id: number;data: BodyType<VoidTermsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof voidCaseTermsOfBusiness>>,
+        TError,
+        {id: number;data: BodyType<VoidTermsInput>},
+        TContext
+      > => {
+      return useMutation(getVoidCaseTermsOfBusinessMutationOptions(options));
+    }
+
+export const getMarkCaseTermsOfBusinessSignedUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/terms-of-business/mark-signed`
+}
+
+/**
+ * Staff record a signature given outside DocuSign — a signed copy uploaded to the case, or agreed in person. Any DocuSign envelope still out is voided.
+ */
+export const markCaseTermsOfBusinessSigned = async (id: number,
+    markTermsSignedInput: MarkTermsSignedInput, options?: Parameters<typeof customFetch>[1]): Promise<CaseTermsState> => {
+
+  return customFetch<CaseTermsState>(getMarkCaseTermsOfBusinessSignedUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(markTermsSignedInput)
+  }
+);}
+
+
+
+
+
+export const getMarkCaseTermsOfBusinessSignedMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markCaseTermsOfBusinessSigned>>, TError,{id: number;data: BodyType<MarkTermsSignedInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markCaseTermsOfBusinessSigned>>, TError,{id: number;data: BodyType<MarkTermsSignedInput>}, TContext> => {
+
+const mutationKey = ['markCaseTermsOfBusinessSigned'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markCaseTermsOfBusinessSigned>>, {id: number;data: BodyType<MarkTermsSignedInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  markCaseTermsOfBusinessSigned(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MarkCaseTermsOfBusinessSignedMutationResult = NonNullable<Awaited<ReturnType<typeof markCaseTermsOfBusinessSigned>>>
+    export type MarkCaseTermsOfBusinessSignedMutationBody = BodyType<MarkTermsSignedInput>
+    export type MarkCaseTermsOfBusinessSignedMutationError = ErrorType<unknown>
+
+    export const useMarkCaseTermsOfBusinessSigned = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markCaseTermsOfBusinessSigned>>, TError,{id: number;data: BodyType<MarkTermsSignedInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof markCaseTermsOfBusinessSigned>>,
+        TError,
+        {id: number;data: BodyType<MarkTermsSignedInput>},
+        TContext
+      > => {
+      return useMutation(getMarkCaseTermsOfBusinessSignedMutationOptions(options));
+    }
+
+export const getMockSignCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/terms-of-business/mock-sign`
+}
+
+/**
+ * Development only (DOCUSIGN_MOCK=true). Pretends the client signed or declined the mock envelope, then runs the same completion path as the DocuSign webhook.
+ */
+export const mockSignCaseTermsOfBusiness = async (id: number,
+    mockSignTermsInput: MockSignTermsInput, options?: Parameters<typeof customFetch>[1]): Promise<CaseTermsState> => {
+
+  return customFetch<CaseTermsState>(getMockSignCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mockSignTermsInput)
+  }
+);}
+
+
+
+
+
+export const getMockSignCaseTermsOfBusinessMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mockSignCaseTermsOfBusiness>>, TError,{id: number;data: BodyType<MockSignTermsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof mockSignCaseTermsOfBusiness>>, TError,{id: number;data: BodyType<MockSignTermsInput>}, TContext> => {
+
+const mutationKey = ['mockSignCaseTermsOfBusiness'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof mockSignCaseTermsOfBusiness>>, {id: number;data: BodyType<MockSignTermsInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  mockSignCaseTermsOfBusiness(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MockSignCaseTermsOfBusinessMutationResult = NonNullable<Awaited<ReturnType<typeof mockSignCaseTermsOfBusiness>>>
+    export type MockSignCaseTermsOfBusinessMutationBody = BodyType<MockSignTermsInput>
+    export type MockSignCaseTermsOfBusinessMutationError = ErrorType<void>
+
+    export const useMockSignCaseTermsOfBusiness = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mockSignCaseTermsOfBusiness>>, TError,{id: number;data: BodyType<MockSignTermsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof mockSignCaseTermsOfBusiness>>,
+        TError,
+        {id: number;data: BodyType<MockSignTermsInput>},
+        TContext
+      > => {
+      return useMutation(getMockSignCaseTermsOfBusinessMutationOptions(options));
+    }
+
+export const getDocusignWebhookUrl = () => {
+
+
+
+
+  return `/api/webhooks/docusign`
+}
+
+/**
+ * DocuSign Connect (envelope-level event notification). The payload is only used to find the envelope; the status is re-read from DocuSign before anything changes. Verified with X-DocuSign-Signature-1 when DOCUSIGN_HMAC_KEY is set.
+ */
+export const docusignWebhook = async (docusignWebhookPayload: DocusignWebhookPayload, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDocusignWebhookUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(docusignWebhookPayload)
+  }
+);}
+
+
+
+
+
+export const getDocusignWebhookMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof docusignWebhook>>, TError,{data: BodyType<DocusignWebhookPayload>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof docusignWebhook>>, TError,{data: BodyType<DocusignWebhookPayload>}, TContext> => {
+
+const mutationKey = ['docusignWebhook'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof docusignWebhook>>, {data: BodyType<DocusignWebhookPayload>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  docusignWebhook(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DocusignWebhookMutationResult = NonNullable<Awaited<ReturnType<typeof docusignWebhook>>>
+    export type DocusignWebhookMutationBody = BodyType<DocusignWebhookPayload>
+    export type DocusignWebhookMutationError = ErrorType<unknown>
+
+    export const useDocusignWebhook = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof docusignWebhook>>, TError,{data: BodyType<DocusignWebhookPayload>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof docusignWebhook>>,
+        TError,
+        {data: BodyType<DocusignWebhookPayload>},
+        TContext
+      > => {
+      return useMutation(getDocusignWebhookMutationOptions(options));
+    }
+
+export const getGetPortalCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/cases/${id}/terms-of-business`
+}
+
+/**
+ * The signed-in client's view of a case's Terms of Business — whether it is waiting for their signature or signed.
+ */
+export const getPortalCaseTermsOfBusiness = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<PortalTermsOfBusiness> => {
+
+  return customFetch<PortalTermsOfBusiness>(getGetPortalCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPortalCaseTermsOfBusinessQueryKey = (id: number,) => {
+    return [
+    `/api/portal/cases/${id}/terms-of-business`
+    ] as const;
+    }
+
+
+export const getGetPortalCaseTermsOfBusinessQueryOptions = <TData = Awaited<ReturnType<typeof getPortalCaseTermsOfBusiness>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalCaseTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPortalCaseTermsOfBusinessQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPortalCaseTermsOfBusiness>>> = ({ signal }) => getPortalCaseTermsOfBusiness(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPortalCaseTermsOfBusiness>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPortalCaseTermsOfBusinessQueryResult = NonNullable<Awaited<ReturnType<typeof getPortalCaseTermsOfBusiness>>>
+export type GetPortalCaseTermsOfBusinessQueryError = ErrorType<unknown>
+
+
+
+export function useGetPortalCaseTermsOfBusiness<TData = Awaited<ReturnType<typeof getPortalCaseTermsOfBusiness>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPortalCaseTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPortalCaseTermsOfBusinessQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getViewPortalCaseTermsOfBusinessUrl = (id: number,) => {
+
+
+
+
+  return `/api/portal/cases/${id}/terms-of-business/document`
+}
+
+export const viewPortalCaseTermsOfBusiness = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getViewPortalCaseTermsOfBusinessUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getViewPortalCaseTermsOfBusinessQueryKey = (id: number,) => {
+    return [
+    `/api/portal/cases/${id}/terms-of-business/document`
+    ] as const;
+    }
+
+
+export const getViewPortalCaseTermsOfBusinessQueryOptions = <TData = Awaited<ReturnType<typeof viewPortalCaseTermsOfBusiness>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof viewPortalCaseTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getViewPortalCaseTermsOfBusinessQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof viewPortalCaseTermsOfBusiness>>> = ({ signal }) => viewPortalCaseTermsOfBusiness(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof viewPortalCaseTermsOfBusiness>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ViewPortalCaseTermsOfBusinessQueryResult = NonNullable<Awaited<ReturnType<typeof viewPortalCaseTermsOfBusiness>>>
+export type ViewPortalCaseTermsOfBusinessQueryError = ErrorType<void>
+
+
+
+export function useViewPortalCaseTermsOfBusiness<TData = Awaited<ReturnType<typeof viewPortalCaseTermsOfBusiness>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof viewPortalCaseTermsOfBusiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getViewPortalCaseTermsOfBusinessQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListStageThresholdsUrl = () => {
 
@@ -6782,7 +8220,7 @@ export const getBulkUpdateTasksUrl = () => {
 }
 
 /**
- * Apply the same change (status, priority, assignee, due date) to several tasks at once. Returns the updated tasks.
+ * Apply the same change (status, priority, assignee, due date) to several tasks at once. Returns the updated tasks. Marking a stage hand-off task done advances its case (see updateTask).
  */
 export const bulkUpdateTasks = async (taskBulkUpdate: TaskBulkUpdate, options?: Parameters<typeof customFetch>[1]): Promise<Task[]> => {
 
@@ -6799,7 +8237,7 @@ export const bulkUpdateTasks = async (taskBulkUpdate: TaskBulkUpdate, options?: 
 
 
 
-export const getBulkUpdateTasksMutationOptions = <TError = ErrorType<unknown>,
+export const getBulkUpdateTasksMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkUpdateTasks>>, TError,{data: BodyType<TaskBulkUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof bulkUpdateTasks>>, TError,{data: BodyType<TaskBulkUpdate>}, TContext> => {
 
@@ -6828,9 +8266,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type BulkUpdateTasksMutationResult = NonNullable<Awaited<ReturnType<typeof bulkUpdateTasks>>>
     export type BulkUpdateTasksMutationBody = BodyType<TaskBulkUpdate>
-    export type BulkUpdateTasksMutationError = ErrorType<unknown>
+    export type BulkUpdateTasksMutationError = ErrorType<void>
 
-    export const useBulkUpdateTasks = <TError = ErrorType<unknown>,
+    export const useBulkUpdateTasks = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bulkUpdateTasks>>, TError,{data: BodyType<TaskBulkUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof bulkUpdateTasks>>,
@@ -6985,6 +8423,9 @@ export const getUpdateTaskUrl = (id: number,) => {
   return `/api/tasks/${id}`
 }
 
+/**
+ * Marking a stage hand-off task done moves its case to the next stage through the same gate as advancing the case; while the case cannot leave the stage the task cannot be completed either.
+ */
 export const updateTask = async (id: number,
     taskUpdate: TaskUpdate, options?: Parameters<typeof customFetch>[1]): Promise<Task> => {
 
@@ -7001,7 +8442,7 @@ export const updateTask = async (id: number,
 
 
 
-export const getUpdateTaskMutationOptions = <TError = ErrorType<unknown>,
+export const getUpdateTaskMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTask>>, TError,{id: number;data: BodyType<TaskUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateTask>>, TError,{id: number;data: BodyType<TaskUpdate>}, TContext> => {
 
@@ -7030,9 +8471,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type UpdateTaskMutationResult = NonNullable<Awaited<ReturnType<typeof updateTask>>>
     export type UpdateTaskMutationBody = BodyType<TaskUpdate>
-    export type UpdateTaskMutationError = ErrorType<unknown>
+    export type UpdateTaskMutationError = ErrorType<void>
 
-    export const useUpdateTask = <TError = ErrorType<unknown>,
+    export const useUpdateTask = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTask>>, TError,{id: number;data: BodyType<TaskUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof updateTask>>,
@@ -7183,6 +8624,9 @@ export const getUpdateTaskChecklistItemUrl = (id: number,
   return `/api/tasks/${id}/checklist/${itemId}`
 }
 
+/**
+ * Ticking a synced step (one with a sourceKey) writes through to the case - the requirement, the lender's fee/decision flag or the valuation - so the case and the task stay in step.
+ */
 export const updateTaskChecklistItem = async (id: number,
     itemId: number,
     taskChecklistItemUpdate: TaskChecklistItemUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TaskChecklistItem> => {
@@ -7200,7 +8644,7 @@ export const updateTaskChecklistItem = async (id: number,
 
 
 
-export const getUpdateTaskChecklistItemMutationOptions = <TError = ErrorType<unknown>,
+export const getUpdateTaskChecklistItemMutationOptions = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTaskChecklistItem>>, TError,{id: number;itemId: number;data: BodyType<TaskChecklistItemUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof updateTaskChecklistItem>>, TError,{id: number;itemId: number;data: BodyType<TaskChecklistItemUpdate>}, TContext> => {
 
@@ -7229,9 +8673,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type UpdateTaskChecklistItemMutationResult = NonNullable<Awaited<ReturnType<typeof updateTaskChecklistItem>>>
     export type UpdateTaskChecklistItemMutationBody = BodyType<TaskChecklistItemUpdate>
-    export type UpdateTaskChecklistItemMutationError = ErrorType<unknown>
+    export type UpdateTaskChecklistItemMutationError = ErrorType<void>
 
-    export const useUpdateTaskChecklistItem = <TError = ErrorType<unknown>,
+    export const useUpdateTaskChecklistItem = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTaskChecklistItem>>, TError,{id: number;itemId: number;data: BodyType<TaskChecklistItemUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof updateTaskChecklistItem>>,
@@ -10855,6 +12299,77 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getDeleteDocumentMutationOptions(options));
+    }
+
+export const getReadDocumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/documents/${id}/read`
+}
+
+/**
+ * @summary Run the document reading system on one document now (e.g. re-read a payslip) and return its reading.
+ */
+export const readDocument = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<Document> => {
+
+  return customFetch<Document>(getReadDocumentUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReadDocumentMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof readDocument>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof readDocument>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['readDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof readDocument>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  readDocument(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReadDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof readDocument>>>
+
+    export type ReadDocumentMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Run the document reading system on one document now (e.g. re-read a payslip) and return its reading.
+ */
+export const useReadDocument = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof readDocument>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof readDocument>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getReadDocumentMutationOptions(options));
     }
 
 export const getDownloadDocumentUrl = (id: number,) => {

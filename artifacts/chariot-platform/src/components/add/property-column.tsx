@@ -9,23 +9,25 @@ import {
   getListTasksQueryKey,
   type Property,
 } from "@workspace/api-client-react";
-import { Link2, Upload } from "lucide-react";
+import { Link2, Plus, Upload } from "lucide-react";
 import { LinkPropertyDialog } from "./link-property-dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { ImportPropertiesDialog } from "./import-properties-dialog";
+import { PortfolioDocuments, portfolioPropertyIds, type PortfolioDocument } from "./portfolio-documents";
 import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { CommaInput } from "@/components/ui/comma-input";
 import { DatePicker } from "@/components/date-picker";
-import { ColumnHeader } from "./column-header";
 import { FormSection, FormSections, countFilled } from "./form-section";
-import { AddNewCard, RecordCard, RecordCardList } from "./record-card";
+import { RecordCard, RecordCardList } from "./record-card";
 import { AssigneeSelect } from "./assignee-select";
 import { OptionSelect } from "./option-select";
 import { AddressFields } from "@/components/address-fields";
+import { RequiredDot } from "@/components/required-dot";
 import { formatAddress } from "@/lib/address";
 import {
   EPC_RATINGS,
@@ -194,16 +196,19 @@ export function PropertyColumn({
   properties,
   propertyId,
   onPropertyChange,
-  needs,
+  documents = [],
 }: {
   clientId: number;
   clientName: string;
   properties: Property[];
   propertyId: number | null;
   onPropertyChange: (propertyId: number | null) => void;
-  needs?: string[];
+  /** The client's documents; portfolio files are shown in this column. */
+  documents?: PortfolioDocument[];
 }) {
   const qc = useQueryClient();
+  // Properties the portfolio reader created carry a yellow badge, like reader-filled client fields.
+  const fromPortfolio = portfolioPropertyIds(documents);
   const createProperty = useCreateProperty();
   const updateProperty = useUpdateProperty();
 
@@ -321,25 +326,9 @@ export function PropertyColumn({
   const wantsRent = draft.matterType === "btl" || isLet;
   const wantsGdv = draft.matterType === "bridging";
   const addingNew = showForm && !editingId;
-  const status = editingId ? "saved" : addingNew ? "draft" : "empty";
 
   return (
-    <section className="space-y-6">
-      <ColumnHeader
-        title="Property"
-        status={status}
-        needs={needs}
-        action={
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={() => setImportOpen(true)}
-          >
-            <Upload /> Import CSV
-          </Button>
-        }
-      />
+    <section className="space-y-4">
       <ImportPropertiesDialog
         open={importOpen}
         onOpenChange={setImportOpen}
@@ -369,39 +358,55 @@ export function PropertyColumn({
           onBlur={() => autosave.flush()}
           className="space-y-4"
         >
-          <RecordCardList>
-            {properties.map((property) => (
-              <RecordCard
-                key={property.id}
-                selected={property.id === propertyId}
-                onSelect={() => {
-                  onPropertyChange(property.id);
-                  setShowForm(true);
-                }}
-                title={formatAddress(property)}
-                subtitle={matterTypeLabel(property.matterType)}
-                meta={[
-                  money(property.value),
-                  `loan ${money(property.loanAmount)}`,
-                  property.rent != null ? `rent ${money(property.rent)}/mo` : null,
-                  property.gdv != null ? `GDV ${money(property.gdv)}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
-                completeness={propertyCompleteness(property)}
-              />
-            ))}
-            <AddNewCard
-              label="Add new property"
-              onClick={startNew}
-              selected={addingNew}
-            />
-            <AddNewCard
-              label="Use an existing property"
-              icon={Link2}
-              onClick={() => setLinkOpen(true)}
-            />
-          </RecordCardList>
+          {/* Which property the form below edits, and the ways to add one. */}
+          <div className="rounded-lg border bg-card">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+              <h3 className="text-sm font-semibold">Properties</h3>
+              <div className="flex flex-wrap items-center gap-1">
+                {addingNew ? <span className="mr-1 text-xs text-muted-foreground">Unsaved</span> : null}
+                <Button type="button" variant={addingNew ? "secondary" : "ghost"} size="sm" onClick={startNew}>
+                  <Plus /> Add new
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setLinkOpen(true)}>
+                  <Link2 /> Use existing
+                </Button>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setImportOpen(true)}>
+                  <Upload /> Import CSV
+                </Button>
+              </div>
+            </div>
+            {properties.length > 0 ? (
+              <RecordCardList>
+                {properties.map((property) => (
+                  <RecordCard
+                    key={property.id}
+                    selected={property.id === propertyId}
+                    onSelect={() => {
+                      onPropertyChange(property.id);
+                      setShowForm(true);
+                    }}
+                    title={formatAddress(property)}
+                    badges={fromPortfolio.has(property.id) ? (
+                      <Badge variant="outline" className="border-yellow-400 bg-yellow-50 text-yellow-800 dark:border-yellow-600 dark:bg-yellow-950/40 dark:text-yellow-200">
+                        From portfolio
+                      </Badge>
+                    ) : null}
+                    subtitle={matterTypeLabel(property.matterType)}
+                    meta={[
+                      money(property.value),
+                      `loan ${money(property.loanAmount)}`,
+                      property.rent != null ? `rent ${money(property.rent)}/mo` : null,
+                      property.gdv != null ? `GDV ${money(property.gdv)}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                    completeness={propertyCompleteness(property)}
+                  />
+                ))}
+              </RecordCardList>
+            ) : null}
+            <PortfolioDocuments clientId={clientId} documents={documents} />
+          </div>
 
           {showForm ? (
             <>
@@ -432,7 +437,9 @@ export function PropertyColumn({
                     }
                   />
                   <Field>
-                    <FieldLabel>Matter Type</FieldLabel>
+                    <FieldLabel>
+                      Matter Type <RequiredDot />
+                    </FieldLabel>
                     <OptionSelect
                       value={draft.matterType}
                       onChange={setField("matterType")}
@@ -443,7 +450,7 @@ export function PropertyColumn({
                   <div className="grid grid-cols-2 gap-4">
                     <Field>
                       <FieldLabel htmlFor="add-property-value">
-                        Value (£) <span className="text-destructive">*</span>
+                        Value (£) <RequiredDot />
                       </FieldLabel>
                       <CommaInput
                         id="add-property-value"
@@ -454,8 +461,7 @@ export function PropertyColumn({
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="add-property-loan">
-                        Loan Amount (£){" "}
-                        <span className="text-destructive">*</span>
+                        Loan Amount (£) <RequiredDot />
                       </FieldLabel>
                       <CommaInput
                         id="add-property-loan"
@@ -467,9 +473,7 @@ export function PropertyColumn({
                     <Field>
                       <FieldLabel htmlFor="add-property-rent">
                         Rental Income (£/mo)
-                        {wantsRent ? (
-                          <span className="text-destructive"> *</span>
-                        ) : null}
+                        {wantsRent ? <RequiredDot /> : null}
                       </FieldLabel>
                       <CommaInput
                         id="add-property-rent"
@@ -502,7 +506,9 @@ export function PropertyColumn({
                 >
                   <div className="grid grid-cols-2 gap-4">
                     <Field>
-                      <FieldLabel>Property Type</FieldLabel>
+                      <FieldLabel>
+                        Property Type <RequiredDot />
+                      </FieldLabel>
                       <OptionSelect
                         value={draft.propertyType}
                         onChange={setField("propertyType")}
@@ -510,7 +516,9 @@ export function PropertyColumn({
                       />
                     </Field>
                     <Field>
-                      <FieldLabel>Tenure</FieldLabel>
+                      <FieldLabel>
+                        Tenure <RequiredDot />
+                      </FieldLabel>
                       <OptionSelect
                         value={draft.tenure}
                         onChange={setField("tenure")}
@@ -584,7 +592,9 @@ export function PropertyColumn({
                 >
                   <div className="grid grid-cols-2 gap-4">
                     <Field>
-                      <FieldLabel>Occupancy</FieldLabel>
+                      <FieldLabel>
+                        Occupancy <RequiredDot />
+                      </FieldLabel>
                       <OptionSelect
                         value={draft.occupancy}
                         onChange={setField("occupancy")}
@@ -723,7 +733,7 @@ export function PropertyColumn({
               </div>
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="px-1 text-sm text-muted-foreground">
               Pick a property above, or add a new one.
             </p>
           )}

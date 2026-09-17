@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type FocusEvent } from "react";
+import { keepPreviousData } from "@tanstack/react-query";
 import { MapPin } from "lucide-react";
 import {
   useAutocompletePlaces,
@@ -83,6 +84,10 @@ export function AddressCombobox({
       query: {
         enabled: debouncedQuery.length >= 3,
         retry: false,
+        // Keep the last suggestions on screen while the next keystroke's
+        // request is in flight; otherwise the list collapses to "Searching…"
+        // and re-expands on every letter.
+        placeholderData: keepPreviousData,
         queryKey: getAutocompletePlacesQueryKey({
           q: debouncedQuery,
           sessionToken: sessionToken.current,

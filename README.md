@@ -111,9 +111,11 @@ For local development, `pnpm --filter @workspace/api-server run start` (and `dev
 | `PORTAL_URL` | Public application URL used in email links |
 | `COOKIE_SECURE` | Set to `true` when the app is served over HTTPS |
 | `RESEND_ACTIVE` | Set to `true` only after `RESEND_API_KEY` and sender-domain setup are complete |
-| `OPENROUTER_ACTIVE` | Set to `true` only after the AI model and key are approved |
-| `OPENROUTER_MODEL` | Model name used when AI workflows are active |
+| `OPENROUTER_ACTIVE` | The key alone switches the AI workflows on; set to `false` to force them off while keeping the key |
+| `OPENROUTER_MODEL` | Model for the standard-tier workflows (advice, offers); defaults to `ASSISTANT_MODEL`, then `deepseek/deepseek-v4-pro-0813` |
+| `OPENROUTER_MODEL_CHEAP` | Model for cheap-tier extraction (underwriting requirements out of a lender email); defaults to `google/gemini-2.5-flash-lite` |
 | `ASSISTANT_MODEL` | OpenRouter model behind the staff assistant; defaults to `deepseek/deepseek-v4-pro-0813`. The assistant only needs `OPENROUTER_API_KEY` (not `OPENROUTER_ACTIVE`) |
+| `DOCUMENT_READER_MODEL` / `DOCUMENT_READER_VISION_MODEL` | Models behind the document reading system (proof-of-income extraction on upload); default to `ASSISTANT_MODEL` / `ASSISTANT_VISION_MODEL`. Without `OPENROUTER_API_KEY` the reader falls back to text patterns on PDFs, Word and text files; images need the model |
 | `ASSISTANT_VISION_MODEL` | OpenRouter model the assistant uses to read images; defaults to `deepseek/deepseek-v4.1-flash` |
 | `ASSISTANT_PROVIDER_SORT` | OpenRouter provider routing for the assistant: `latency` (default), `throughput` or `price`. Default routing was landing on slow providers (4–6 s to first token) |
 | `ASSISTANT_REASONING` | `off` (default, fastest), `low`, `medium` or `high` — the model's thinking effort before each reply; when on, the thinking streams into the status line |
@@ -123,6 +125,13 @@ For local development, `pnpm --filter @workspace/api-server run start` (and `dev
 | `S3_BUCKET` | S3-compatible storage bucket |
 | `S3_REGION` | Storage region; defaults to `us-east-1` |
 | `S3_FORCE_PATH_STYLE` | Set to `false` only when the storage provider requires virtual-hosted URLs |
+| `FIRM_NAME` | Name printed on generated documents (Terms of Business); defaults to `Chariot` |
+| `DOCUSIGN_INTEGRATION_KEY` / `DOCUSIGN_SECRET_KEY` | Register Chariot as a DocuSign app once (developers.docusign.com → Apps and Keys: integration key + secret key, redirect URI `PORTAL_URL/api/settings/docusign/callback`). An administrator then signs in to the firm's DocuSign account from Settings → Terms of Business; tokens are stored in `firm_settings` and refreshed automatically. `DOCUSIGN_MOCK=true` instead simulates envelopes in-process for development |
+| `DOCUSIGN_OAUTH_HOST` | `account-d.docusign.com` (developer sandbox, the default) or `account.docusign.com` (production) |
+| `DOCUSIGN_REDIRECT_URL` | Optional override of the OAuth redirect URI (defaults to `PORTAL_URL` + `/api/settings/docusign/callback`) |
+| `DOCUSIGN_ACCOUNT_ID` | Optional: which of the signed-in user's accounts to send from; defaults to their default account |
+| `DOCUSIGN_WEBHOOK_URL` | Optional public URL of `POST /api/webhooks/docusign` (defaults to `PORTAL_URL` + that path). Without a reachable URL, sent envelopes are polled every 15 minutes instead |
+| `DOCUSIGN_HMAC_KEY` | Optional Connect HMAC key (DocuSign Settings → Connect) to verify webhook signatures; the webhook re-reads the envelope from DocuSign either way |
 | `PG_POOL_MAX` | Max DB connections per API process; defaults to 8. Set low (3–4) on Supabase session-mode poolers, which cap a project at 15 clients across every process |
 | `LOG_LEVEL` | API log level; defaults to `info` |
 

@@ -8,11 +8,14 @@
 import type { Case } from './case';
 import type { Client } from './client';
 import type { Document } from './document';
+import type { DocumentCheck } from './documentCheck';
 import type { OnboardingSummary } from './onboardingSummary';
 import type { Property } from './property';
 
 export type ClientDetail = Client & {
   onboarding: OnboardingSummary;
+  /** Cross-document consistency findings from the document reading system (name, DOB, address, income, commitments, ID expiry, adverse credit, account conduct). */
+  documentChecks?: DocumentCheck[];
   documents: Document[];
   properties: Property[];
   cases: Case[];

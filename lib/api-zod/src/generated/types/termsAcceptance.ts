@@ -5,13 +5,16 @@
  * Chariot Financial Solutions case management API
  * OpenAPI spec version: 1.0.0
  */
-import type { TermsAcceptanceVia } from './termsAcceptanceVia';
+import type { TermsSignedVia } from './termsSignedVia';
 
+/**
+ * Summary of a case's signed Terms of Business.
+ */
 export interface TermsAcceptance {
-  acceptedAt: Date;
-  via: TermsAcceptanceVia;
-  version: number | null;
+  signedAt: Date;
+  via: TermsSignedVia;
+  version: number;
   note: string | null;
-  /** Staff member who recorded it */
-  acceptedBy: string | null;
+  signedBy: string | null;
+  signedDocumentId: number | null;
 }

@@ -43,8 +43,14 @@ export type AssistantConfig = {
   /** Empty-state copy and clickable starter prompts. */
   intro: string;
   starters: string[];
-  /** Uploads a file for the chat; returns what the server needs to read it later. */
-  uploadAttachment: (file: File) => Promise<TranscriptAttachment>;
+  /**
+   * Uploads a file for the chat; returns what the server needs to read it
+   * later. Report `onProgress(0–100)` as bytes go up so the chip shows a bar.
+   */
+  uploadAttachment: (
+    file: File,
+    onProgress: (percent: number) => void,
+  ) => Promise<TranscriptAttachment>;
   /** URL that serves an uploaded attachment (for thumbnails / playback). */
   attachmentUrl: (id: number) => string;
   /** Records matching what the user is typing; the composer calls this per candidate phrase. */

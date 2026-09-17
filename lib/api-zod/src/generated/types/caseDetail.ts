@@ -10,8 +10,11 @@ import type { CaseSubmission } from './caseSubmission';
 import type { Message } from './message';
 import type { Requirement } from './requirement';
 import type { Task } from './task';
+import type { TermsAcceptance } from './termsAcceptance';
 
-export type CaseDetail = Case & {
+export type CaseDetail = Case & ({
+  /** The case's signed Terms of Business; null until signed. */
+  termsOfBusiness: TermsAcceptance | null;
   /** Every lender this case has been submitted to, primary first. The case's own lender fields mirror the primary submission. */
   submissions: CaseSubmission[];
   stages: string[];
@@ -19,4 +22,4 @@ export type CaseDetail = Case & {
   tasks: Task[];
   messages: Message[];
   draftNotes: string;
-};
+});

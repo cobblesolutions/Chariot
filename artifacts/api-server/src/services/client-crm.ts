@@ -3,6 +3,7 @@ import {
   activitiesTable,
   appUsersTable,
   casesTable,
+  clientEnquiriesTable,
   clientInteractionsTable,
   clientsTable,
   db,
@@ -160,7 +161,7 @@ export async function deleteInteraction(row: InteractionRow) {
     .where(eq(clientsTable.id, row.clientId));
 }
 
-export type TimelineKind = "activity" | "interaction" | "task" | "document" | "case" | "email";
+export type TimelineKind = "activity" | "interaction" | "task" | "document" | "case" | "email" | "enquiry";
 
 export interface ClientTimelineItem {
   id: string;
@@ -195,7 +196,7 @@ export async function clientTimeline(client: ClientRow): Promise<ClientTimelineI
   const caseIds = cases.map((row) => row.id);
   const caseRef = new Map(cases.map((row) => [row.id, row.displayReference ?? row.reference]));
 
-  const [activities, interactions, tasks, documents, invitations] = await Promise.all([
+  const [activities, interactions, tasks, documents, invitations, enquiries] = await Promise.all([
     db
       .select()
       .from(activitiesTable)
@@ -234,6 +235,12 @@ export async function clientTimeline(client: ClientRow): Promise<ClientTimelineI
       .from(portalInvitationsTable)
       .where(and(eq(portalInvitationsTable.clientId, client.id), eq(portalInvitationsTable.purpose, "activation")))
       .orderBy(desc(portalInvitationsTable.createdAt)),
+    db
+      .select()
+      .from(clientEnquiriesTable)
+      .where(eq(clientEnquiriesTable.clientId, client.id))
+      .orderBy(desc(clientEnquiriesTable.receivedAt))
+      .limit(TIMELINE_LIMIT),
   ]);
 
   const names = await staffNames([
@@ -244,6 +251,22 @@ export async function clientTimeline(client: ClientRow): Promise<ClientTimelineI
   const nameOf = (id: number | null | undefined, fallback: string) => (id != null && names.get(id)) || fallback;
 
   const items: ClientTimelineItem[] = [];
+  // Every enquiry the client has made, oldest = "Enquiry received", later ones = repeats.
+  const firstEnquiryId = enquiries.length ? enquiries[enquiries.length - 1]!.id : null;
+  for (const row of enquiries) {
+    const outcome = row.status === "open" ? "under review" : row.status === "accepted" ? "accepted" : row.status;
+    items.push({
+      id: `enquiry-${row.id}`,
+      kind: "enquiry",
+      title: row.id === firstEnquiryId ? "Enquiry received" : "Repeat enquiry",
+      detail: [row.summary ?? row.emailSubject ?? "", row.timescale ? `Timescale: ${row.timescale}` : "", `Status: ${outcome}`]
+        .filter(Boolean).join(" · "),
+      actorName: row.emailFrom ?? client.name,
+      occurredAt: iso(row.receivedAt),
+      href: `/add/${client.id}`,
+      interactionKind: null,
+    });
+  }
   // Interactions already write an activity row; skip those so they show once.
   const interactionActivity = /^(Call|Email|Meeting|Note) logged$/;
   for (const row of activities) {

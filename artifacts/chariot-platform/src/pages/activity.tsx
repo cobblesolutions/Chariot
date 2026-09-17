@@ -59,7 +59,7 @@ import {
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import {
-  classifyNotification,
+  notificationKind,
   notificationHref,
   NOTIFICATION_GROUPS,
   TONE_CLASSES,
@@ -95,7 +95,7 @@ function initials(name: string) {
 }
 
 function ActivityItem({ act }: { act: ActivityListItem }) {
-  const kind = classifyNotification(act.title);
+  const kind = notificationKind(act);
   const tone = TONE_CLASSES[kind.tone];
   const Icon = kind.icon;
   const occurred = new Date(act.occurredAt);
@@ -186,7 +186,7 @@ export default function ActivityPage() {
       filter === "all"
         ? items
         : items.filter(
-            (act) => classifyNotification(act.title).group === filter,
+            (act) => notificationKind(act).group === filter,
           );
     const byDay = new Map<string, ActivityListItem[]>();
     for (const act of visible) {
@@ -194,7 +194,7 @@ export default function ActivityPage() {
       byDay.set(key, [...(byDay.get(key) ?? []), act]);
     }
     const rank = (act: ActivityListItem) => {
-      const idx = priority.indexOf(classifyNotification(act.title).group);
+      const idx = priority.indexOf(notificationKind(act).group);
       return idx === -1 ? priority.length : idx;
     };
     return [...byDay.entries()].map(([key, list]) => ({

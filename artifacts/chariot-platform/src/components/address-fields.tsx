@@ -1,6 +1,8 @@
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { AddressCombobox } from "@/components/address-combobox";
+import { RequiredDot } from "@/components/required-dot";
+import { cn } from "@/lib/utils";
 
 export interface AddressValue {
   address: string;
@@ -18,6 +20,8 @@ export interface AddressFieldsProps {
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
+  /** Extra classes per line, e.g. the "read from a document" highlight. */
+  classNames?: Partial<Record<keyof AddressValue, string | undefined>>;
 }
 
 /**
@@ -32,6 +36,7 @@ export function AddressFields({
   placeholder,
   required,
   disabled,
+  classNames,
 }: AddressFieldsProps) {
   const set = (patch: Partial<AddressValue>) => onChange({ ...value, ...patch });
   return (
@@ -39,7 +44,7 @@ export function AddressFields({
       <Field>
         <FieldLabel htmlFor={`${idPrefix}-address`}>
           {label}
-          {required ? <span className="text-destructive"> *</span> : null}
+          {required ? <RequiredDot /> : null}
         </FieldLabel>
         <AddressCombobox
           id={`${idPrefix}-address`}
@@ -56,6 +61,7 @@ export function AddressFields({
           placeholder={placeholder}
           required={required}
           disabled={disabled}
+          className={cn("w-full", classNames?.address)}
         />
       </Field>
       <div className="grid grid-cols-2 gap-4">
@@ -67,6 +73,7 @@ export function AddressFields({
             onChange={(event) => set({ city: event.target.value })}
             autoComplete="off"
             disabled={disabled}
+            className={classNames?.city}
           />
         </Field>
         <Field>
@@ -76,7 +83,7 @@ export function AddressFields({
             value={value.postcode}
             onChange={(event) => set({ postcode: event.target.value })}
             autoComplete="off"
-            className="uppercase"
+            className={cn("uppercase", classNames?.postcode)}
             disabled={disabled}
           />
         </Field>
