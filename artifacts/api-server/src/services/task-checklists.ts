@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 import {
   activitiesTable,
   casesTable,
@@ -38,6 +38,13 @@ export const CASE_SUBMISSION_KIND = "case_submission";
  * ways — ticking one on the task completes the requirement on the case.
  */
 export const STAGE_HANDOFF_KIND = "stage_handoff";
+/**
+ * A Submission step handed to someone other than the stage owner (Settings →
+ * default assignees per step). It pops up when the stage task reaches that
+ * step, carries that one step as its checklist, and closes itself when the
+ * step is done on the case.
+ */
+export const SUBMISSION_STEP_KIND = "submission_step";
 /** One task per underwriting round; its steps are that round's requirements only. */
 export const UNDERWRITING_ROUND_KIND = "underwriting_round";
 export const REQUIREMENT_KEY_PREFIX = "req:";
@@ -50,6 +57,16 @@ const submissionStepFromKey = (key: string) => {
   const match = /^sub:(\d+):(dip|caseNumber|fee|decision)$/.exec(key);
   return match ? { submissionId: Number(match[1]), field: match[2] as "dip" | "caseNumber" | "fee" | "decision" } : null;
 };
+
+/** Settings section that owns a Submission step — which default assignee a step task goes to. */
+function submissionStepSection(key: string): import("./assignment").SubmissionStepSection | null {
+  if (key === "lenderId" || key === "lenderChosen") return "submission_lender";
+  if (key === "portfolio") return "submission_portfolio";
+  if (key === "valuationDate" || key === "valuationCompleted") return "submission_valuation_date";
+  const step = submissionStepFromKey(key);
+  if (!step) return null;
+  return ({ dip: "submission_dip", caseNumber: "submission_case_number", fee: "submission_fee", decision: "submission_decision" } as const)[step.field];
+}
 
 /**
  * Requirements the system ticks itself (emails going out, the client
@@ -87,8 +104,8 @@ export function checklistStepLock(sourceKey: string | null | undefined, title?: 
   if (sourceKey === "valuationDate") return "Set the valuation date on the case";
   if (sourceKey === "dip") return "Upload the DIP on the case";
   if (sourceKey === "caseNumber") return "Record the lender's case number on the case";
-  if (sourceKey.startsWith("onboarding:")) return "Completed from the client's onboarding list";
-  // Client, property and case field steps mirror the Add page forms.
+  if (sourceKey.startsWith("card:")) return "Filled in on the Add page — the card turns green";
+  // Case field steps mirror the case record.
   return "Filled in on the record";
 }
 
@@ -97,54 +114,43 @@ interface Step {
   label: string;
 }
 
-const CLIENT_FIELD_STEPS: Step[] = [
-  { key: "phone", label: "Phone number" },
-  { key: "dateOfBirth", label: "Date of birth" },
-  { key: "currentAddress", label: "Current address" },
-  { key: "employmentStatus", label: "Employment status" },
-  { key: "annualIncome", label: "Annual income" },
+/**
+ * One step per card of the Add page's client form, in page order; a step is
+ * done when its card is green there (every counted field filled), so the
+ * task's checklist is the page's card colours. Field lists mirror
+ * chariot-platform/src/components/add/client-column.tsx.
+ */
+const CLIENT_CARDS: Array<Step & { fields: string[] }> = [
+  { key: "card:contact", label: "Contact", fields: ["name", "email", "phone", "currentAddress"] },
+  { key: "card:personal", label: "Personal", fields: ["dateOfBirth", "nationality", "maritalStatus", "dependants"] },
+  { key: "card:employment", label: "Employment & income", fields: ["employmentStatus", "employerName", "jobTitle", "annualIncome", "monthlyCommitments"] },
+  { key: "card:company", label: "Company", fields: ["companyName", "companyNumber", "companyRegisteredAddress"] },
+  { key: "card:enquiry", label: "Enquiry", fields: ["source", "enquiryType", "enquirySummary"] },
 ];
+const CLIENT_ONBOARDING_CARD: Step = { key: "card:onboarding", label: "Onboarding & documents" };
+const CLIENT_STEPS: Step[] = [CLIENT_ONBOARDING_CARD, ...CLIENT_CARDS];
 
-const CLIENT_STEPS: Step[] = [
-  ...CLIENT_FIELD_STEPS,
-  ...ONBOARDING_DEFINITIONS.map((item) => ({ key: `onboarding:${item.key}`, label: item.label })),
-];
-
-/** The deal itself: always on a property review task. */
-const PROPERTY_DEAL_STEPS: Step[] = [
-  { key: "matterType", label: "Matter type" },
-  { key: "value", label: "Property value" },
-  { key: "loanAmount", label: "Loan amount" },
-];
-/** Only for buy-to-let / let properties. */
-const PROPERTY_RENT_STEP: Step = { key: "rent", label: "Rental income" };
-/** Only for bridging / development deals. */
-const PROPERTY_GDV_STEP: Step = { key: "gdv", label: "GDV (gross development value)" };
-const PROPERTY_DETAIL_STEPS: Step[] = [
-  { key: "propertyType", label: "Property type" },
-  { key: "tenure", label: "Tenure" },
-  { key: "occupancy", label: "Occupancy" },
-  { key: "bedrooms", label: "Bedrooms" },
-  { key: "epcRating", label: "EPC rating" },
-];
+/**
+ * One step per card of the Add page's property form (see
+ * chariot-platform/src/components/add/property-column.tsx). The deal and
+ * details cards count extra fields for let / bridging properties, so their
+ * field lists are worked out per property.
+ */
 const PROPERTY_STEPS: Step[] = [
-  ...PROPERTY_DEAL_STEPS,
-  PROPERTY_RENT_STEP,
-  PROPERTY_GDV_STEP,
-  ...PROPERTY_DETAIL_STEPS,
+  { key: "card:deal", label: "The deal" },
+  { key: "card:details", label: "Property details" },
+  { key: "card:mortgage", label: "Purchase & current mortgage" },
 ];
 
-/** Steps a review task for this particular property should carry. */
-function propertyStepsFor(property: typeof propertiesTable.$inferSelect): Step[] {
+function propertyCardFields(property: typeof propertiesTable.$inferSelect): Record<string, string[]> {
   const isLet = property.occupancy === "let" || property.occupancy === "holiday_let";
-  const wantsRent = property.matterType === "btl" || isLet || property.rent != null;
-  const wantsGdv = property.matterType === "bridging" || property.gdv != null;
-  return [
-    ...PROPERTY_DEAL_STEPS,
-    ...(wantsRent ? [PROPERTY_RENT_STEP] : []),
-    ...(wantsGdv ? [PROPERTY_GDV_STEP] : []),
-    ...PROPERTY_DETAIL_STEPS,
-  ];
+  const wantsRent = property.matterType === "btl" || isLet;
+  const wantsGdv = property.matterType === "bridging";
+  return {
+    "card:deal": ["address", "matterType", "value", "loanAmount", ...(wantsRent ? ["rent"] : []), ...(wantsGdv ? ["gdv"] : [])],
+    "card:details": ["propertyType", "tenure", "bedrooms", "yearBuilt", "epcRating", "occupancy", ...(isLet ? ["tenancyType"] : [])],
+    "card:mortgage": ["purchasePrice", "purchaseDate", "currentLender", "currentRatePct", "currentBalance", "currentRateEndDate"],
+  };
 }
 
 const CASE_STEPS: Step[] = [
@@ -160,6 +166,12 @@ const CASE_STEPS: Step[] = [
 
 const filled = (value: unknown) =>
   value !== null && value !== undefined && !(typeof value === "string" && value.trim() === "");
+/** A card is green when every counted field on it is filled (the Add page's `countFilled(...) >= total`). */
+const cardDone = (record: Record<string, unknown>, fields: string[]) =>
+  fields.every((field) => {
+    const value = record[field];
+    return typeof value === "number" ? value !== 0 : filled(value);
+  });
 
 /** Which client steps are complete right now. Null when the client is gone. */
 async function clientDoneMap(clientId: number): Promise<Map<string, boolean> | null> {
@@ -174,27 +186,21 @@ async function clientDoneMap(clientId: number): Promise<Map<string, boolean> | n
   ]);
   const categories = new Set(documents.map((document) => document.category));
   const done = new Map<string, boolean>();
-  for (const step of CLIENT_FIELD_STEPS) done.set(step.key, filled((client as Record<string, unknown>)[step.key]));
-  for (const definition of ONBOARDING_DEFINITIONS) {
+  for (const card of CLIENT_CARDS) done.set(card.key, cardDone(client as Record<string, unknown>, card.fields));
+  // The onboarding card is green when every item on the list is complete.
+  const onboardingDone = ONBOARDING_DEFINITIONS.every((definition) => {
     const item = items.find((row) => row.key === definition.key);
-    done.set(
-      `onboarding:${definition.key}`,
-      definition.kind === "document" ? categories.has(definition.key) : filled(item?.value),
-    );
-  }
+    return definition.kind === "document" ? categories.has(definition.key) : filled(item?.value);
+  });
+  done.set(CLIENT_ONBOARDING_CARD.key, onboardingDone);
   return done;
 }
 
 async function propertyDoneMap(propertyId: number): Promise<Map<string, boolean> | null> {
   const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, propertyId));
   if (!property) return null;
-  const done = new Map<string, boolean>();
-  for (const step of PROPERTY_STEPS) done.set(step.key, filled((property as Record<string, unknown>)[step.key]));
-  done.set("value", property.value > 0);
-  done.set("loanAmount", property.loanAmount > 0);
-  done.set("rent", property.rent != null && property.rent > 0);
-  done.set("gdv", property.gdv != null && property.gdv > 0);
-  return done;
+  const fields = propertyCardFields(property);
+  return new Map(PROPERTY_STEPS.map((step) => [step.key, cardDone(property as Record<string, unknown>, fields[step.key] ?? [])]));
 }
 
 async function caseDoneMap(caseId: number): Promise<Map<string, boolean> | null> {
@@ -258,17 +264,17 @@ async function stageSteps(caseId: number, stageIndex: number): Promise<{ steps: 
     const steps: Step[] = [];
     const done = new Map<string, boolean>();
     if (open.length === 0) {
-      steps.push({ key: "lenderId", label: "Lender selected" });
+      steps.push({ key: "lenderId", label: "Select a lender" });
       done.set("lenderId", caseRow.lenderId != null);
     }
     for (const row of open) {
       const name = lenderName.get(row.lenderId) ?? "Lender";
       const prefix = `sub:${row.id}:`;
       steps.push(
-        { key: `${prefix}dip`, label: `${name} · DIP uploaded` },
-        { key: `${prefix}caseNumber`, label: `${name} · case number recorded` },
-        { key: `${prefix}fee`, label: `${name} · application & valuation fee confirmed` },
-        { key: `${prefix}decision`, label: `${name} · decision requested` },
+        { key: `${prefix}dip`, label: `Upload the DIP from ${name}` },
+        { key: `${prefix}caseNumber`, label: `Record the ${name} case number` },
+        { key: `${prefix}fee`, label: `Confirm the application & valuation fee with ${name}` },
+        { key: `${prefix}decision`, label: `Request the decision from ${name}` },
       );
       done.set(`${prefix}dip`, dipFor.has(row.id));
       done.set(`${prefix}caseNumber`, filled(row.lenderCaseNumber));
@@ -280,13 +286,13 @@ async function stageSteps(caseId: number, stageIndex: number): Promise<{ steps: 
       done.set("portfolio", portfolio.complete);
     }
     steps.push(
-      { key: "valuationDate", label: "Valuation date set" },
-      { key: "valuationCompleted", label: "Valuation took place" },
+      { key: "valuationDate", label: "Set the valuation date" },
+      { key: "valuationCompleted", label: "Confirm the valuation took place" },
     );
     done.set("valuationDate", caseRow.valuationDate != null);
     done.set("valuationCompleted", caseRow.valuationCompletedAt != null);
     if (open.length > 1) {
-      steps.push({ key: "lenderChosen", label: "Lender chosen to proceed with" });
+      steps.push({ key: "lenderChosen", label: "Choose the lender to proceed with" });
       done.set("lenderChosen", open.some((row) => row.isPrimary));
     }
     return { steps, done };
@@ -326,12 +332,6 @@ export async function seedTaskChecklist(
     if (!stage) return;
     steps = stage.steps;
     done = stage.done;
-  } else if (kind === PROPERTY_REVIEW_KIND && ids.propertyId) {
-    // Rent and GDV steps only appear when the matter type calls for them.
-    const [property] = await db.select().from(propertiesTable).where(eq(propertiesTable.id, ids.propertyId));
-    if (!property) return;
-    steps = propertyStepsFor(property);
-    done = (await propertyDoneMap(property.id)) ?? new Map<string, boolean>();
   } else {
     steps = stepsFor(kind);
     if (!steps) return;
@@ -357,14 +357,19 @@ export async function seedTaskChecklist(
 /** The requirements of the underwriting round a task was created for. */
 async function roundSteps(caseId: number, taskId: number): Promise<{ steps: Step[]; done: Map<string, boolean> } | null> {
   const [round] = await db
-    .select({ round: underwritingRoundsTable.round })
+    .select({ round: underwritingRoundsTable.round, submissionId: underwritingRoundsTable.submissionId })
     .from(underwritingRoundsTable)
     .where(and(eq(underwritingRoundsTable.caseId, caseId), eq(underwritingRoundsTable.taskId, taskId)));
   if (!round) return null;
   const requirements = await db
     .select({ id: requirementsTable.id, label: requirementsTable.label, complete: requirementsTable.complete })
     .from(requirementsTable)
-    .where(and(eq(requirementsTable.caseId, caseId), eq(requirementsTable.stageIndex, UNDERWRITING_STAGE_INDEX), eq(requirementsTable.round, round.round)))
+    .where(and(
+      eq(requirementsTable.caseId, caseId),
+      eq(requirementsTable.stageIndex, UNDERWRITING_STAGE_INDEX),
+      eq(requirementsTable.round, round.round),
+      round.submissionId == null ? isNull(requirementsTable.submissionId) : eq(requirementsTable.submissionId, round.submissionId),
+    ))
     .orderBy(asc(requirementsTable.id));
   return {
     steps: requirements.map((item) => ({ key: requirementKey(item.id), label: item.label })),
@@ -374,7 +379,7 @@ async function roundSteps(caseId: number, taskId: number): Promise<{ steps: Step
 
 async function syncStageChecklists(caseId: number) {
   const tasks = await db
-    .select({ id: tasksTable.id, stageIndex: tasksTable.stageIndex, kind: tasksTable.kind })
+    .select({ id: tasksTable.id, title: tasksTable.title, stageIndex: tasksTable.stageIndex, kind: tasksTable.kind, assignedUserId: tasksTable.assignedUserId })
     .from(tasksTable)
     .where(and(inArray(tasksTable.kind, [STAGE_HANDOFF_KIND, UNDERWRITING_ROUND_KIND]), eq(tasksTable.caseId, caseId), ne(tasksTable.status, "done")));
   for (const task of tasks) {
@@ -382,10 +387,12 @@ async function syncStageChecklists(caseId: number) {
       ? await roundSteps(caseId, task.id)
       : task.stageIndex == null ? null : await stageSteps(caseId, task.stageIndex);
     if (!stage) continue;
+    if (task.kind === STAGE_HANDOFF_KIND && task.stageIndex === SUBMISSION_STAGE_INDEX) await syncSubmissionStepTasks(caseId, task, stage);
     const items = await db
       .select({
         id: taskChecklistItemsTable.id,
         sourceKey: taskChecklistItemsTable.sourceKey,
+        title: taskChecklistItemsTable.title,
         done: taskChecklistItemsTable.done,
         position: taskChecklistItemsTable.position,
       })
@@ -393,6 +400,13 @@ async function syncStageChecklists(caseId: number) {
       .where(eq(taskChecklistItemsTable.taskId, task.id));
     const known = new Set(items.map((item) => item.sourceKey).filter(Boolean));
     const wanted = new Set(stage.steps.map((step) => step.key));
+    const labelFor = new Map(stage.steps.map((step) => [step.key, step.label]));
+    for (const item of items) {
+      const label = item.sourceKey ? labelFor.get(item.sourceKey) : undefined;
+      if (label && label !== item.title) {
+        await db.update(taskChecklistItemsTable).set({ title: label }).where(eq(taskChecklistItemsTable.id, item.id));
+      }
+    }
     const missing = stage.steps.filter((step) => !known.has(step.key));
     const stale = items.filter((item) => item.sourceKey && !wanted.has(item.sourceKey)).map((item) => item.id);
     let position = items.reduce((max, item) => Math.max(max, item.position), -1) + 1;
@@ -415,24 +429,128 @@ async function syncStageChecklists(caseId: number) {
   }
 }
 
-/** Re-tick the auto steps of every open task of `kind` that points at the given record. */
+/**
+ * The Submission stage's steps can each have their own default assignee in
+ * Settings. When the stage task is up to such a step and that person is not
+ * the stage task's assignee, a task for the step pops up for them — one at a
+ * time, as the stage gets there — and every step task is kept in step with
+ * the case: ticked when the step is done, closed when all its steps are.
+ */
+async function syncSubmissionStepTasks(
+  caseId: number,
+  stageTask: { id: number; title: string; assignedUserId: number | null },
+  stage: { steps: Step[]; done: Map<string, boolean> },
+) {
+  const [caseRow] = await db
+    .select({ stageIndex: casesTable.stageIndex, clientId: casesTable.clientId, reference: casesTable.reference, displayReference: casesTable.displayReference })
+    .from(casesTable)
+    .where(eq(casesTable.id, caseId));
+  if (!caseRow) return;
+  const stepTasks = await db
+    .select({ id: tasksTable.id, status: tasksTable.status, completedByUserId: tasksTable.completedByUserId })
+    .from(tasksTable)
+    .where(and(eq(tasksTable.kind, SUBMISSION_STEP_KIND), eq(tasksTable.caseId, caseId)));
+  const items = stepTasks.length
+    ? await db
+        .select({ id: taskChecklistItemsTable.id, taskId: taskChecklistItemsTable.taskId, sourceKey: taskChecklistItemsTable.sourceKey, title: taskChecklistItemsTable.title, done: taskChecklistItemsTable.done })
+        .from(taskChecklistItemsTable)
+        .where(inArray(taskChecklistItemsTable.taskId, stepTasks.map((task) => task.id)))
+    : [];
+
+  // Pop the task for the step the stage is up to, when Settings hands that step to someone else.
+  const current = caseRow.stageIndex === SUBMISSION_STAGE_INDEX ? stage.steps.find((step) => !stage.done.get(step.key)) : undefined;
+  const section = current ? submissionStepSection(current.key) : null;
+  if (current && section && !items.some((item) => item.sourceKey === current.key)) {
+    // Lazy: assignment imports this module to seed checklists.
+    const { createAssignmentTask, getDefaultAssignees } = await import("./assignment");
+    const owner = (await getDefaultAssignees())[section];
+    if (owner && owner.id !== stageTask.assignedUserId) {
+      const reference = caseRow.displayReference || caseRow.reference;
+      const due = new Date(); due.setDate(due.getDate() + 2);
+      const created = await createAssignmentTask({
+        staffUser: owner,
+        title: `${current.label} — ${reference}`,
+        notes: `Your step of "${stageTask.title}". It ticks itself once recorded on the case.`,
+        caseId,
+        clientId: caseRow.clientId,
+        kind: SUBMISSION_STEP_KIND,
+        dueDate: due.toISOString().slice(0, 10),
+      });
+      if (created) {
+        await db.insert(taskChecklistItemsTable).values({ taskId: created.id, title: current.label, done: false, position: 0, sourceKey: current.key });
+      }
+    }
+  }
+
+  // Keep every step task in step with the case.
+  for (const task of stepTasks) {
+    if (task.status === "done" && task.completedByUserId != null) continue;
+    const own = items.filter((item) => item.taskId === task.id);
+    for (const item of own) {
+      if (!item.sourceKey) continue;
+      const label = stage.steps.find((step) => step.key === item.sourceKey)?.label;
+      const done = stage.done.get(item.sourceKey);
+      if ((label && label !== item.title) || (done != null && done !== item.done)) {
+        await db.update(taskChecklistItemsTable).set({ title: label ?? item.title, done: done ?? item.done }).where(eq(taskChecklistItemsTable.id, item.id));
+      }
+    }
+    const allDone = own.length > 0 && own.every((item) => (item.sourceKey ? stage.done.get(item.sourceKey) !== false : item.done));
+    if (allDone && task.status !== "done") {
+      await db.update(tasksTable).set({ status: "done", completedAt: new Date(), completedByUserId: null }).where(eq(tasksTable.id, task.id));
+    } else if (!allDone && task.status === "done") {
+      await db.update(tasksTable).set({ status: "in_progress", completedAt: null }).where(eq(tasksTable.id, task.id));
+    }
+  }
+}
+
+/**
+ * Re-tick the auto steps of every task of `kind` that points at the given
+ * record, adding steps that are missing and dropping ones the kind no longer
+ * has (older tasks carried one step per field; now it is one per card).
+ * A task whose steps are all done closes itself — the record is complete, so
+ * it comes off the list — and one the system closed reopens if a card goes
+ * orange again. Tasks a person completed are left alone.
+ */
 async function syncChecklists(kind: string, column: "clientId" | "propertyId" | "caseId", id: number) {
   const tasks = await db
-    .select({ id: tasksTable.id })
+    .select({ id: tasksTable.id, status: tasksTable.status, completedByUserId: tasksTable.completedByUserId })
     .from(tasksTable)
-    .where(and(eq(tasksTable.kind, kind), eq(tasksTable[column], id), ne(tasksTable.status, "done")));
-  if (tasks.length === 0) return;
+    .where(and(eq(tasksTable.kind, kind), eq(tasksTable[column], id)));
+  const open = tasks.filter((task) => task.status !== "done" || task.completedByUserId == null);
+  if (open.length === 0) return;
   const done = await doneMapFor(kind, { [column]: id });
   if (!done) return;
-  const taskIds = tasks.map((task) => task.id);
-  const items = await db
-    .select({ id: taskChecklistItemsTable.id, sourceKey: taskChecklistItemsTable.sourceKey, done: taskChecklistItemsTable.done })
-    .from(taskChecklistItemsTable)
-    .where(inArray(taskChecklistItemsTable.taskId, taskIds));
-  const toTick = items.filter((item) => item.sourceKey && done.get(item.sourceKey) === true && !item.done).map((item) => item.id);
-  const toUntick = items.filter((item) => item.sourceKey && done.get(item.sourceKey) === false && item.done).map((item) => item.id);
-  if (toTick.length) await db.update(taskChecklistItemsTable).set({ done: true }).where(inArray(taskChecklistItemsTable.id, toTick));
-  if (toUntick.length) await db.update(taskChecklistItemsTable).set({ done: false }).where(inArray(taskChecklistItemsTable.id, toUntick));
+  const steps = stepsFor(kind) ?? [];
+  const wanted = new Set(steps.map((step) => step.key));
+  for (const task of open) {
+    const items = await db
+      .select({ id: taskChecklistItemsTable.id, sourceKey: taskChecklistItemsTable.sourceKey, done: taskChecklistItemsTable.done, position: taskChecklistItemsTable.position })
+      .from(taskChecklistItemsTable)
+      .where(eq(taskChecklistItemsTable.taskId, task.id));
+    const known = new Set(items.map((item) => item.sourceKey).filter(Boolean));
+    const stale = items.filter((item) => item.sourceKey && !wanted.has(item.sourceKey)).map((item) => item.id);
+    if (stale.length) await db.delete(taskChecklistItemsTable).where(inArray(taskChecklistItemsTable.id, stale));
+    const missing = steps.filter((step) => !known.has(step.key));
+    let position = items.reduce((max, item) => Math.max(max, item.position), -1) + 1;
+    if (missing.length) {
+      await db.insert(taskChecklistItemsTable).values(
+        missing.map((step) => ({ taskId: task.id, title: step.label, done: done.get(step.key) ?? false, position: position++, sourceKey: step.key })),
+      );
+    }
+    const kept = items.filter((item) => !stale.includes(item.id));
+    const toTick = kept.filter((item) => item.sourceKey && done.get(item.sourceKey) === true && !item.done).map((item) => item.id);
+    const toUntick = kept.filter((item) => item.sourceKey && done.get(item.sourceKey) === false && item.done).map((item) => item.id);
+    if (toTick.length) await db.update(taskChecklistItemsTable).set({ done: true }).where(inArray(taskChecklistItemsTable.id, toTick));
+    if (toUntick.length) await db.update(taskChecklistItemsTable).set({ done: false }).where(inArray(taskChecklistItemsTable.id, toUntick));
+
+    const allDone = steps.length > 0 && steps.every((step) => done.get(step.key) === true)
+      && kept.filter((item) => !item.sourceKey).every((item) => item.done);
+    if (allDone && task.status !== "done") {
+      await db.update(tasksTable).set({ status: "done", completedAt: new Date(), completedByUserId: null }).where(eq(tasksTable.id, task.id));
+    } else if (!allDone && task.status === "done" && task.completedByUserId == null) {
+      await db.update(tasksTable).set({ status: "in_progress", completedAt: null }).where(eq(tasksTable.id, task.id));
+    }
+  }
 }
 
 const swallow = (label: string) => (error: unknown) => logger.warn({ err: error }, `${label} checklist sync failed`);

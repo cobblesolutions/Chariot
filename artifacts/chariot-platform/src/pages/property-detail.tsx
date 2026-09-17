@@ -261,10 +261,11 @@ function ActivityRow({ act }: { act: ActivityListItem }) {
 function PropertyActivity({ propertyId }: { propertyId: number }) {
   const [page, setPage] = useState(1);
   const [items, setItems] = useState<ActivityListItem[]>([]);
-  const { data, isLoading } = useListActivities(
-    { propertyId, page, pageSize: 25 },
-    { query: { queryKey: getListActivitiesQueryKey({ propertyId, page, pageSize: 25 }) } },
-  );
+  // A record's own timeline keeps the routine rows the activity page hides.
+  const params = { propertyId, page, pageSize: 25, includeRoutine: true };
+  const { data, isLoading } = useListActivities(params, {
+    query: { queryKey: getListActivitiesQueryKey(params) },
+  });
   useEffect(() => {
     if (!data) return;
     setItems((prev) => (page === 1 ? data.items : [...prev, ...data.items]));
@@ -454,7 +455,7 @@ function PropertyValuations({ property }: { property: Property }) {
         <Skeleton className="h-10 w-full" />
       ) : !valuations?.length ? (
         <p className="text-sm text-muted-foreground">
-          No valuations recorded. Record one, or confirm a case&apos;s valuation to add it automatically.
+          No valuations recorded.
         </p>
       ) : (
         <div className="-mx-2 space-y-0.5">
@@ -865,8 +866,7 @@ export default function PropertyDetail() {
               taskMutations.createTask({ ...input, propertyId: property.id }, { onSuccess: () => reset() })
             }
           />
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">Tasks about this property and its cases.</p>
+          <div className="flex justify-end">
             {propertyTasks.length > openTasks.length && (
               <Button variant="ghost" size="xs" onClick={() => setShowDoneTasks((value) => !value)}>
                 {showDoneTasks ? "Hide completed" : "Show completed"}
@@ -874,7 +874,7 @@ export default function PropertyDetail() {
             )}
           </div>
           {(showDoneTasks ? propertyTasks : openTasks).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No open tasks. Add one above.</p>
+            <p className="text-sm text-muted-foreground">No open tasks.</p>
           ) : (
             <div className="-mx-2">
               {(showDoneTasks ? propertyTasks : openTasks).map((task) => (

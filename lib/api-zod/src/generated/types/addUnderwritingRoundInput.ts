@@ -7,6 +7,8 @@
  */
 
 export interface AddUnderwritingRoundInput {
+  /** The lender submission the round is with; the primary open one when omitted. */
+  submissionId?: number | null;
   /**
      * @minLength 1
      * @maxLength 20000

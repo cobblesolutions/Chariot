@@ -412,7 +412,7 @@ export interface CompaniesHouseCompany {
   /** @nullable */
   address?: string | null;
   /** @nullable */
-  registeredAddress?: CompaniesHouseCompanyRegisteredAddress | null;
+  registeredAddress?: CompaniesHouseCompanyRegisteredAddress;
 }
 
 export interface CompaniesHouseSearchResults {
@@ -1302,6 +1302,8 @@ export interface DocumentReading {
   /** Client fields this reading filled in. */
   appliedFields: string[];
   readAt: string;
+  /** What the reader is doing right now */
+  progress?: string | null;
 }
 
 export interface Document {
@@ -1318,6 +1320,11 @@ export interface Document {
   byteSize?: number | null;
   /** @nullable */
   uploadedAt?: string | null;
+  /**
+     * Staff-set date after which the document no longer counts (ID, payslips, statements).
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  expiresAt?: string | null;
   /** What the document reading system extracted, when the category has a reader. Omitted on list endpoints. */
   reading?: DocumentReading | null;
 }
@@ -1386,7 +1393,11 @@ export type UnderwritingRoundRequirementsItem = {
 };
 
 export interface UnderwritingRound {
+  id: number;
+  /** Numbered per lender submission. */
   round: number;
+  submissionId: number | null;
+  lenderName: string | null;
   emailText: string;
   createdAt: string;
   /** When everything was provided and sent back to the lender. */
@@ -1631,6 +1642,35 @@ export interface CaseSubmission {
   /** @nullable */
   closeReason: string | null;
   createdAt: string;
+  /**
+     * The first incomplete step (dip | caseNumber | fee | valuationDate | valuationCompleted | decision); null when all are done.
+     * @nullable
+     */
+  currentStep: string | null;
+  /** @nullable */
+  currentStepLabel: string | null;
+  /** Days the submission has sat at the current step. */
+  stepDays: number;
+  /** @nullable */
+  stepThresholdDays: number | null;
+  /** True when stepDays has reached the threshold set in Settings. */
+  stepFlagged: boolean;
+}
+
+export interface SubmissionScopeInput {
+  /** The lender submission in view; the primary open one when omitted. */
+  submissionId?: number | null;
+}
+
+export interface SubmissionStepThresholdInput {
+  /** @minimum 1 */
+  thresholdDays: number | null;
+}
+
+export interface SubmissionStepThreshold {
+  stepKey: string;
+  step: string;
+  thresholdDays: number | null;
 }
 
 export interface CaseSubmissionInput {
@@ -1660,14 +1700,46 @@ export interface LenderOfferDocument {
 }
 
 export interface LenderOfferReviewInput {
+  /** The lender submission the offer is from; the primary open one when omitted. */
+  submissionId?: number | null;
+  /** The loan on the offer */
+  offerLoanAmount?: number | null;
   documentId: number;
   offerAddress: string;
   offerClientName: string;
   offerPropertyValue: number;
 }
 
+export type LenderOfferReviewResponseLenderContactsItem = {
+  name: string;
+  email: string;
+};
+
+export type LenderOfferReviewResponseInvoice = {
+  id: number;
+  invoiceNumber: string;
+  status: string;
+  total: number;
+} | null;
+
 export interface LenderOfferReviewResponse {
   document: LenderOfferDocument | null;
+  submissionId: number | null;
+  offerLoanAmount: number | null;
+  /** The loan on the case */
+  expectedLoanAmount: number;
+  /** When the offer was sent to the client and the lender told. */
+  notifiedAt: string | null;
+  notifiedBy: string | null;
+  /** sent | disabled | failed */
+  clientEmailStatus: string | null;
+  /** sent | disabled | failed | no_contact */
+  lenderEmailStatus: string | null;
+  /** Who at the lender will be told (contacts with an email address). */
+  lenderContacts: LenderOfferReviewResponseLenderContactsItem[];
+  /** The agreed broker fee as it will be invoiced */
+  feeSummary: string | null;
+  invoice: LenderOfferReviewResponseInvoice;
   expectedAddress: string;
   expectedClientName: string;
   expectedPropertyValue: number;
@@ -1686,6 +1758,8 @@ export interface LenderOfferExtractionInput {
 }
 
 export interface LenderOfferExtractionResponse {
+  /** The loan amount stated on the offer */
+  offerLoanAmount?: number | null;
   offerAddress: string;
   offerClientName: string;
   offerPropertyValue: number;
@@ -2128,6 +2202,8 @@ export interface Task {
      * @nullable
      */
   checklistNext: string | null;
+  /** What the task reads as - for an open stage hand-off task the next unfinished step ("Record the Barclays case number"), otherwise the title. */
+  headline: string;
   commentCount: number;
   /**
      * Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.
@@ -2207,6 +2283,8 @@ export const CaseStressTestStressBasis = {
 
 export interface CaseStressTest {
   id: number;
+  /** The lender submission this stress test is for. */
+  submissionId: number | null;
   caseId: number;
   lenderId?: number | null;
   lenderName?: string | null;
@@ -2432,6 +2510,8 @@ export const UpdateCaseStressTestInputStressBasis = {
 } as const;
 
 export interface UpdateCaseStressTestInput {
+  /** The lender submission the stress test is for; the primary open one when omitted. */
+  submissionId?: number | null;
   lenderId?: number | null;
   monthlyRent?: number | null;
   propertyValue?: number | null;
@@ -2475,6 +2555,8 @@ export interface ExtractUnderwritingOutput {
 }
 
 export interface AddUnderwritingRoundInput {
+  /** The lender submission the round is with; the primary open one when omitted. */
+  submissionId?: number | null;
   /**
      * @minLength 1
      * @maxLength 20000
@@ -2660,6 +2742,14 @@ export type LenderDetail = Lender & {
   contacts: LenderContact[];
   configuredRequirements: string[];
 };
+
+export interface AiProgress {
+  messages: string[];
+  /** The latest message while the read is still running. */
+  current: string | null;
+  done: boolean;
+  error: string | null;
+}
 
 export type IdentityReadingDocumentType = typeof IdentityReadingDocumentType[keyof typeof IdentityReadingDocumentType] | null;
 
@@ -2983,6 +3073,11 @@ export interface DocumentUpdate {
   category?: string;
   /** @minLength 1 */
   status?: string;
+  /**
+     * YYYY-MM-DD; null clears it.
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  expiresAt?: string | null;
 }
 
 export interface Invoice {
@@ -3591,6 +3686,10 @@ page?: number;
  */
 pageSize?: number;
 propertyId?: number;
+/**
+ * Also return routine activity (reminders, uploads, reference changes) that the milestone feed hides by default
+ */
+includeRoutine?: boolean;
 };
 
 export type GlobalSearchParams = {

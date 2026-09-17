@@ -6,20 +6,21 @@ import {
   getListClientsQueryKey,
   getListTasksQueryKey,
   useCreateClient,
+  type CompaniesHouseCompany,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { AssigneeSelect } from "@/components/add/assignee-select";
+import { CompanyNameCombobox } from "@/components/company-name-combobox";
 
 /**
  * Step one of adding a client, wherever it starts: just the basics. The
@@ -45,6 +46,9 @@ export default function CreateClientDialog({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [companyName, setCompanyName] = useState("");
+  // Filled from Companies House when a suggestion is picked; cleared if the
+  // name is then edited so a typed name never carries a stale number.
+  const [company, setCompany] = useState<CompaniesHouseCompany | null>(null);
   const [assignedUserId, setAssignedUserId] = useState<number | null>(null);
 
   const reset = () => {
@@ -52,6 +56,7 @@ export default function CreateClientDialog({
     setEmail("");
     setPhone("");
     setCompanyName("");
+    setCompany(null);
     setAssignedUserId(null);
   };
 
@@ -68,6 +73,14 @@ export default function CreateClientDialog({
           email: email.trim(),
           phone: phone.trim(),
           companyName: companyName.trim(),
+          ...(company && company.name === companyName.trim()
+            ? {
+                companyNumber: company.companyNumber,
+                companyRegisteredAddress: company.registeredAddress?.line1 || null,
+                companyRegisteredCity: company.registeredAddress?.city || null,
+                companyRegisteredPostcode: company.registeredAddress?.postcode || null,
+              }
+            : {}),
           assignedUserId,
         },
       },
@@ -109,12 +122,9 @@ export default function CreateClientDialog({
         onOpenChange(next);
       }}
     >
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>New client</DialogTitle>
-          <DialogDescription>
-            Just the basics for now. The assigned worker is tasked with gathering everything else.
-          </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit}>
           <FieldGroup>
@@ -151,17 +161,18 @@ export default function CreateClientDialog({
             </div>
             <Field>
               <FieldLabel htmlFor="new-client-company">Company</FieldLabel>
-              <Input
+              <CompanyNameCombobox
                 id="new-client-company"
                 value={companyName}
-                onChange={(event) => setCompanyName(event.target.value)}
-                placeholder="Optional — for limited company borrowers"
+                onChange={(next) => {
+                  setCompanyName(next);
+                  if (company && next !== company.name) setCompany(null);
+                }}
+                onSelect={setCompany}
+                placeholder="Optional — search Companies House or type a name"
               />
             </Field>
             <AssigneeSelect section="client" value={assignedUserId} onChange={setAssignedUserId} label="Handled by" />
-            <FieldDescription>
-              They get a task to review the enquiry, send the welcome email and complete the advanced details.
-            </FieldDescription>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel

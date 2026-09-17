@@ -258,6 +258,14 @@ export function TaskInspector({
 
       <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]>div]:block!">
         <div className="min-w-0 space-y-6 p-4">
+          {task.headline !== task.title && (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+                Up next · step {task.checklistDone + 1} of {task.checklistTotal}
+              </p>
+              <p className="mt-0.5 text-base font-semibold leading-snug">{task.headline}</p>
+            </div>
+          )}
           <Input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
@@ -718,7 +726,7 @@ export function TaskInspector({
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title="Delete this task?"
-        description="Its checklist and comments are removed too. This cannot be undone."
+        description="This cannot be undone."
         actionLabel="Delete"
         destructive
         onConfirm={() => {

@@ -13,7 +13,7 @@ import {
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/utils";
+import { cn, documentExpiry } from "@/lib/utils";
 import { CASE_STAGES } from "@/lib/stages";
 import { apiErrorMessage } from "./utils";
 
@@ -27,7 +27,12 @@ export function clientChecks(client: ClientDetail | undefined): Check[] {
   const pending = client.onboarding.items.filter(
     (item) => item.status !== "complete",
   );
+  const expired = client.documents.filter((document) => documentExpiry(document.expiresAt)?.state === "expired");
   return [
+    // Only listed once there is something to replace; the tiles flag the files themselves.
+    ...(expired.length > 0
+      ? [{ label: `${expired.length} expired document${expired.length === 1 ? "" : "s"} replaced`, done: false }]
+      : []),
     { label: "Phone number", done: !!client.phone.trim() },
     { label: "Date of birth", done: !!client.dateOfBirth },
     { label: "Current address", done: !!client.currentAddress?.trim() },
@@ -84,8 +89,9 @@ export function caseChecks(caseDetail: CaseDetail | undefined): Check[] {
       label: "Assigned to a staff member",
       done: !!caseDetail.assignedTo && caseDetail.assignedTo !== "staff_1",
     },
-    // Enforced server-side too: the case cannot leave the opening stages unsigned.
-    { label: "Terms of Business signed", done: !!caseDetail.termsOfBusiness },
+    // Signed from the case page; enforced server-side too, the case cannot
+    // leave the opening stages unsigned.
+    { label: "Terms of Business signed (case page)", done: !!caseDetail.termsOfBusiness },
   ];
 }
 

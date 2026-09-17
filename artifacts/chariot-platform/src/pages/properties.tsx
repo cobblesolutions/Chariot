@@ -254,9 +254,6 @@ export default function PropertiesList() {
       <div className="flex justify-between items-start md:items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Properties</h1>
-          <p className="text-muted-foreground mt-1">
-            Global view of all properties.
-          </p>
         </div>
         <Button onClick={openCreate}>
           <Plus /> Add Property

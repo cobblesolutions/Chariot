@@ -27,7 +27,6 @@ import {
 } from "@workspace/db";
 import { requireAuthenticated } from "../auth/session";
 import { documentStorage } from "../services/document-storage";
-import { queueDocumentReading } from "../services/document-reading";
 import { getClientOnboarding, syncClientOnboardingDocument, updateClientOnboardingItem } from "../services/client-onboarding";
 import { STAGES } from "../services/stages";
 import { approvalForCase, approvalView, pendingApprovalsFor, respondToApproval } from "../services/case-advice";
@@ -322,7 +321,6 @@ router.post("/portal/documents/upload", express.raw({ type: "*/*", limit: "50mb"
     const stored = await documentStorage.put(req.body);
     const [document] = await db.insert(documentsTable).values({ clientId, name, category, status: "uploaded", objectPath: stored.key, contentType, byteSize: stored.size, uploadedByUserId: user.id, uploadedAt: new Date() }).returning();
     await syncClientOnboardingDocument(clientId, category, user.id);
-    queueDocumentReading(document!.id, "Client portal");
     const api = await import("@workspace/api-zod");
     res.status(201).json(api.UploadPortalDocumentResponse.parse({ id: document!.id, name: document!.name, category: document!.category, status: document!.status, clientId, caseId: null, contentType, byteSize: stored.size, uploadedAt: document!.uploadedAt!.toISOString() }));
   } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : "Document upload failed" }); }

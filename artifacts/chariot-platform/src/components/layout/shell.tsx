@@ -355,7 +355,8 @@ export default function Shell({ children }: { children: React.ReactNode }) {
               <AccountMenu variant="header" />
             </div>
           </header>
-          <div className="flex-1 min-h-0 overflow-x-hidden">{children}</div>
+          {/* `clip`, not `hidden`: hidden makes this a scroll container, which stops position: sticky inside pages from tracking the window. */}
+          <div className="flex-1 min-h-0 overflow-x-clip">{children}</div>
         </SidebarInset>
         {!isClient && <ChariotAssistant />}
       </SidebarProvider>

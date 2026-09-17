@@ -189,8 +189,7 @@ export function SubmissionsPanel({ caseDetail }: { caseDetail: CaseDetail }) {
         />
       ) : (
         <p className="text-sm text-muted-foreground">
-          Not submitted to any lender yet. Add one or more lenders; each gets
-          its own tracking.
+          Not submitted to any lender yet.
         </p>
       )}
     </div>

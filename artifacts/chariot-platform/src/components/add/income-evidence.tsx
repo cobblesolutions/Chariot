@@ -1,4 +1,4 @@
-import { Check, FileText, RefreshCw, Upload } from "lucide-react";
+import { Check, FileText, RefreshCw, Sparkles, Upload } from "lucide-react";
 import {
   useReadDocument,
   type ClientDetail,
@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { AiProgressLine } from "@/components/ai-progress-button";
 import { toast } from "@/components/ui/toast";
 import { previewDocument } from "@/components/document-preview";
 import { formatMoney } from "@/lib/utils";
@@ -81,8 +82,8 @@ export function IncomeEvidence({
   const document = latestProofOfIncome(client);
   const reading = document?.reading ?? null;
   const readDocument = useReadDocument();
-  // A fresh upload is read in the background; the client form polls until it lands.
-  const waiting = !!document && (!reading || reading.status === "pending");
+  // Reading is on demand: nothing is sent to the model until staff click Read.
+  const waiting = !!document && reading?.status === "pending";
 
   if (!document) {
     return (
@@ -122,14 +123,37 @@ export function IncomeEvidence({
     return (
       <Alert>
         <Spinner />
-        <AlertTitle>Reading {nameButton}…</AlertTitle>
-        <AlertDescription>Income, employer and job title are filled in when it finishes.</AlertDescription>
+        <AlertTitle>Reading {nameButton}</AlertTitle>
+        <AlertDescription>
+          <AiProgressLine active kind="proof_income" serverMessage={reading?.progress ?? null} />
+        </AlertDescription>
       </Alert>
     );
   }
 
-  const data = (reading?.data ?? null) as ProofOfIncomeReading | null;
-  if (!reading || reading.status !== "completed" || !data) {
+  if (!reading) {
+    return (
+      <Alert>
+        <FileText />
+        <AlertTitle>{nameButton} has not been read yet</AlertTitle>
+        <AlertDescription>
+          <p>Read it to fill in income, employer and job title from the document.</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button type="button" size="sm" onClick={readAgain}>
+              <Sparkles />
+              Read with AI
+            </Button>
+            <Button type="button" variant="outline" size="sm" onClick={onUpload}>
+              <Upload />
+              Upload another
+            </Button>
+          </div>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  const data = (reading.data ?? null) as ProofOfIncomeReading | null;
+  if (reading.status !== "completed" || !data) {
     return (
       <Alert variant="destructive">
         <FileText />

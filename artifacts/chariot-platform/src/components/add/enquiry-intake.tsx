@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Mail, PencilLine, Sparkles } from "lucide-react";
+import { ChevronDown, Mail, PencilLine } from "lucide-react";
 import {
   useCreateClient,
   useExtractClientEnquiry,
@@ -15,6 +15,8 @@ import {
   type ExtractedEnquiry,
 } from "@workspace/api-client-react";
 import { toast } from "@/components/ui/toast";
+import { AiProgressButton } from "@/components/ai-progress-button";
+import { AI_PROGRESS_HEADER, newProgressToken } from "@/lib/ai-progress";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -31,7 +33,7 @@ import {
 import { cn, formatMoney } from "@/lib/utils";
 import { ENQUIRY_TYPE_OPTIONS, SOURCE_OPTIONS } from "@/lib/enquiry";
 import { AssigneeSelect } from "./assignee-select";
-import { CompanyNameCombobox } from "./company-name-combobox";
+import { CompanyNameCombobox } from "@/components/company-name-combobox";
 import { OptionSelect } from "./option-select";
 import { apiErrorMessage, apiErrorStatus } from "./utils";
 
@@ -93,7 +95,10 @@ export function EnquiryIntake({
 }) {
   const qc = useQueryClient();
   const createClient = useCreateClient();
-  const extract = useExtractClientEnquiry();
+  // The read is named with a token so the button can follow the model's progress.
+  const progressHeaders = useRef<Record<string, string>>({});
+  const [progressToken, setProgressToken] = useState<string | null>(null);
+  const extract = useExtractClientEnquiry({ request: { headers: progressHeaders.current } });
   const findMatches = useFindClientMatches();
   const repeatEnquiry = useRecordRepeatEnquiry();
 
@@ -158,6 +163,9 @@ export function EnquiryIntake({
     const text = emailText.trim();
     if (!text) return;
     setError(null);
+    const token = newProgressToken();
+    progressHeaders.current[AI_PROGRESS_HEADER] = token;
+    setProgressToken(token);
     extract.mutate(
       { data: { emailText: text } },
       {
@@ -375,15 +383,18 @@ export function EnquiryIntake({
                   : "Read without AI (not connected) — check the details below."
                 : "We'll read the name, contact details, company and what they're after."}
             </p>
-            <Button
+            <AiProgressButton
               type="button"
               size="sm"
               variant={extracted ? "outline" : "default"}
-              disabled={!emailText.trim() || extract.isPending}
+              disabled={!emailText.trim()}
               onClick={handleExtract}
+              busy={extract.isPending}
+              kind="email"
+              token={progressToken}
             >
-              <Sparkles /> {extract.isPending ? "Reading…" : extracted ? "Read again" : "Extract"}
-            </Button>
+              {extracted ? "Read again" : "Extract"}
+            </AiProgressButton>
           </div>
         </Field>
       ) : null}
@@ -535,7 +546,7 @@ export function EnquiryIntake({
                   : "This might be an existing client"}
               </p>
               <p className="text-xs text-muted-foreground">
-                Using them adds this enquiry to their record — no welcome email, straight to the property and case.
+                Adds this enquiry to their record; no welcome email.
               </p>
               <ul className="mt-2 divide-y divide-amber-200 dark:divide-amber-800">
                 {matches.map((match) => (

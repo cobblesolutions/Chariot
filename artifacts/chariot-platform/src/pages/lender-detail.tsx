@@ -388,7 +388,7 @@ export default function LenderDetail() {
         open={archiveOpen}
         onOpenChange={setArchiveOpen}
         title="Archive this lender?"
-        description="The lender will be hidden from new cases. Existing cases keep their reference."
+        description="Hidden from new cases; existing cases keep it."
         actionLabel="Archive"
         destructive
         onConfirm={confirmHandleArchive}

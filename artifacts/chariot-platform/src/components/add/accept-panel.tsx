@@ -243,7 +243,7 @@ export function AcceptPanel({ client }: { client: ClientDetail }) {
         </div>
         {pending ? (
           <p className="text-xs text-muted-foreground sm:text-right">
-            Accepting emails {client.email} and opens the advanced step.{" "}
+            Accepting emails {client.email}.{" "}
             <button
               type="button"
               className="inline-flex items-center gap-1 underline-offset-2 hover:text-foreground hover:underline"

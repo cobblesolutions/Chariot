@@ -127,7 +127,7 @@ function PageHeader({
   summary,
 }: {
   firstName?: string;
-  summary: ReactNode;
+  summary?: ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -139,7 +139,9 @@ function PageHeader({
           {greeting()}
           {firstName ? `, ${firstName}` : ""}
         </h1>
-        <p className="mt-1 text-muted-foreground">{summary}</p>
+        {summary ? (
+          <p className="mt-1 text-muted-foreground">{summary}</p>
+        ) : null}
       </div>
       <div className="flex shrink-0 gap-2">
         <Button variant="outline" asChild>
@@ -165,7 +167,7 @@ type Stat = {
   label: string;
   value: string | number;
   /** One line of context under the value; `attention` turns it red. */
-  detail: string;
+  detail?: string;
   attention?: boolean;
   href: string;
   icon: React.ElementType;
@@ -187,16 +189,18 @@ function StatTile({ stat }: { stat: Stat }) {
         <span className="block text-2xl font-semibold tabular-nums tracking-tight">
           {stat.value}
         </span>
-        <span
-          className={cn(
-            "block truncate text-xs",
-            stat.attention
-              ? "font-medium text-red-600 dark:text-red-400"
-              : "text-muted-foreground",
-          )}
-        >
-          {stat.detail}
-        </span>
+        {stat.detail ? (
+          <span
+            className={cn(
+              "block truncate text-xs",
+              stat.attention
+                ? "font-medium text-red-600 dark:text-red-400"
+                : "text-muted-foreground",
+            )}
+          >
+            {stat.detail}
+          </span>
+        ) : null}
       </span>
       <ArrowRight
         className="size-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground"
@@ -239,10 +243,7 @@ function PipelineCard({ data }: { data: DashboardData }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {total === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No cases in progress. New cases appear here as they move through the
-            pipeline.
-          </p>
+          <p className="text-sm text-muted-foreground">No cases in progress.</p>
         ) : (
           <div
             role="img"
@@ -306,7 +307,6 @@ function PipelineCard({ data }: { data: DashboardData }) {
 function SectionCard({
   icon: Icon,
   title,
-  description,
   count,
   href,
   linkLabel,
@@ -316,7 +316,6 @@ function SectionCard({
 }: {
   icon: React.ElementType;
   title: string;
-  description: string;
   count?: number;
   href: string;
   linkLabel: string;
@@ -332,7 +331,6 @@ function SectionCard({
           {title}
           {count != null && <CountBubble count={count} />}
         </CardTitle>
-        <CardDescription>{description}</CardDescription>
         <CardAction>
           <Button variant="ghost" size="sm" asChild>
             <Link href={href}>
@@ -358,11 +356,9 @@ function GroupLabel({ children }: { children: ReactNode }) {
 function EmptyState({
   icon: Icon,
   title,
-  description,
 }: {
   icon: React.ElementType;
   title: string;
-  description: string;
 }) {
   return (
     <Empty className="py-8">
@@ -371,7 +367,6 @@ function EmptyState({
           <Icon />
         </EmptyMedia>
         <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
       </EmptyHeader>
     </Empty>
   );
@@ -432,12 +427,12 @@ function TaskRow({
         className="min-w-0 flex-1 focus-visible:outline-none focus-visible:underline"
       >
         <span className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">{task.title}</span>
+          <span className="truncate text-sm font-medium">{task.headline}</span>
           <PriorityFlag priority={task.priority} className="shrink-0" />
         </span>
         <span className="block truncate text-xs text-muted-foreground">
-          {context || "No case"}
-          {task.checklistNext ? ` · Next: ${task.checklistNext}` : ""}
+          {task.headline !== task.title ? task.title : context || "No case"}
+          {task.headline === task.title && task.checklistNext ? ` · Next: ${task.checklistNext}` : ""}
         </span>
       </Link>
       <DueLabel task={task} className="shrink-0" />
@@ -484,7 +479,6 @@ function TasksCard({
     <SectionCard
       icon={CheckSquare}
       title="Your tasks"
-      description="Assigned to you, due today or overdue."
       count={due.length}
       href="/tasks"
       linkLabel="All tasks"
@@ -498,7 +492,6 @@ function TasksCard({
         <EmptyState
           icon={CheckSquare}
           title="You're all clear"
-          description="Nothing assigned to you is due. New tasks will land here."
         />
       ) : (
         sections.map((section) => (
@@ -603,7 +596,6 @@ function MessagesCard({
     <SectionCard
       icon={MessagesSquare}
       title="Messages"
-      description="Latest chats, unread first."
       count={unread}
       href="/messages"
       linkLabel="Inbox"
@@ -612,7 +604,6 @@ function MessagesCard({
         <EmptyState
           icon={MessagesSquare}
           title="No messages yet"
-          description="Case chats and conversations with colleagues show up here."
         />
       ) : (
         <ul className="flex flex-col">
@@ -705,7 +696,6 @@ function ScheduleCard({
     <SectionCard
       icon={CalendarDays}
       title="Schedule"
-      description={`The next ${SCHEDULE_DAYS} days.`}
       href="/calendar"
       linkLabel="Calendar"
       footer={
@@ -720,7 +710,6 @@ function ScheduleCard({
         <EmptyState
           icon={CalendarDays}
           title="Nothing scheduled"
-          description="Valuations, completions and reminders for the week ahead appear here."
         />
       ) : (
         schedule.days.map((day) => (
@@ -750,7 +739,6 @@ function ActivityCard({
     <SectionCard
       icon={ActivityIcon}
       title="Activity"
-      description="Latest changes, newest first."
       href="/activity"
       linkLabel="All activity"
     >
@@ -758,7 +746,6 @@ function ActivityCard({
         <EmptyState
           icon={ActivityIcon}
           title="No recent activity"
-          description="Changes to cases, clients and documents will be listed here."
         />
       ) : (
         <ol className="relative flex flex-col gap-1 before:absolute before:top-4 before:bottom-4 before:left-[15px] before:w-px before:bg-muted-foreground/20">
@@ -903,7 +890,7 @@ export default function Dashboard() {
   const summary =
     summaryParts.length > 0
       ? summaryParts.flatMap((part, i) => (i > 0 ? [" · ", part] : [part]))
-      : "Nothing is waiting on you right now.";
+      : undefined;
 
   const stats: Stat[] = [
     {
@@ -914,7 +901,7 @@ export default function Dashboard() {
           ? `${groups.overdue.length} overdue`
           : data.urgentTasks > 0
             ? `${plural(data.urgentTasks, "urgent task")} team-wide`
-            : "Nothing overdue",
+            : undefined,
       attention: groups.overdue.length > 0 || data.urgentTasks > 0,
       href: "/tasks",
       icon: CheckSquare,
@@ -923,7 +910,7 @@ export default function Dashboard() {
       label: "Unread messages",
       value: unread,
       detail:
-        mentions > 0 ? `${plural(mentions, "mention")} of you` : "No mentions",
+        mentions > 0 ? `${plural(mentions, "mention")} of you` : undefined,
       attention: mentions > 0,
       href: "/messages",
       icon: MessagesSquare,
@@ -931,10 +918,6 @@ export default function Dashboard() {
     {
       label: "New enquiries",
       value: data.awaitingAcceptance,
-      detail:
-        data.awaitingAcceptance === 0
-          ? "Nothing waiting to be accepted"
-          : "Waiting to be accepted",
       attention: data.awaitingAcceptance > 0,
       href: "/add",
       icon: Inbox,
@@ -943,9 +926,9 @@ export default function Dashboard() {
       label: "Awaiting client",
       value: data.awaitingClient,
       detail:
-        data.awaitingClient === 0
-          ? "No cases waiting on a client"
-          : `${Math.round((data.awaitingClient / data.activeCases) * 100)}% of active cases`,
+        data.awaitingClient > 0
+          ? `${Math.round((data.awaitingClient / data.activeCases) * 100)}% of active cases`
+          : undefined,
       href: "/cases",
       icon: Hourglass,
     },

@@ -42,6 +42,8 @@ export interface Task {
      * @nullable
      */
   checklistNext: string | null;
+  /** What the task reads as - for an open stage hand-off task the next unfinished step ("Record the Barclays case number"), otherwise the title. */
+  headline: string;
   commentCount: number;
   /**
      * Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.

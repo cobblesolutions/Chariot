@@ -15,7 +15,7 @@ import { formatDistanceToNowStrict } from "date-fns";
 import { Bell, Briefcase, Check, RefreshCw, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Item, ItemActions, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -30,8 +30,8 @@ import { AlertActions } from "@/components/alerts/alert-actions";
 type SeverityFilter = "all" | "red" | "amber";
 
 const SEVERITY = {
-  red: { tile: "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400", chip: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300", accent: "border-l-red-500" },
-  amber: { tile: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400", chip: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300", accent: "border-l-amber-500" },
+  red: { tile: "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400", chip: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300", dot: "bg-red-500" },
+  amber: { tile: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400", chip: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300", dot: "bg-amber-500" },
 };
 
 /**
@@ -64,13 +64,11 @@ export default function AlertsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Alerts</h1>
-          <p className="text-sm text-muted-foreground">
-            {status === "open"
-              ? redCount || amberCount
-                ? `${redCount} need action · ${amberCount} to keep an eye on`
-                : "Nothing needs you right now."
-              : status === "acknowledged" ? "Seen, still open — they clear themselves when the cause is fixed." : "Cleared alerts, most recent first."}
-          </p>
+          {status === "open" && (redCount || amberCount) ? (
+            <p className="text-sm text-muted-foreground">
+              {`${redCount} need action · ${amberCount} to keep an eye on`}
+            </p>
+          ) : null}
         </div>
         {isAdmin ? (
           <Button
@@ -124,9 +122,6 @@ export default function AlertsPage() {
           <EmptyHeader>
             <EmptyMedia variant="icon"><Check /></EmptyMedia>
             <EmptyTitle>{status === "open" ? "All clear" : "Nothing here"}</EmptyTitle>
-            <EmptyDescription>
-              {status === "open" ? "Overdue stages and tasks, waiting enquiries, unanswered advice, missed valuations, overdue invoices and renewals show up here." : "Alerts move here when seen or when their cause is fixed."}
-            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
@@ -154,7 +149,8 @@ function AlertRow({ alert, canAcknowledge, onAcknowledge }: { alert: Alert; canA
   const tone = SEVERITY[alert.severity];
   const Icon = alert.severity === "red" ? TriangleAlert : Bell;
   return (
-    <Item size="sm" className={cn("rounded-none border-0 border-b border-l-2 flex-nowrap py-2 last:border-b-0 border-b-border/40", tone.accent)}>
+    <Item size="sm" className="rounded-none border-0 border-b flex-nowrap py-2 last:border-b-0 border-b-border/40">
+      <span aria-hidden className={cn("size-2 shrink-0 rounded-full", tone.dot)} />
       <ItemMedia variant="icon" className={cn("size-7", tone.tile)}>
         <Icon className="size-3.5" />
       </ItemMedia>

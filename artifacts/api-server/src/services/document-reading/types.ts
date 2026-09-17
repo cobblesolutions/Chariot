@@ -19,6 +19,8 @@ export interface DocumentReader<T extends Record<string, unknown> = Record<strin
   categories: readonly string[];
   /** System prompt for the model; it must answer with JSON only. */
   systemInstruction: string;
+  /** What to tell staff as each key of the model's answer appears ("Reading the employer…"). */
+  progressLabels?: Record<string, string>;
   /** Coerces whatever the model returned into the reader's shape (nulls for the unknown). */
   normalise(raw: unknown): T;
   /** Best effort from extracted text when no model is available; may return all nulls. */

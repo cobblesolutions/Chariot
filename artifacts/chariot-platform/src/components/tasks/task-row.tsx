@@ -129,13 +129,22 @@ export const TaskRow = forwardRef<HTMLDivElement, TaskRowProps>(
           onToggle={() => onToggleDone(task)}
           disabled={readOnly}
         />
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate font-medium",
-            done && "line-through decoration-muted-foreground/60",
+        <span className="min-w-0 flex-1">
+          <span
+            className={cn(
+              "block truncate font-medium",
+              done && "line-through decoration-muted-foreground/60",
+            )}
+          >
+            {task.headline}
+          </span>
+          {task.headline !== task.title && (
+            <span className="block truncate text-xs text-muted-foreground">
+              {task.title}
+              {task.checklistTotal > 0 &&
+                ` · step ${task.checklistDone + 1} of ${task.checklistTotal}`}
+            </span>
           )}
-        >
-          {task.title}
         </span>
         {action && !done && (
           <Tooltip>
@@ -181,7 +190,7 @@ export const TaskRow = forwardRef<HTMLDivElement, TaskRowProps>(
               <span className="tabular-nums">
                 {task.checklistDone}/{task.checklistTotal}
               </span>
-              {task.checklistNext && (
+              {task.checklistNext && task.headline === task.title && (
                 <span className="hidden truncate lg:inline">
                   · {task.checklistNext}
                 </span>

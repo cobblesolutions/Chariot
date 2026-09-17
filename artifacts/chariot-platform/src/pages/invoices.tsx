@@ -148,6 +148,18 @@ export default function InvoicesPage() {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
 
+  // The fee agreed on the case under the Terms of Business: a percentage of the loan or a flat amount.
+  const selectedCase = caseId !== "none" ? cases?.find((c) => c.id === parseInt(caseId)) : undefined;
+  const agreedFee = selectedCase
+    ? selectedCase.brokerFeeBasis === "flat"
+      ? selectedCase.brokerFeeFlat && selectedCase.brokerFeeFlat > 0
+        ? { description: "Broker fee (agreed flat fee)", amount: selectedCase.brokerFeeFlat, summary: `£${selectedCase.brokerFeeFlat.toLocaleString("en-GB")} flat` }
+        : null
+      : selectedCase.brokerFeePct > 0
+        ? { description: `Broker fee — ${selectedCase.brokerFeePct}% of the £${selectedCase.loanAmount.toLocaleString("en-GB")} loan`, amount: Math.round(selectedCase.loanAmount * selectedCase.brokerFeePct) / 100, summary: `${selectedCase.brokerFeePct}% = £${(Math.round(selectedCase.loanAmount * selectedCase.brokerFeePct) / 100).toLocaleString("en-GB")}` }
+        : null
+    : null;
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientId) {
@@ -266,7 +278,14 @@ export default function InvoicesPage() {
                     </Select>
                   </Field>
                   <Field>
-                    <FieldLabel>Primary Line Item Description</FieldLabel>
+                    <div className="flex items-center justify-between gap-2">
+                      <FieldLabel>Primary Line Item Description</FieldLabel>
+                      {selectedCase && agreedFee ? (
+                        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setDescription(agreedFee.description); setAmount(String(agreedFee.amount)); }}>
+                          Use the agreed fee ({agreedFee.summary})
+                        </Button>
+                      ) : null}
+                    </div>
                     <Input
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}

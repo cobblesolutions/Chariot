@@ -409,9 +409,6 @@ export default function CalendarPage() {
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Calendar</h1>
-          <p className="text-muted-foreground mt-1">
-            Valuations, completions and renewals across every case.
-          </p>
         </div>
         <Tooltip>
           <TooltipTrigger asChild>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -8,9 +8,11 @@ import {
   getListTasksQueryKey,
   type CaseDetail,
 } from "@workspace/api-client-react";
-import { Check, ChevronRight, ClipboardPaste, ListChecks, ListTodo, Send, Sparkles, X } from "lucide-react";
+import { Check, ChevronRight, ClipboardPaste, ListChecks, ListTodo, Send, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AiProgressButton } from "@/components/ai-progress-button";
+import { AI_PROGRESS_HEADER, newProgressToken } from "@/lib/ai-progress";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,7 +30,8 @@ type Round = CaseDetail["underwritingRounds"][number];
  */
 export function UnderwritingPanel({
   caseId,
-  rounds,
+  submissionId,
+  rounds: allRounds,
   underwritingCleared,
   canEdit,
   onToggle,
@@ -37,6 +40,8 @@ export function UnderwritingPanel({
   onToggleCleared,
 }: {
   caseId: number;
+  /** The lender submission in view; rounds of other lenders are hidden. */
+  submissionId: number | null;
   rounds: Round[];
   underwritingCleared: boolean;
   canEdit: boolean;
@@ -45,6 +50,7 @@ export function UnderwritingPanel({
   sending: boolean;
   onToggleCleared: (checked: boolean) => void;
 }) {
+  const rounds = allRounds.filter((round) => round.submissionId === submissionId);
   const latest = rounds[rounds.length - 1] ?? null;
   const openRound = latest && !latest.sentAt ? latest : null;
   const pastRounds = rounds.filter((round) => round !== openRound);
@@ -61,7 +67,7 @@ export function UnderwritingPanel({
       <FlowStrip step={step} roundNumber={openRound?.round ?? rounds.length + 1} done={openDone} total={openTotal} hasRounds={rounds.length > 0} cleared={underwritingCleared} />
 
       {step === 1 && canEdit && !underwritingCleared ? (
-        <PasteBox caseId={caseId} nextRound={rounds.length + 1} />
+        <PasteBox caseId={caseId} submissionId={submissionId} nextRound={rounds.length + 1} />
       ) : null}
 
       {openRound ? (
@@ -152,21 +158,27 @@ function FlowStrip({ step, roundNumber, done, total, hasRounds, cleared }: { ste
 }
 
 /** Step 1: paste → read → review the list → create the round's task. */
-function PasteBox({ caseId, nextRound }: { caseId: number; nextRound: number }) {
+function PasteBox({ caseId, submissionId, nextRound }: { caseId: number; submissionId: number | null; nextRound: number }) {
   const qc = useQueryClient();
-  const extract = useExtractUnderwritingRequirements();
+  const progressHeaders = useRef<Record<string, string>>({});
+  const [progressToken, setProgressToken] = useState<string | null>(null);
+  const extract = useExtractUnderwritingRequirements({ request: { headers: progressHeaders.current } });
   const create = useAddUnderwritingRound();
   const [email, setEmail] = useState("");
   const [items, setItems] = useState<string[] | null>(null);
   const [model, setModel] = useState<string | null>(null);
 
-  const read = () =>
+  const read = () => {
+    const token = newProgressToken();
+    progressHeaders.current[AI_PROGRESS_HEADER] = token;
+    setProgressToken(token);
     extract.mutate({ id: caseId, data: { emailText: email } }, {
       onSuccess: (data) => { setItems(data.suggestions); setModel(data.model ?? null); },
       onError: (error) => toast.add({ title: "Couldn't read the email", description: apiErrorMessage(error, "Please try again."), type: "error" }),
     });
+  };
   const confirm = () =>
-    create.mutate({ id: caseId, data: { emailText: email, requirementLabels: items ?? [] } }, {
+    create.mutate({ id: caseId, data: { submissionId, emailText: email, requirementLabels: items ?? [] } }, {
       onSuccess: () => {
         toast.add({ title: `Round ${nextRound} created — task sent to the case handler`, type: "success" });
         setEmail(""); setItems(null);
@@ -188,9 +200,9 @@ function PasteBox({ caseId, nextRound }: { caseId: number; nextRound: number }) 
           />
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">Each thing they ask for becomes a checkbox on a task for the case handler.</p>
-            <Button size="sm" onClick={read} disabled={!email.trim() || extract.isPending}>
-              <Sparkles /> {extract.isPending ? "Reading…" : "Read the email"}
-            </Button>
+            <AiProgressButton size="sm" onClick={read} disabled={!email.trim()} busy={extract.isPending} kind="underwriting" token={progressToken}>
+              Read the email
+            </AiProgressButton>
           </div>
         </>
       ) : (
@@ -268,7 +280,7 @@ function OpenRoundCard({ round, canEdit, onToggle, onMarkSent, sending }: { roun
           <p className="text-sm text-muted-foreground">
             {allDone ? "All provided. Send it to the lender, then mark the round sent." : `${total - done} still to provide before this round can go back.`}
           </p>
-          <Button size="sm" disabled={!allDone || sending} onClick={() => onMarkSent(round.round)}>
+          <Button size="sm" disabled={!allDone || sending} onClick={() => onMarkSent(round.id)}>
             <Send /> {sending ? "Saving…" : "Mark sent to lender"}
           </Button>
         </div>

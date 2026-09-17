@@ -266,7 +266,7 @@ export function SubmissionDetailsPanel({
 
       {pack.missing.length ? (
         <p className="text-sm text-muted-foreground">
-          Still needed: {pack.missing.join(" · ")} — fill these in on the client, property and case forms.
+          Still needed: {pack.missing.join(" · ")}.
         </p>
       ) : null}
 

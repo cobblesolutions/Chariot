@@ -22,6 +22,7 @@ import { renderChariotEmail } from "../integrations/email-template";
 import { logger } from "../lib/logger";
 import { stageName } from "./stages";
 import { ENQUIRY_STALE_DAYS } from "./clients";
+import { listSubmissions, submissionViews } from "./case-submissions";
 import { DELIVERY_FAILED, SIGNATURE_WAIT_DAYS, TERMS_SIGNED_LABEL } from "./terms-agreements";
 
 /**
@@ -40,6 +41,7 @@ export const ALERT_KINDS = {
   approval_unanswered: { label: "No answer from client", severity: "red" },
   valuation_passed: { label: "Valuation date passed", severity: "red" },
   invoice_overdue: { label: "Invoice overdue", severity: "red" },
+  submission_step_overdue: { label: "Submission step overdue", severity: "red" },
   renewal_due: { label: "Renewal coming up", severity: "amber" },
   onboarding_stalled: { label: "Onboarding stalled", severity: "amber" },
   unassigned_case: { label: "No case handler", severity: "amber" },
@@ -158,6 +160,20 @@ export async function findAlertCandidates(): Promise<Candidate[]> {
         title: `${kase.clientName} has not signed the Terms of Business`,
         detail: `${ref(kase)} · sent ${daysAgo(agreement.sentAt)} days ago${agreement.envelopeStatus === "delivered" ? ", opened but not signed" : ", not yet opened"} — chase the client`,
         caseId, clientId: kase.clientId, assignedUserId: owner,
+      });
+    }
+  }
+
+  // 1b. A lender submission sitting too long at one step (per-step thresholds in Settings).
+  for (const row of openCases) {
+    const views = await submissionViews(await listSubmissions(row.id));
+    for (const sub of views) {
+      if (!sub.stepFlagged || !sub.currentStep) continue;
+      out.push({
+        kind: "submission_step_overdue", dedupeKey: `submission_step_overdue:submission:${sub.id}:step:${sub.currentStep}`,
+        title: `${ref(row)} · ${sub.lenderName}: ${sub.stepDays} days waiting for "${sub.currentStepLabel}"`,
+        detail: `${row.clientName} · limit ${sub.stepThresholdDays} days`,
+        caseId: row.id, clientId: row.clientId, assignedUserId: row.assignedUserId,
       });
     }
   }

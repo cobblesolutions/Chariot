@@ -2,15 +2,28 @@ import { useEffect, useRef, useState } from "react";
 import {
   getGetCaseQueryKey,
   getGetCaseLenderOfferReviewQueryKey,
+  getListInvoicesQueryKey,
   useGetCaseLenderOfferReview,
+  useGetSubmissionLenderOfferReview,
+  getGetSubmissionLenderOfferReviewQueryKey,
+  useNotifyLenderOffer,
   useReviewCaseLenderOffer,
 } from "@workspace/api-client-react";
+import { Link } from "wouter";
+import { useAuth } from "@/components/auth-provider";
+import { isFullAccess } from "@/lib/roles";
+import { formatDate } from "@/lib/utils";
+import { apiErrorMessage } from "@/components/add/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { DocumentFile } from "@/components/document-file";
 import {
+  Building2,
   CheckCircle2,
   FileCheck2,
   FileText,
+  Mail,
+  Receipt,
+  Send,
   Upload,
   XCircle,
 } from "lucide-react";
@@ -52,12 +65,15 @@ function MatchStatus({
 
 export function LenderOfferPanel({
   caseId,
+  submissionId = null,
   clientId,
   offerSent,
   onToggleOfferSent,
   disabled = false,
 }: {
   caseId: number;
+  /** The lender submission the offer is from; the primary open one when null. */
+  submissionId?: number | null;
   clientId: number;
   offerSent: boolean;
   onToggleOfferSent: () => void;
@@ -71,13 +87,36 @@ export function LenderOfferPanel({
   const [offerAddress, setOfferAddress] = useState("");
   const [offerClientName, setOfferClientName] = useState("");
   const [offerPropertyValue, setOfferPropertyValue] = useState("");
-  const { data: review, isLoading } = useGetCaseLenderOfferReview(caseId, {
-    query: {
-      enabled: !!caseId,
-      queryKey: getGetCaseLenderOfferReviewQueryKey(caseId),
-    },
+  const [offerLoanAmount, setOfferLoanAmount] = useState("");
+  // The case-level route follows the primary lender; a specific lender has its own route.
+  const caseLevel = useGetCaseLenderOfferReview(caseId, {
+    query: { enabled: !!caseId && submissionId == null, queryKey: getGetCaseLenderOfferReviewQueryKey(caseId) },
   });
+  const perLender = useGetSubmissionLenderOfferReview(caseId, submissionId ?? 0, {
+    query: { enabled: !!caseId && submissionId != null, queryKey: getGetSubmissionLenderOfferReviewQueryKey(caseId, submissionId ?? 0) },
+  });
+  const review = submissionId != null ? perLender.data : caseLevel.data;
+  const isLoading = submissionId != null ? perLender.isLoading : caseLevel.isLoading;
+  const invalidateReview = async () => {
+    await qc.invalidateQueries({ queryKey: getGetCaseLenderOfferReviewQueryKey(caseId) });
+    if (submissionId != null) await qc.invalidateQueries({ queryKey: getGetSubmissionLenderOfferReviewQueryKey(caseId, submissionId) });
+  };
   const reviewOffer = useReviewCaseLenderOffer();
+  const notify = useNotifyLenderOffer();
+  const { user } = useAuth();
+  const isAdmin = isFullAccess(user?.role);
+  const handleNotify = () =>
+    notify.mutate({ id: caseId, data: { submissionId: submissionId ?? null } }, {
+      onSuccess: (result) => {
+        void invalidateReview();
+        qc.invalidateQueries({ queryKey: getGetCaseQueryKey(caseId) });
+        qc.invalidateQueries({ queryKey: getListInvoicesQueryKey() });
+        const client = result.clientEmailStatus === "sent" ? "client emailed" : `client email ${result.clientEmailStatus}`;
+        const lender = result.lenderEmailStatus === "sent" ? "lender told" : result.lenderEmailStatus === "no_contact" ? "no lender contact on file" : `lender email ${result.lenderEmailStatus}`;
+        toast.add({ title: `Offer sent — ${client}, ${lender}`, description: result.invoice ? `Invoice ${result.invoice.invoiceNumber} issued.` : undefined, type: result.clientEmailStatus === "failed" ? "error" : "success" });
+      },
+      onError: (error) => toast.add({ title: "Couldn't send the offer", description: apiErrorMessage(error, "Please try again."), type: "error" }),
+    });
 
   useEffect(() => {
     const documentId = review?.document?.id ?? null;
@@ -90,11 +129,13 @@ export function LenderOfferPanel({
         ? String(review.offerPropertyValue)
         : "",
     );
+    setOfferLoanAmount(review?.offerLoanAmount != null ? String(review.offerLoanAmount) : "");
   }, [
     review?.document?.id,
     review?.offerAddress,
     review?.offerClientName,
     review?.offerPropertyValue,
+    review?.offerLoanAmount,
   ]);
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,14 +157,13 @@ export function LenderOfferPanel({
           "x-document-category": "LENDER_OFFER",
           "x-client-id": clientId,
           "x-case-id": caseId,
+          ...(submissionId != null ? { "x-submission-id": submissionId } : {}),
         }),
       });
       // The file is on the server; the rest is reading it, so drop the bar.
       offerUpload.reset();
       await qc.invalidateQueries({ queryKey: getGetCaseQueryKey(caseId) });
-      await qc.invalidateQueries({
-        queryKey: getGetCaseLenderOfferReviewQueryKey(caseId),
-      });
+      await invalidateReview();
       if (!uploaded?.id)
         throw new Error("Upload response did not include a document id");
 
@@ -152,6 +192,7 @@ export function LenderOfferPanel({
             ? String(extraction.offerPropertyValue)
             : "",
         );
+        setOfferLoanAmount(extraction.offerLoanAmount != null ? String(extraction.offerLoanAmount) : "");
         toast.add({
           title: "Lender offer read successfully",
           description:
@@ -185,19 +226,19 @@ export function LenderOfferPanel({
       {
         id: caseId,
         data: {
+          submissionId,
           documentId: review.document.id,
           offerAddress: offerAddress.trim(),
           offerClientName: offerClientName.trim(),
           offerPropertyValue: Number(
             offerPropertyValue.replace(/[^0-9.]/g, ""),
           ),
+          offerLoanAmount: offerLoanAmount ? Number(offerLoanAmount.replace(/[^0-9.]/g, "")) : null,
         },
       },
       {
         onSuccess: async (result) => {
-          await qc.invalidateQueries({
-            queryKey: getGetCaseLenderOfferReviewQueryKey(caseId),
-          });
+          await invalidateReview();
           await qc.invalidateQueries({ queryKey: getGetCaseQueryKey(caseId) });
           toast.add({
             title: result.allMatched
@@ -343,6 +384,25 @@ export function LenderOfferPanel({
           />
         </Field>
 
+        <Field>
+          <FieldLabel>Loan amount on offer</FieldLabel>
+          <Input
+            value={offerLoanAmount}
+            onChange={(event) =>
+              setOfferLoanAmount(event.target.value.replace(/[^0-9.]/g, ""))
+            }
+            inputMode="decimal"
+            placeholder="optional, e.g. 300000"
+            disabled={disabled || !review?.document}
+          />
+          <FieldDescription>
+            Case: {formatMoney(review?.expectedLoanAmount)}
+            {offerLoanAmount && Number(offerLoanAmount) > 0 && review?.expectedLoanAmount != null && Math.abs(Number(offerLoanAmount) - review.expectedLoanAmount) >= 1
+              ? " — differs; the fee is worked out on the offer's loan"
+              : " — the fee percentage is taken from this when given"}
+          </FieldDescription>
+        </Field>
+
         <Button
           className="w-full"
           onClick={handleReview}
@@ -378,25 +438,70 @@ export function LenderOfferPanel({
         </div>
       </div>
 
-      <label
-        className={`flex items-start gap-4 p-4 border-b border-border/50 ${
-          !disabled ? "cursor-pointer" : "opacity-80"
-        }`}
-      >
-        <Checkbox
-          className="mt-0.5"
-          checked={offerSent}
-          onCheckedChange={() => onToggleOfferSent()}
-          disabled={disabled}
-        />
-        <span
-          className={`flex-1 text-sm font-medium leading-snug ${
-            offerSent ? "text-muted-foreground" : "text-foreground"
-          }`}
-        >
-          Offer sent to client
-        </span>
-      </label>
+      {/* Scope step 12: the offer moment — one action, everything on the spot. */}
+      <div className="space-y-3 rounded-lg border p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-semibold">Send the offer</span>
+          {review?.notifiedAt ? (
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-500">
+              <CheckCircle2 className="h-4 w-4" /> Sent {formatDate(review.notifiedAt)}{review.notifiedBy ? ` · ${review.notifiedBy}` : ""}
+            </span>
+          ) : null}
+        </div>
+        <ul className="space-y-2 text-sm">
+          <li className="flex items-start gap-2">
+            <Mail className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <span>
+              <span className="font-medium">Client</span> — the offer{review?.document ? ` (${review.document.name})` : ""} attached, with the invoice.
+              {review?.notifiedAt ? <span className="text-muted-foreground"> · {review.clientEmailStatus === "sent" ? "emailed" : `email ${review.clientEmailStatus}`}</span> : null}
+            </span>
+          </li>
+          <li className="flex items-start gap-2">
+            <Receipt className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <span>
+              <span className="font-medium">Invoice</span> —{" "}
+              {review?.invoice ? (
+                <Link href={`/invoices/${review.invoice.id}`} className="underline-offset-2 hover:underline">
+                  {review.invoice.invoiceNumber} · £{review.invoice.total.toLocaleString("en-GB")} · {review.invoice.status}
+                </Link>
+              ) : review?.feeSummary ? (
+                <>{review.feeSummary} — issued when you send</>
+              ) : (
+                <span className="text-destructive">no fee agreed on the case — set "Our fee" on the deal first</span>
+              )}
+            </span>
+          </li>
+          <li className="flex items-start gap-2">
+            <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            <span>
+              <span className="font-medium">Lender</span> —{" "}
+              {review?.lenderContacts.length
+                ? review.lenderContacts.map((c) => c.name).join(", ")
+                : <span className="text-muted-foreground">no contact with an email on the lender (add one under Lenders)</span>}
+              {review?.notifiedAt && review.lenderEmailStatus ? <span className="text-muted-foreground"> · {review.lenderEmailStatus === "sent" ? "told" : review.lenderEmailStatus.replace("_", " ")}</span> : null}
+            </span>
+          </li>
+        </ul>
+        {!disabled ? (
+          isAdmin ? (
+            <Button
+              size="sm"
+              className="w-full"
+              onClick={handleNotify}
+              disabled={!review?.allMatched || (!review?.invoice && !review?.feeSummary) || notify.isPending}
+              title={!review?.allMatched ? "Check the offer against the case first" : undefined}
+            >
+              <Send /> {notify.isPending ? "Sending…" : review?.notifiedAt ? "Send again" : "Send offer to client & lender"}
+            </Button>
+          ) : (
+            <p className="text-xs text-muted-foreground">An administrator sends the offer — it issues the invoice.</p>
+          )
+        ) : null}
+        <label className={`flex items-center gap-2 text-xs text-muted-foreground ${!disabled ? "cursor-pointer" : ""}`}>
+          <Checkbox checked={offerSent} onCheckedChange={() => onToggleOfferSent()} disabled={disabled} />
+          Sent another way — tick "Offer sent to client" by hand
+        </label>
+      </div>
     </ScrollArea>
   );
 }

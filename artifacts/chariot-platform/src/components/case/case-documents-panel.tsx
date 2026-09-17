@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
-  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -168,9 +167,6 @@ export function CaseDocumentsPanel({
                 <FileText />
               </EmptyMedia>
               <EmptyTitle>No documents</EmptyTitle>
-              <EmptyDescription>
-                Upload files for this case and they will show here.
-              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (

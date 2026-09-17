@@ -9,7 +9,8 @@ import {
   type ProofOfIncomeReading,
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { AiProgressLine } from "@/components/ai-progress-button";
+import { readKindForCategory } from "@/lib/ai-progress";
 import { toast } from "@/components/ui/toast";
 import { formatMoney } from "@/lib/utils";
 
@@ -100,10 +101,16 @@ export function DocumentReadingLine({
   documentId,
   reading,
   onRefresh,
+  category = "document",
+  busy: busyFromParent = false,
 }: {
   documentId: number;
   reading: DocumentReading | null | undefined;
   onRefresh: () => void;
+  /** Document category, for the progress sequence while the reader is busy. */
+  category?: string;
+  /** A parent-triggered read is in flight for this file. */
+  busy?: boolean;
 }) {
   const readDocument = useReadDocument();
   const readAgain = () =>
@@ -114,13 +121,16 @@ export function DocumentReadingLine({
         onError: () => toast.add({ title: "Couldn't read document", type: "error" }),
       },
     );
-  if (!reading || reading.status === "pending" || readDocument.isPending) {
+  const busy = busyFromParent || reading?.status === "pending" || readDocument.isPending;
+  if (busy) {
     return (
-      <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Spinner className="size-3" /> Reading…
+      <p className="mt-1 text-xs text-muted-foreground">
+        <AiProgressLine active kind={readKindForCategory(category)} serverMessage={reading?.progress ?? null} />
       </p>
     );
   }
+  // Not read yet: the tile's Read button starts it; nothing to say until then.
+  if (!reading) return null;
   if (reading.status !== "completed") {
     return (
       <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">

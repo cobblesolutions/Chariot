@@ -366,6 +366,10 @@ paths:
         - name: propertyId
           in: query
           schema: {type: integer}
+        - name: includeRoutine
+          in: query
+          description: Also return routine activity (reminders, uploads, reference changes) that the milestone feed hides by default
+          schema: {type: boolean, default: false}
       responses:
         "200":
           description: Paginated activity feed
@@ -447,6 +451,19 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Client"}
+  /ai/progress/{token}:
+    get:
+      operationId: getAiProgress
+      summary: Live progress of an AI read the browser started with an x-ai-progress header (email extraction, document reads).
+      tags: [clients]
+      parameters:
+        - {name: token, in: path, required: true, schema: {type: string}}
+      responses:
+        "200":
+          description: Progress so far
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/AiProgress"}
   /clients/extract:
     post:
       operationId: extractClientEnquiry
@@ -910,6 +927,25 @@ paths:
       responses:
         "204": {description: Deleted}
         "409": {description: Submission has tracking recorded; withdraw it instead}
+  /cases/{id}/submissions/{submissionId}/stress-test:
+    get:
+      operationId: getSubmissionStressTest
+      tags: [cases]
+      description: The stress test for one lender submission (the case-level route follows the primary open submission).
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - name: submissionId
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        "200":
+          description: The stress test for that lender
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CaseStressTest"}
+        "404":
+          description: Submission not found on this case
   /cases/{id}/stress-test:
     get:
       operationId: getCaseStressTest
@@ -944,6 +980,11 @@ paths:
       tags: [cases]
       parameters:
         - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SubmissionScopeInput"}
       responses:
         "200":
           description: Updated case with the stress-test property value applied
@@ -952,6 +993,50 @@ paths:
               schema: {$ref: "#/components/schemas/Case"}
         "409":
           description: The saved stress test does not pass
+  /cases/{id}/lender-offer/notify:
+    post:
+      operationId: notifyLenderOffer
+      tags: [cases]
+      description: |
+        The offer moment (scope step 12). Issues the client's invoice from the fee agreed on the case (drafting it if
+        none exists), emails the client the offer document with the invoice, and emails the lender's contacts that the
+        offer was received. Ticks "Offer sent to client". Administrators only (it issues an invoice).
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SubmissionScopeInput"}
+      responses:
+        "200":
+          description: The review with the notification recorded
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LenderOfferReviewResponse"}
+        "403":
+          description: Not an administrator
+        "409":
+          description: Offer not checked, details do not match, or no fee agreed on the case
+  /cases/{id}/submissions/{submissionId}/lender-offer:
+    get:
+      operationId: getSubmissionLenderOfferReview
+      tags: [cases]
+      description: The offer review for one lender submission (the case-level route follows the primary open submission).
+      parameters:
+        - {$ref: "#/components/parameters/Id"}
+        - name: submissionId
+          in: path
+          required: true
+          schema: {type: integer}
+      responses:
+        "200":
+          description: The review for that lender
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/LenderOfferReviewResponse"}
+        "404":
+          description: Submission not found on this case
   /cases/{id}/lender-offer:
     get:
       operationId: getCaseLenderOfferReview
@@ -1260,14 +1345,14 @@ paths:
               schema: {$ref: "#/components/schemas/CaseDetail"}
         "409":
           description: The current round has not been marked as sent to the lender yet
-  /cases/{id}/underwriting/rounds/{round}/sent:
+  /cases/{id}/underwriting/rounds/{roundId}/sent:
     post:
       operationId: markUnderwritingRoundSent
       tags: [cases]
-      description: Everything the lender asked for in this round has been provided and sent back; closes the round and its task. The next round may then start.
+      description: Everything the lender asked for in this round has been provided and sent back; closes the round and its task. The next round (with that lender) may then start.
       parameters:
         - {$ref: "#/components/parameters/Id"}
-        - name: round
+        - name: roundId
           in: path
           required: true
           schema: {type: integer}
@@ -1685,6 +1770,41 @@ paths:
               schema: {type: string, format: binary}
         "404":
           description: Nothing generated yet
+  /settings/submission-step-thresholds:
+    get:
+      operationId: listSubmissionStepThresholds
+      tags: [settings]
+      description: Days a lender submission may sit at each step (DIP, case number, fee, valuation date, valuation, decision) before it is flagged red.
+      responses:
+        "200":
+          description: One row per step
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/SubmissionStepThreshold"}
+  /settings/submission-step-thresholds/{stepKey}:
+    patch:
+      operationId: updateSubmissionStepThreshold
+      tags: [settings]
+      parameters:
+        - name: stepKey
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/SubmissionStepThresholdInput"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/SubmissionStepThreshold"}
+        "403":
+          description: Not an administrator
   /settings/stage-thresholds:
     get:
       operationId: listStageThresholds
@@ -3552,7 +3672,7 @@ components:
       enum: [active, withdrawn, declined, offered]
     CaseSubmission:
       type: object
-      required: [id, caseId, lenderId, lenderName, status, isPrimary, lenderCaseNumber, dipDocument, applicationFeeConfirmed, valuationDate, valuationCompletedAt, bankDecisionRequested, notes, closedAt, closeReason, createdAt]
+      required: [id, caseId, lenderId, lenderName, status, isPrimary, lenderCaseNumber, dipDocument, applicationFeeConfirmed, valuationDate, valuationCompletedAt, bankDecisionRequested, notes, closedAt, closeReason, createdAt, currentStep, currentStepLabel, stepDays, stepThresholdDays, stepFlagged]
       properties:
         id: {type: integer}
         caseId: {type: integer}
@@ -3570,6 +3690,27 @@ components:
         closedAt: {type: ["string", "null"], format: date-time}
         closeReason: {type: ["string", "null"]}
         createdAt: {type: string, format: date-time}
+        currentStep: {type: ["string", "null"], description: The first incomplete step (dip | caseNumber | fee | valuationDate | valuationCompleted | decision); null when all are done.}
+        currentStepLabel: {type: ["string", "null"]}
+        stepDays: {type: integer, description: Days the submission has sat at the current step.}
+        stepThresholdDays: {type: ["integer", "null"]}
+        stepFlagged: {type: boolean, description: True when stepDays has reached the threshold set in Settings.}
+    SubmissionScopeInput:
+      type: object
+      properties:
+        submissionId: {type: integer, nullable: true, description: The lender submission in view; the primary open one when omitted.}
+    SubmissionStepThresholdInput:
+      type: object
+      required: [thresholdDays]
+      properties:
+        thresholdDays: {type: integer, nullable: true, minimum: 1}
+    SubmissionStepThreshold:
+      type: object
+      required: [stepKey, step, thresholdDays]
+      properties:
+        stepKey: {type: string}
+        step: {type: string}
+        thresholdDays: {type: integer, nullable: true}
     CaseSubmissionInput:
       type: object
       required: [lenderId]
@@ -3605,15 +3746,43 @@ components:
       type: object
       required: [documentId, offerAddress, offerClientName, offerPropertyValue]
       properties:
+        submissionId: {type: integer, nullable: true, description: The lender submission the offer is from; the primary open one when omitted.}
+        offerLoanAmount: {type: number, nullable: true, description: The loan on the offer, when stated; the broker fee percentage is taken from it.}
         documentId: {type: integer}
         offerAddress: {type: string}
         offerClientName: {type: string}
         offerPropertyValue: {type: number}
     LenderOfferReviewResponse:
       type: object
-      required: [document, expectedAddress, expectedClientName, expectedPropertyValue, offerAddress, offerClientName, offerPropertyValue, addressMatches, nameMatches, valueMatches, allMatched, reviewedAt]
+      required: [document, submissionId, offerLoanAmount, expectedLoanAmount, expectedAddress, expectedClientName, expectedPropertyValue, offerAddress, offerClientName, offerPropertyValue, addressMatches, nameMatches, valueMatches, allMatched, reviewedAt, notifiedAt, notifiedBy, clientEmailStatus, lenderEmailStatus, lenderContacts, feeSummary, invoice]
       properties:
         document: {allOf: [{$ref: "#/components/schemas/LenderOfferDocument"}], nullable: true}
+        submissionId: {type: integer, nullable: true}
+        offerLoanAmount: {type: number, nullable: true}
+        expectedLoanAmount: {type: number, description: The loan on the case, to compare with the offer.}
+        notifiedAt: {type: string, format: date-time, nullable: true, description: When the offer was sent to the client and the lender told.}
+        notifiedBy: {type: string, nullable: true}
+        clientEmailStatus: {type: string, nullable: true, description: sent | disabled | failed}
+        lenderEmailStatus: {type: string, nullable: true, description: sent | disabled | failed | no_contact}
+        lenderContacts:
+          type: array
+          description: Who at the lender will be told (contacts with an email address).
+          items:
+            type: object
+            required: [name, email]
+            properties:
+              name: {type: string}
+              email: {type: string}
+        feeSummary: {type: string, nullable: true, description: The agreed broker fee as it will be invoiced, e.g. "0.5% of £200,000 = £1,000"; null when no fee is set.}
+        invoice:
+          type: object
+          nullable: true
+          required: [id, invoiceNumber, status, total]
+          properties:
+            id: {type: integer}
+            invoiceNumber: {type: string}
+            status: {type: string}
+            total: {type: number}
         expectedAddress: {type: string}
         expectedClientName: {type: string}
         expectedPropertyValue: {type: number}
@@ -3634,6 +3803,7 @@ components:
       type: object
       required: [offerAddress, offerClientName, offerPropertyValue]
       properties:
+        offerLoanAmount: {type: number, nullable: true, description: The loan amount stated on the offer, when the document gives one.}
         offerAddress: {type: string}
         offerClientName: {type: string}
         offerPropertyValue: {type: number}
@@ -3649,9 +3819,12 @@ components:
         model: {type: string, nullable: true}
     UnderwritingRound:
       type: object
-      required: [round, emailText, createdAt, sentAt, sentBy, taskId, requirements]
+      required: [id, round, submissionId, lenderName, emailText, createdAt, sentAt, sentBy, taskId, requirements]
       properties:
-        round: {type: integer}
+        id: {type: integer}
+        round: {type: integer, description: Numbered per lender submission.}
+        submissionId: {type: integer, nullable: true}
+        lenderName: {type: string, nullable: true}
         emailText: {type: string}
         createdAt: {type: string, format: date-time}
         sentAt: {type: string, format: date-time, nullable: true, description: When everything was provided and sent back to the lender.}
@@ -4014,9 +4187,10 @@ components:
             draftNotes: {type: string}
     CaseStressTest:
       type: object
-      required: [id, caseId, stressAtPayRate, stressMargin, icrMultiplier, targetLtv, arrFeeMode, stressBasis, createdAt, updatedAt]
+      required: [id, caseId, submissionId, stressAtPayRate, stressMargin, icrMultiplier, targetLtv, arrFeeMode, stressBasis, createdAt, updatedAt]
       properties:
         id: {type: integer}
+        submissionId: {type: integer, nullable: true, description: The lender submission this stress test is for.}
         caseId: {type: integer}
         lenderId: {type: integer, nullable: true}
         lenderName: {type: string, nullable: true}
@@ -4136,6 +4310,7 @@ components:
     UpdateCaseStressTestInput:
       type: object
       properties:
+        submissionId: {type: integer, nullable: true, description: The lender submission the stress test is for; the primary open one when omitted.}
         lenderId: {type: integer, nullable: true}
         monthlyRent: {type: number, nullable: true}
         propertyValue: {type: number, nullable: true}
@@ -4187,6 +4362,7 @@ components:
       type: object
       required: [emailText, requirementLabels]
       properties:
+        submissionId: {type: integer, nullable: true, description: The lender submission the round is with; the primary open one when omitted.}
         emailText: {type: string, minLength: 1, maxLength: 20000}
         requirementLabels:
           type: array
@@ -4200,7 +4376,7 @@ components:
       enum: [low, normal, high, urgent]
     Task:
       type: object
-      required: [id, title, caseId, clientId, caseReference, clientName, assignee, assignedUserId, status, priority, dueDate, notes, createdAt, completedAt, createdByUserId, createdByName, checklistTotal, checklistDone, checklistNext, commentCount, kind, propertyId]
+      required: [id, title, headline, caseId, clientId, caseReference, clientName, assignee, assignedUserId, status, priority, dueDate, notes, createdAt, completedAt, createdByUserId, createdByName, checklistTotal, checklistDone, checklistNext, commentCount, kind, propertyId]
       properties:
         id: {type: integer}
         title: {type: string}
@@ -4225,6 +4401,9 @@ components:
         checklistNext:
           description: Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.
           type: ["string", "null"]
+        headline:
+          description: What the task reads as - for an open stage hand-off task the next unfinished step ("Record the Barclays case number"), otherwise the title.
+          type: string
         commentCount: {type: integer}
         kind:
           description: Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.
@@ -4388,6 +4567,7 @@ components:
         contentType: {type: ["string", "null"]}
         byteSize: {type: ["integer", "null"]}
         uploadedAt: {type: ["string", "null"], format: date-time}
+        expiresAt: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true, description: "Staff-set date after which the document no longer counts (ID, payslips, statements)."}
         reading:
           description: What the document reading system extracted, when the category has a reader. Omitted on list endpoints.
           allOf: [{$ref: "#/components/schemas/DocumentReading"}]
@@ -4408,6 +4588,15 @@ components:
         error: {type: string, nullable: true}
         appliedFields: {type: array, items: {type: string}, description: Client fields this reading filled in.}
         readAt: {type: string, format: date-time}
+        progress: {type: string, nullable: true, description: What the reader is doing right now, while status is pending.}
+    AiProgress:
+      type: object
+      required: [messages, current, done, error]
+      properties:
+        messages: {type: array, items: {type: string}}
+        current: {type: string, nullable: true, description: The latest message while the read is still running.}
+        done: {type: boolean}
+        error: {type: string, nullable: true}
     DocumentCheck:
       type: object
       required: [key, label, status, detail]
@@ -4593,6 +4782,7 @@ components:
       properties:
         category: {type: string, minLength: 1}
         status: {type: string, minLength: 1}
+        expiresAt: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$', nullable: true, description: "YYYY-MM-DD; null clears it."}
     Invoice:
       type: object
       required: [id, invoiceNumber, clientId, status, dueDate, total, paid]

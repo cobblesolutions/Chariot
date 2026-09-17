@@ -6,9 +6,27 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { LenderOfferDocument } from './lenderOfferDocument';
+import type { LenderOfferReviewResponseInvoice } from './lenderOfferReviewResponseInvoice';
+import type { LenderOfferReviewResponseLenderContactsItem } from './lenderOfferReviewResponseLenderContactsItem';
 
 export interface LenderOfferReviewResponse {
   document: LenderOfferDocument | null;
+  submissionId: number | null;
+  offerLoanAmount: number | null;
+  /** The loan on the case */
+  expectedLoanAmount: number;
+  /** When the offer was sent to the client and the lender told. */
+  notifiedAt: Date | null;
+  notifiedBy: string | null;
+  /** sent | disabled | failed */
+  clientEmailStatus: string | null;
+  /** sent | disabled | failed | no_contact */
+  lenderEmailStatus: string | null;
+  /** Who at the lender will be told (contacts with an email address). */
+  lenderContacts: LenderOfferReviewResponseLenderContactsItem[];
+  /** The agreed broker fee as it will be invoiced */
+  feeSummary: string | null;
+  invoice: LenderOfferReviewResponseInvoice;
   expectedAddress: string;
   expectedClientName: string;
   expectedPropertyValue: number;

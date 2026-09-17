@@ -625,11 +625,6 @@ export default function MessagesPage() {
   ) : (
     <div className="flex flex-1 flex-col items-center justify-center gap-1 p-6 text-center">
       <p className="text-lg text-muted-foreground">No conversation selected</p>
-      <p className="text-sm text-muted-foreground">
-        Pick a thread, or press{" "}
-        <kbd className="rounded border px-1 font-mono text-xs">N</kbd> to start
-        one.
-      </p>
     </div>
   );
 
@@ -752,9 +747,6 @@ export default function MessagesPage() {
             aria-label={`${unread} unread messages`}
           />
         </h1>
-        <p className="mt-1 text-muted-foreground">
-          Case chats, direct messages and group chats in one inbox.
-        </p>
       </div>
       <div className="flex min-h-0 flex-1 border-t" data-testid="inbox-columns">
         {columns}

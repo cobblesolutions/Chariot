@@ -8,7 +8,11 @@
 import type { UnderwritingRoundRequirementsItem } from './underwritingRoundRequirementsItem';
 
 export interface UnderwritingRound {
+  id: number;
+  /** Numbered per lender submission. */
   round: number;
+  submissionId: number | null;
+  lenderName: string | null;
   emailText: string;
   createdAt: Date;
   /** When everything was provided and sent back to the lender. */

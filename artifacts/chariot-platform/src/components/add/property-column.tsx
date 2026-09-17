@@ -22,7 +22,7 @@ import { useAutosave } from "./use-autosave";
 import { SaveStatus } from "./save-status";
 import { CommaInput } from "@/components/ui/comma-input";
 import { DatePicker } from "@/components/date-picker";
-import { FormSection, FormSections, countFilled } from "./form-section";
+import { FormSection, FormSections, countFilled, span } from "./form-section";
 import { RecordCard, RecordCardList } from "./record-card";
 import { AssigneeSelect } from "./assignee-select";
 import { OptionSelect } from "./option-select";
@@ -426,6 +426,7 @@ export function PropertyColumn({
                 >
                   <AddressFields
                     idPrefix="add-property"
+                    layout="row"
                     required
                     value={{
                       address: draft.address,
@@ -447,7 +448,6 @@ export function PropertyColumn({
                       placeholder="Select matter type"
                     />
                   </Field>
-                  <div className="grid grid-cols-2 gap-4">
                     <Field>
                       <FieldLabel htmlFor="add-property-value">
                         Value (£) <RequiredDot />
@@ -481,30 +481,36 @@ export function PropertyColumn({
                         onChange={setField("rent")}
                       />
                     </Field>
-                    <Field>
-                      <FieldLabel htmlFor="add-property-gdv">GDV (£)</FieldLabel>
-                      <CommaInput
-                        id="add-property-gdv"
-                        value={draft.gdv}
-                        onChange={setField("gdv")}
-                      />
-                    </Field>
-                  </div>
+                    {wantsGdv || draft.gdv ? (
+                      <Field>
+                        <FieldLabel htmlFor="add-property-gdv">
+                          GDV (£)
+                          {wantsGdv ? <RequiredDot /> : null}
+                        </FieldLabel>
+                        <CommaInput
+                          id="add-property-gdv"
+                          value={draft.gdv}
+                          onChange={setField("gdv")}
+                        />
+                      </Field>
+                    ) : null}
                 </FormSection>
 
                 <FormSection
                   id="details"
                   title="Property details"
+                  cols={2}
                   filled={countFilled([
                     draft.propertyType,
                     draft.tenure,
                     draft.bedrooms,
                     draft.yearBuilt,
                     draft.epcRating,
+                    draft.occupancy,
+                    ...(isLet ? [draft.tenancyType] : []),
                   ])}
-                  total={5}
+                  total={isLet ? 7 : 6}
                 >
-                  <div className="grid grid-cols-2 gap-4">
                     <Field>
                       <FieldLabel>
                         Property Type <RequiredDot />
@@ -578,19 +584,6 @@ export function PropertyColumn({
                         options={EPC_RATINGS}
                       />
                     </Field>
-                  </div>
-                </FormSection>
-
-                <FormSection
-                  id="occupancy"
-                  title="Occupancy & letting"
-                  filled={countFilled([
-                    draft.occupancy,
-                    ...(isLet ? [draft.tenancyType] : []),
-                  ])}
-                  total={isLet ? 2 : 1}
-                >
-                  <div className="grid grid-cols-2 gap-4">
                     <Field>
                       <FieldLabel>
                         Occupancy <RequiredDot />
@@ -611,7 +604,6 @@ export function PropertyColumn({
                         />
                       </Field>
                     ) : null}
-                  </div>
                 </FormSection>
 
                 <FormSection
@@ -626,8 +618,8 @@ export function PropertyColumn({
                     draft.currentRateEndDate,
                   ])}
                   total={6}
+                  cols={2}
                 >
-                  <div className="grid grid-cols-2 gap-4">
                     <Field>
                       <FieldLabel htmlFor="add-property-purchase-price">
                         Purchase Price (£)
@@ -689,32 +681,23 @@ export function PropertyColumn({
                         className="w-full justify-start"
                       />
                     </Field>
-                  </div>
                 </FormSection>
 
                 <FormSection id="notes" title="Notes">
-                  <Field>
+                  <Field className={span.full}>
                     <FieldLabel htmlFor="add-property-notes">Notes</FieldLabel>
                     <Textarea
                       id="add-property-notes"
                       value={draft.notes}
                       onChange={onInput("notes")}
                       placeholder="Access, works needed, valuation concerns…"
-                      className="min-h-[80px]"
+                      className="min-h-9"
                     />
                   </Field>
                 </FormSection>
               </FormSections>
 
-              {!editingId ? (
-                <AssigneeSelect
-                  section="property"
-                  value={assignee}
-                  onChange={setAssignee}
-                />
-              ) : null}
-
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex items-end justify-between gap-3">
                 {editingId ? (
                   <>
                     <span className="text-xs text-muted-foreground">
@@ -724,7 +707,13 @@ export function PropertyColumn({
                   </>
                 ) : (
                   <>
-                    <span />
+                    <div className="w-full max-w-xs">
+                      <AssigneeSelect
+                        section="property"
+                        value={assignee}
+                        onChange={setAssignee}
+                      />
+                    </div>
                     <Button type="submit" size="sm" disabled={isPending}>
                       {isPending ? "Saving..." : "Create property"}
                     </Button>

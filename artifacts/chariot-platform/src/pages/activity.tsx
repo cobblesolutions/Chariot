@@ -46,6 +46,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Activity,
@@ -157,6 +159,9 @@ const DEFAULT_PRIORITY = NOTIFICATION_GROUPS.map((g) => g.value);
 export default function ActivityPage() {
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<Filter>("all");
+  // Milestones only by default; routine housekeeping (uploads, reminders,
+  // reference changes) is opt-in so the feed reads as what moved.
+  const [includeRoutine, setIncludeRoutine] = useState(false);
   const [priority, setPriority] =
     useState<NotificationGroup[]>(DEFAULT_PRIORITY);
 
@@ -170,14 +175,10 @@ export default function ActivityPage() {
     });
   }
 
-  const { data, isLoading, error } = useListActivities(
-    { page, pageSize: PAGE_SIZE },
-    {
-      query: {
-        queryKey: getListActivitiesQueryKey({ page, pageSize: PAGE_SIZE }),
-      },
-    },
-  );
+  const params = { page, pageSize: PAGE_SIZE, includeRoutine };
+  const { data, isLoading, error } = useListActivities(params, {
+    query: { queryKey: getListActivitiesQueryKey(params) },
+  });
 
   const items = data?.items ?? [];
 
@@ -185,9 +186,7 @@ export default function ActivityPage() {
     const visible =
       filter === "all"
         ? items
-        : items.filter(
-            (act) => notificationKind(act).group === filter,
-          );
+        : items.filter((act) => notificationKind(act).group === filter);
     const byDay = new Map<string, ActivityListItem[]>();
     for (const act of visible) {
       const key = format(new Date(act.occurredAt), "yyyy-MM-dd");
@@ -237,69 +236,83 @@ export default function ActivityPage() {
           </TabsList>
         </Tabs>
 
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm">
-              <ArrowDownUp /> Priority
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-80">
-            <PopoverHeader>
-              <div className="flex items-center justify-between gap-2">
-                <PopoverTitle>Activity priority</PopoverTitle>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  title="Reset to default order"
-                  onClick={() => setPriority(DEFAULT_PRIORITY)}
-                >
-                  <RotateCcw />
-                </Button>
-              </div>
-              <PopoverDescription>
-                Rank activity types to control which show first within each
-                day.
-              </PopoverDescription>
-            </PopoverHeader>
-            <ul className="mt-3 space-y-1">
-              {priority.map((value, index) => {
-                const group = NOTIFICATION_GROUPS.find(
-                  (g) => g.value === value,
-                )!;
-                return (
-                  <li
-                    key={value}
-                    className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5"
+        <div className="flex items-center gap-3">
+          <Label className="gap-2 text-sm font-normal text-muted-foreground">
+            <Switch
+              size="sm"
+              checked={includeRoutine}
+              onCheckedChange={(checked) => {
+                setIncludeRoutine(checked);
+                setPage(1);
+              }}
+              data-testid="activity-include-routine"
+            />
+            Show routine
+          </Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm">
+                <ArrowDownUp /> Priority
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80">
+              <PopoverHeader>
+                <div className="flex items-center justify-between gap-2">
+                  <PopoverTitle>Activity priority</PopoverTitle>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    title="Reset to default order"
+                    onClick={() => setPriority(DEFAULT_PRIORITY)}
                   >
-                    <span className="w-4 text-xs font-medium text-muted-foreground">
-                      {index + 1}
-                    </span>
-                    <group.icon className="size-4 text-muted-foreground" />
-                    <span className="flex-1 text-sm">{group.label}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      disabled={index === 0}
-                      onClick={() => movePriority(index, -1)}
-                      aria-label={`Move ${group.label} up`}
+                    <RotateCcw />
+                  </Button>
+                </div>
+                <PopoverDescription>
+                  Rank activity types to control which show first within each
+                  day.
+                </PopoverDescription>
+              </PopoverHeader>
+              <ul className="mt-3 space-y-1">
+                {priority.map((value, index) => {
+                  const group = NOTIFICATION_GROUPS.find(
+                    (g) => g.value === value,
+                  )!;
+                  return (
+                    <li
+                      key={value}
+                      className="flex items-center gap-2 rounded-md border bg-card px-2 py-1.5"
                     >
-                      <ChevronUp />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      disabled={index === priority.length - 1}
-                      onClick={() => movePriority(index, 1)}
-                      aria-label={`Move ${group.label} down`}
-                    >
-                      <ChevronDown />
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          </PopoverContent>
-        </Popover>
+                      <span className="w-4 text-xs font-medium text-muted-foreground">
+                        {index + 1}
+                      </span>
+                      <group.icon className="size-4 text-muted-foreground" />
+                      <span className="flex-1 text-sm">{group.label}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={index === 0}
+                        onClick={() => movePriority(index, -1)}
+                        aria-label={`Move ${group.label} up`}
+                      >
+                        <ChevronUp />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={index === priority.length - 1}
+                        onClick={() => movePriority(index, 1)}
+                        aria-label={`Move ${group.label} down`}
+                      >
+                        <ChevronDown />
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {isLoading ? (
@@ -338,11 +351,12 @@ export default function ActivityPage() {
             <EmptyTitle>
               {filter === "all" ? "No activity yet" : "Nothing here"}
             </EmptyTitle>
-            <EmptyDescription>
-              {filter === "all"
-                ? "Activity will show up here as it happens."
-                : `No ${filterLabel} activity on this page.`}
-            </EmptyDescription>
+            {!includeRoutine && (
+              <EmptyDescription>
+                Routine activity is hidden. Turn on “Show routine” to see
+                everything.
+              </EmptyDescription>
+            )}
           </EmptyHeader>
         </Empty>
       ) : (

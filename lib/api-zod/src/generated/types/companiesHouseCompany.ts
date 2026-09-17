@@ -5,15 +5,7 @@
  * Chariot Financial Solutions case management API
  * OpenAPI spec version: 1.0.0
  */
-
-/**
- * @nullable
- */
-export type CompaniesHouseCompanyRegisteredAddress = {
-  line1: string;
-  city: string;
-  postcode: string;
-} | null;
+import type { CompaniesHouseCompanyRegisteredAddress } from './companiesHouseCompanyRegisteredAddress';
 
 export interface CompaniesHouseCompany {
   companyNumber: string;
@@ -22,5 +14,5 @@ export interface CompaniesHouseCompany {
   /** @nullable */
   address?: string | null;
   /** @nullable */
-  registeredAddress?: CompaniesHouseCompanyRegisteredAddress | null;
+  registeredAddress?: CompaniesHouseCompanyRegisteredAddress;
 }

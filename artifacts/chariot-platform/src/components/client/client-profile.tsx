@@ -5,6 +5,7 @@ import {
   getGetClientQueryKey,
   getListClientsQueryKey,
   type ClientDetail,
+  type CompaniesHouseCompany,
   type PlaceAddress,
   type OnboardingItem,
   type UpdateClientInfoBody,
@@ -138,6 +139,17 @@ export function ClientProfile({ client }: { client: ClientDetail }) {
     saveClient({ [key]: emptyToNull(value) } as ClientPatch);
   const saveMoney = (key: MoneyKey) => (value: string) =>
     saveClient({ [key]: parseAmount(value) } as ClientPatch);
+  /** A Companies House pick fills the number and registered office along with the name. */
+  const saveCompany = (company: CompaniesHouseCompany) =>
+    saveClient({
+      companyName: company.name,
+      companyNumber: company.companyNumber,
+      companyRegisteredAddress:
+        company.registeredAddress?.line1 || client.companyRegisteredAddress,
+      companyRegisteredCity: company.registeredAddress?.city || client.companyRegisteredCity,
+      companyRegisteredPostcode:
+        company.registeredAddress?.postcode || client.companyRegisteredPostcode,
+    });
   const saveDependants = (value: string) =>
     saveClient({ dependants: parseWholeNumber(value) });
   /** A picked Google suggestion fills street, city and postcode in one save. */
@@ -382,8 +394,12 @@ export function ClientProfile({ client }: { client: ClientDetail }) {
           <CardContent>
             <InlineField
               label="Company name"
+              kind="company"
+              block
+              placeholder="Search Companies House or add company name"
               value={client.companyName}
               onSave={saveBase("companyName")}
+              onSaveCompany={saveCompany}
             />
             <InlineField
               label="Company number"

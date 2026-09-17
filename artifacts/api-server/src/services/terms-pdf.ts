@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import PDFDocument from "pdfkit";
 import type { TermsTemplateField } from "@workspace/db";
 import { FIRM_NAME, mergedValues, renderTemplateBody } from "./terms-template";
@@ -13,7 +16,11 @@ export const DATE_ANCHOR = "/date_client/";
 const PAGE = { size: "A4" as const, margin: 56 };
 const INK = "#1f2422";
 const MUTED = "#6b716e";
-const RULE = "#d7dbd9";
+/** The firm's green — headings and rules only, so the document stays a plain legal text. */
+const BRAND = "#064B3E";
+const RULE = "#cfe0db";
+/** The wordmark shipped next to the server (`assets/`, resolved from both src/ and dist/). */
+const LOGO = resolve(dirname(fileURLToPath(import.meta.url)), "../assets/chariot-logo.png");
 
 export interface TermsPdfInput {
   title: string;
@@ -64,10 +71,15 @@ export function renderTermsPdf(input: TermsPdfInput): Promise<Buffer> {
     const values = mergedValues(input.fields, input.auto, input.values);
     const body = renderTemplateBody(input.body, values);
 
-    // Masthead
-    doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(FIRM_NAME.toUpperCase(), { characterSpacing: 1.5 });
-    doc.moveDown(0.6);
-    doc.fillColor(INK).font("Helvetica-Bold").fontSize(22).text(renderTemplateBody(input.title, values));
+    // Masthead: the logo (or the firm's name when the file is missing), then the title.
+    if (existsSync(LOGO)) {
+      doc.image(LOGO, PAGE.margin, PAGE.margin, { height: 34 });
+      doc.y = PAGE.margin + 34;
+    } else {
+      doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(11).text(FIRM_NAME.toUpperCase(), { characterSpacing: 1.5 });
+    }
+    doc.moveDown(1.1);
+    doc.fillColor(INK).font("Helvetica-Bold").fontSize(22).text(renderTemplateBody(input.title, values), PAGE.margin);
     doc.moveDown(0.3);
     const subtitle = [
       input.auto.clientName ? `Prepared for ${input.auto.clientName}` : null,
@@ -76,14 +88,14 @@ export function renderTermsPdf(input: TermsPdfInput): Promise<Buffer> {
     ].filter(Boolean).join("  ·  ");
     doc.fillColor(MUTED).font("Helvetica").fontSize(10).text(subtitle);
     doc.moveDown(0.8);
-    doc.moveTo(PAGE.margin, doc.y).lineTo(PAGE.margin + width, doc.y).lineWidth(0.8).strokeColor(RULE).stroke();
+    doc.moveTo(PAGE.margin, doc.y).lineTo(PAGE.margin + width, doc.y).lineWidth(1.2).strokeColor(BRAND).stroke();
     doc.moveDown(1.2);
 
     // Body
     for (const block of blocks(body)) {
       if (block.kind === "heading") {
         doc.moveDown(0.4);
-        doc.fillColor(INK).font("Helvetica-Bold").fontSize(12.5).text(block.text, { paragraphGap: 4 });
+        doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(12.5).text(block.text, { paragraphGap: 4 });
         doc.moveDown(0.2);
       } else if (block.kind === "bullets") {
         doc.fillColor(INK).font("Helvetica").fontSize(10.5);
@@ -100,7 +112,7 @@ export function renderTermsPdf(input: TermsPdfInput): Promise<Buffer> {
     doc.moveDown(1.5);
     doc.moveTo(PAGE.margin, doc.y).lineTo(PAGE.margin + width, doc.y).lineWidth(0.8).strokeColor(RULE).stroke();
     doc.moveDown(1);
-    doc.fillColor(INK).font("Helvetica-Bold").fontSize(11).text("Agreement");
+    doc.fillColor(BRAND).font("Helvetica-Bold").fontSize(11).text("Agreement");
     doc.moveDown(0.3);
     doc.font("Helvetica").fontSize(10.5).text("I confirm that I have read and understood these terms and agree to be bound by them.", { lineGap: 2 });
     doc.moveDown(1.6);
@@ -125,6 +137,7 @@ export function renderTermsPdf(input: TermsPdfInput): Promise<Buffer> {
       const bottom = doc.page.margins.bottom;
       doc.page.margins.bottom = 0;
       const y = doc.page.height - PAGE.margin + 6;
+      doc.moveTo(PAGE.margin, y - 6).lineTo(PAGE.margin + width, y - 6).lineWidth(0.5).strokeColor(RULE).stroke();
       doc.fillColor(MUTED).font("Helvetica").fontSize(8);
       doc.text(`${FIRM_NAME} · ${input.title} v${input.version}`, PAGE.margin, y, { width: width / 2, lineBreak: false });
       doc.text(`Page ${index - range.start + 1} of ${range.count}`, PAGE.margin + width / 2, y, { width: width / 2, align: "right", lineBreak: false });

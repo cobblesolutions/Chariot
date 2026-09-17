@@ -1,7 +1,7 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Upload } from "lucide-react";
-import { getGetClientQueryKey, type DocumentReading } from "@workspace/api-client-react";
+import { Sparkles, Upload } from "lucide-react";
+import { getGetClientQueryKey, useReadDocument, type DocumentReading } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { toast } from "@/components/ui/toast";
@@ -46,6 +46,25 @@ export function PortfolioDocuments({
   const { progress, uploading, send, reset } = useUpload();
   const files = documents.filter((document) => document.category === "portfolio");
   const refresh = () => qc.invalidateQueries({ queryKey: getGetClientQueryKey(clientId) });
+  // Manual (re)read of every portfolio file; uploads already read themselves.
+  const readDocument = useReadDocument();
+  const [readingIds, setReadingIds] = useState<Set<number>>(new Set());
+  const readAll = async () => {
+    setReadingIds(new Set(files.map((file) => file.id)));
+    for (const file of files) {
+      try {
+        await readDocument.mutateAsync({ id: file.id });
+      } catch {
+        toast.add({ title: `Couldn't read ${file.name}`, type: "error" });
+      }
+      setReadingIds((current) => {
+        const next = new Set(current);
+        next.delete(file.id);
+        return next;
+      });
+      refresh();
+    }
+  };
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(event.target.files ?? []);
@@ -82,13 +101,19 @@ export function PortfolioDocuments({
       />
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">Property portfolio.</span> Upload their schedule of
-          properties (spreadsheet, CSV or PDF) and each one it lists is added above.
+          <span className="font-medium text-foreground">Property portfolio.</span> Upload a schedule of
+          properties (spreadsheet, CSV or PDF).
         </p>
-        <Button type="button" variant="ghost" size="sm" disabled={uploading} onClick={() => inputRef.current?.click()}>
-          {uploading ? <Spinner /> : <Upload />}
-          Upload
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button type="button" variant="ghost" size="sm" disabled={files.length === 0 || readingIds.size > 0} onClick={() => void readAll()}>
+            {readingIds.size > 0 ? <Spinner /> : <Sparkles />}
+            Read
+          </Button>
+          <Button type="button" variant="ghost" size="sm" disabled={uploading} onClick={() => inputRef.current?.click()}>
+            {uploading ? <Spinner /> : <Upload />}
+            Upload
+          </Button>
+        </div>
       </div>
       <UploadProgress progress={progress} />
       {files.length > 0 ? (
@@ -96,7 +121,7 @@ export function PortfolioDocuments({
           {files.map((file) => (
             <div key={file.id} className="px-2 py-1">
               <DocumentFile id={file.id} name={file.name} onDeleted={refresh} />
-              <DocumentReadingLine documentId={file.id} reading={file.reading} onRefresh={refresh} />
+              <DocumentReadingLine documentId={file.id} reading={file.reading} category="portfolio" busy={readingIds.has(file.id)} onRefresh={refresh} />
             </div>
           ))}
         </div>

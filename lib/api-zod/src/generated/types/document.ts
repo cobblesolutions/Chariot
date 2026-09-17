@@ -21,6 +21,11 @@ export interface Document {
   byteSize?: number | null;
   /** @nullable */
   uploadedAt?: Date | null;
+  /**
+     * Staff-set date after which the document no longer counts (ID, payslips, statements).
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  expiresAt?: string | null;
   /** What the document reading system extracted, when the category has a reader. Omitted on list endpoints. */
   reading?: DocumentReading | null;
 }

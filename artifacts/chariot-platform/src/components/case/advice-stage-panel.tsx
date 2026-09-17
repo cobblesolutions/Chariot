@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ClipboardPaste, FileSignature, Mail, MessageSquareText, PencilLine, Send, ShieldCheck, Sparkles } from "lucide-react";
+import { Check, ClipboardPaste, FileSignature, Mail, MessageSquareText, PencilLine, Send, ShieldCheck } from "lucide-react";
 import {
   useConfirmCaseServiceLevel,
   useExtractCaseInstruction,
@@ -20,6 +20,8 @@ import {
 import { useAuth } from "@/components/auth-provider";
 import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
+import { AiProgressButton } from "@/components/ai-progress-button";
+import { AI_PROGRESS_HEADER, newProgressToken } from "@/lib/ai-progress";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -122,7 +124,9 @@ export function AdviceStagePanel({
   const confirm = useConfirmCaseServiceLevel();
   const update = useUpdateCaseAdvice();
   const send = useSendCaseAdvice();
-  const extract = useExtractCaseInstruction();
+  const progressHeaders = useRef<Record<string, string>>({});
+  const [progressToken, setProgressToken] = useState<string | null>(null);
+  const extract = useExtractCaseInstruction({ request: { headers: progressHeaders.current } });
   const [recordOpen, setRecordOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [emailText, setEmailText] = useState("");
@@ -182,6 +186,9 @@ export function AdviceStagePanel({
   const handleExtract = () => {
     const text = emailText.trim();
     if (!text) return;
+    const token = newProgressToken();
+    progressHeaders.current[AI_PROGRESS_HEADER] = token;
+    setProgressToken(token);
     extract.mutate(
       { id: caseId, data: { emailText: text } },
       {
@@ -332,9 +339,9 @@ export function AdviceStagePanel({
             />
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs text-muted-foreground">Fills the fields below from the email; the email is kept on file with the instruction.</p>
-              <Button size="sm" variant="outline" onClick={handleExtract} disabled={!emailText.trim() || extract.isPending}>
-                <Sparkles /> {extract.isPending ? "Reading…" : "Fill from email"}
-              </Button>
+              <AiProgressButton size="sm" variant="outline" onClick={handleExtract} disabled={!emailText.trim()} busy={extract.isPending} kind="instruction" token={progressToken}>
+                Fill from email
+              </AiProgressButton>
             </div>
           </div>
         ) : null}

@@ -29,7 +29,7 @@ const num = (value: unknown) => {
   return null;
 };
 
-export async function extractInstruction(emailText: string): Promise<{ extracted: ExtractedInstruction; model: string | null }> {
+export async function extractInstruction(emailText: string, progressToken?: string | null): Promise<{ extracted: ExtractedInstruction; model: string | null }> {
   const lenders = await db.select({ id: lendersTable.id, name: lendersTable.name }).from(lendersTable);
   const heuristic = heuristicInstruction(emailText, lenders);
   try {
@@ -38,6 +38,16 @@ export async function extractInstruction(emailText: string): Promise<{ extracted
       schemaName: "ClientInstruction",
       systemInstruction: SYSTEM_INSTRUCTION,
       context: { email: emailText, knownLenders: lenders.map((lender) => lender.name) },
+      progress: {
+        token: progressToken,
+        labels: {
+          lenderName: "Reading which lender they chose…",
+          product: "Reading the product…",
+          ratePct: "Reading the rate and term…",
+          loanAmount: "Reading the loan amount…",
+          summary: "Writing the summary…",
+        },
+      },
     });
     if (result.status === "completed" && result.data) {
       const ai: ExtractedInstruction = {

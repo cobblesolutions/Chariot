@@ -60,6 +60,7 @@ import {
   PreviewEmailTemplateResponse,
   ExtractClientEnquiryBody,
   ExtractClientEnquiryResponse,
+  GetAiProgressResponse,
   FindClientMatchesBody,
   FindClientMatchesResponse,
   AcceptClientEnquiryParams,
@@ -103,6 +104,12 @@ import {
   UpdateStageThresholdResponse,
   MarkUnderwritingRoundSentParams,
   MarkUnderwritingRoundSentResponse,
+  NotifyLenderOfferParams,
+  NotifyLenderOfferResponse,
+  ListSubmissionStepThresholdsResponse,
+  UpdateSubmissionStepThresholdParams,
+  UpdateSubmissionStepThresholdBody,
+  UpdateSubmissionStepThresholdResponse,
 } from "@workspace/api-zod";
 import {
   activitiesTable,
@@ -124,6 +131,7 @@ import {
   sectionDefaultAssigneesTable,
   tasksTable,
   underwritingRoundsTable,
+  submissionStepThresholdsTable,
 } from "@workspace/db";
 import { and, asc, desc, eq, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
 import { sendChariotEmail } from "../integrations/resend";
@@ -132,12 +140,12 @@ import { logger } from "../lib/logger";
 import { ensureClientOnboarding, getClientOnboarding, updateClientOnboardingItem } from "../services/client-onboarding";
 import { portfolioRequirementLabel, reconcileCasePortfolioRequirement } from "../services/case-portfolio-requirement";
 import { documentStorage } from "../services/document-storage";
+import { progressFinish, progressGet, progressStart, progressTokenFrom } from "../services/ai-progress";
 import { documentChecks, readingsForDocuments } from "../services/document-reading";
 import { runOpenRouterWorkflow } from "../integrations/openrouter";
 import { renewalReminderDates, syncRenewalCalendarEvents } from "../services/renewal-calendar";
 import {
   DEFAULT_ASSIGNEE_SECTIONS,
-  SUBMISSION_STEPS,
   activeStaffUser, activeStaffUserByName,
   configuredAssignee,
   createAssignmentTask,
@@ -150,8 +158,10 @@ import {
 import { markCompletionMirrorsDone, setValuationCompleted, syncCaseDate } from "../services/case-dates";
 import { taskViews } from "../services/tasks";
 import { STAGES, stageName, stageOwnerRole } from "../services/stages";
-import { createUnderwritingRound, extractUnderwritingRequirements, markRoundSent, RoundIncompleteError, RoundStillOpenError, underwritingRoundsView } from "../services/underwriting";
-import { classifyActivityTitle } from "../services/activity-kinds";
+import { createUnderwritingRound, extractUnderwritingRequirements, markRoundSent, RoundIncompleteError, RoundStillOpenError, submissionScope, underwritingRoundsComplete, underwritingRoundsView } from "../services/underwriting";
+import { lenderIdForReview, notifyLenderOffer, offerNotificationView, OfferNotReadyError, reviewFor } from "../services/lender-offer";
+import { resolveSubmissionId, SUBMISSION_STEPS } from "../services/case-submissions";
+import { classifyActivityTitle, ROUTINE_TITLE_PATTERN } from "../services/activity-kinds";
 import { recordEnquiry } from "../services/client-enquiries";
 import {
   CLIENT_PROFILE_KEYS,
@@ -160,7 +170,7 @@ import {
   pickProvided,
   propertyDetails,
 } from "../services/profile-fields";
-import { syncCaseChecklists, syncClientChecklists } from "../services/task-checklists";
+import { SUBMISSION_STEP_KIND, syncCaseChecklists, syncClientChecklists } from "../services/task-checklists";
 import {
   ADVANCED_CASE_KIND,
   ADVANCED_KINDS,
@@ -258,46 +268,6 @@ async function createHandoffTask(options: {
   });
 }
 
-/**
- * Submission is made of structured steps rather than checklist items. Each
- * step with its own default assignee in Settings gets a dedicated task when
- * the case enters Submission; steps left on "same as stage" are covered by
- * the stage handoff task. The portfolio step only applies when the lender
- * requires a portfolio at submission, so its task is skipped otherwise.
- */
-async function createSubmissionStepTasks(options: {
-  caseId: number;
-  clientId?: number | null;
-  reference: string;
-  notes: string;
-  defaults: DefaultAssigneeMap;
-}) {
-  const [portfolioRequirement] = await db
-    .select({ id: requirementsTable.id })
-    .from(requirementsTable)
-    .where(
-      and(
-        eq(requirementsTable.caseId, options.caseId),
-        eq(requirementsTable.stageIndex, SUBMISSION_STAGE_INDEX),
-        eq(requirementsTable.label, portfolioRequirementLabel),
-      ),
-    )
-    .limit(1);
-  for (const step of SUBMISSION_STEPS) {
-    const staffUser = options.defaults[step.section];
-    if (!staffUser) continue;
-    if (step.section === "submission_portfolio" && !portfolioRequirement) continue;
-    await createAssignmentTask({
-      staffUser,
-      title: `Submission: ${step.label} — ${options.reference}`,
-      notes: options.notes,
-      caseId: options.caseId,
-      clientId: options.clientId ?? null,
-      kind: "submission_step",
-    });
-  }
-}
-
 /** A new lender case number renames the case everywhere: open task titles and an activity entry. */
 async function applyCaseReferenceChange(caseId: number, oldRef: string, newRef: string, actorName: string) {
   if (oldRef === newRef) return;
@@ -330,7 +300,8 @@ async function completeAutoHandoffTasks(caseId: number, reference: string, compl
       task.title === `New case: set up advice — ${reference}` ||
       task.title === `New enquiry: begin onboarding — ${reference}` ||
       task.notes.startsWith("Handed off after completing ") ||
-      (leavingStageIndex != null && task.kind === "stage_handoff" && task.stageIndex === leavingStageIndex),
+      (leavingStageIndex != null && task.kind === "stage_handoff" && task.stageIndex === leavingStageIndex) ||
+      (leavingStageIndex === SUBMISSION_STAGE_INDEX && task.kind === SUBMISSION_STEP_KIND),
     )
     .map((task) => task.id);
   if (autoTaskIds.length === 0) return;
@@ -370,6 +341,15 @@ const stageRequirements: Record<number, string[]> = {
 router.use(requireStaff);
 
 const iso = (value: Date) => value.toISOString();
+/** The lender submission a per-lender endpoint is about: the `/submissions/:submissionId/…` path, else the request body. */
+const submissionIdFromQuery = (req: { params: Record<string, unknown>; body?: unknown }) => {
+  const fromPath = req.params.submissionId;
+  const fromBody = (req.body as { submissionId?: unknown } | undefined)?.submissionId;
+  const raw = fromPath ?? fromBody;
+  const parsed = typeof raw === "number" ? raw : typeof raw === "string" && raw !== "" ? Number(raw) : undefined;
+  return parsed != null && Number.isInteger(parsed) ? parsed : undefined;
+};
+
 const dayDiff = (value: Date) =>
   Math.max(0, Math.floor((Date.now() - value.getTime()) / 86_400_000));
 
@@ -705,6 +685,7 @@ async function stressTestView(row: typeof caseStressTestsTable.$inferSelect) {
   return {
     id: row.id,
     caseId: row.caseId,
+    submissionId: row.submissionId ?? null,
     lenderId: row.lenderId,
     lenderName,
     monthlyRent: row.monthlyRent,
@@ -752,17 +733,19 @@ function stressTestPasses(row: typeof caseStressTestsTable.$inferSelect): boolea
   return rent >= requiredRent;
 }
 
-async function ensureCaseStressTest(caseRow: typeof casesTable.$inferSelect) {
+async function ensureCaseStressTest(caseRow: typeof casesTable.$inferSelect, submissionId: number | null) {
   const [existing] = await db
     .select()
     .from(caseStressTestsTable)
-    .where(eq(caseStressTestsTable.caseId, caseRow.id));
+    .where(and(eq(caseStressTestsTable.caseId, caseRow.id), submissionScope(caseStressTestsTable, submissionId)));
   if (existing) return existing;
+  const lenderId = submissionId != null ? await lenderIdForReview(caseRow, submissionId) : caseRow.lenderId;
   await db
     .insert(caseStressTestsTable)
     .values({
       caseId: caseRow.id,
-      lenderId: caseRow.lenderId,
+      submissionId,
+      lenderId,
       monthlyRent: caseRow.rent,
       propertyValue: caseRow.propertyValue,
       // Target the LTV the case is actually asking for, when both figures exist.
@@ -774,7 +757,7 @@ async function ensureCaseStressTest(caseRow: typeof casesTable.$inferSelect) {
   const [created] = await db
     .select()
     .from(caseStressTestsTable)
-    .where(eq(caseStressTestsTable.caseId, caseRow.id));
+    .where(and(eq(caseStressTestsTable.caseId, caseRow.id), submissionScope(caseStressTestsTable, submissionId)));
   if (!created) throw new Error("Stress test was not created");
   return created;
 }
@@ -786,12 +769,19 @@ function normalizeOfferText(value: string): string {
 async function lenderOfferReviewView(
   caseRow: typeof casesTable.$inferSelect,
   review: typeof lenderOfferReviewsTable.$inferSelect | null,
+  submissionId: number | null,
 ) {
+  // The offer document for this lender; a case-level view accepts any offer on the case.
   const [document] = await db
     .select({ id: documentsTable.id, name: documentsTable.name })
     .from(documentsTable)
-    .where(and(eq(documentsTable.caseId, caseRow.id), eq(documentsTable.category, "LENDER_OFFER")))
-    .orderBy(desc(documentsTable.uploadedAt))
+    .where(and(
+      eq(documentsTable.caseId, caseRow.id),
+      eq(documentsTable.category, "LENDER_OFFER"),
+      // This lender's offer first; an offer uploaded without a lender tag still counts (single-lender cases, API uploads).
+      submissionId != null ? or(eq(documentsTable.submissionId, submissionId), isNull(documentsTable.submissionId)) : sql`true`,
+    ))
+    .orderBy(desc(sql`${documentsTable.submissionId} is not null`), desc(documentsTable.uploadedAt))
     .limit(1);
   const activeReview = review && document?.id === review.documentId ? review : null;
   return {
@@ -807,8 +797,43 @@ async function lenderOfferReviewView(
     valueMatches: activeReview?.valueMatches ?? false,
     allMatched: Boolean(activeReview?.addressMatches && activeReview?.nameMatches && activeReview?.valueMatches),
     reviewedAt: activeReview?.reviewedAt ? iso(activeReview.reviewedAt) : null,
+    ...(await offerNotificationView(caseRow, activeReview, submissionId)),
   };
 }
+
+/** Scope step 12: send the checked offer to the client (with the invoice) and tell the lender. */
+router.post("/cases/:id/lender-offer/notify", async (req, res): Promise<void> => {
+  const params = NotifyLenderOfferParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: "Invalid case" });
+    return;
+  }
+  if (!isFullAccess(res.locals.authUser.role)) {
+    res.status(403).json({ error: "Only an administrator can send the offer, as it issues the invoice" });
+    return;
+  }
+  const [caseRow] = await db.select().from(casesTable).where(eq(casesTable.id, params.data.id));
+  if (!caseRow) {
+    res.status(404).json({ error: "Case not found" });
+    return;
+  }
+  const scope = await resolveSubmissionId(caseRow.id, submissionIdFromQuery(req));
+  if (!scope) {
+    res.status(404).json({ error: "Submission not found on this case" });
+    return;
+  }
+  try {
+    await notifyLenderOffer(caseRow, { id: res.locals.authUser.id, displayName: res.locals.authUser.displayName }, scope.id);
+  } catch (error) {
+    if (error instanceof OfferNotReadyError) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+  const [refreshed] = await db.select().from(casesTable).where(eq(casesTable.id, caseRow.id));
+  res.json(NotifyLenderOfferResponse.parse(await lenderOfferReviewView(refreshed!, await reviewFor(caseRow.id, scope.id), scope.id)));
+});
 
 
 router.get("/dashboard", async (_req, res): Promise<void> => {
@@ -916,15 +941,19 @@ router.get("/activities", async (req, res): Promise<void> => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = Math.min(25, Math.max(1, Number(req.query.pageSize) || 25));
   const propertyId = req.query.propertyId ? Number(req.query.propertyId) : null;
-  let activityFilter;
+  const includeRoutine = req.query.includeRoutine === "true";
+  const filters = [];
   if (propertyId) {
     const propertyCases = await db.select({ id: casesTable.id }).from(casesTable).where(eq(casesTable.propertyId, propertyId));
     const caseIds = propertyCases.map((c) => c.id);
-    activityFilter = or(
+    filters.push(or(
       and(eq(activitiesTable.entityType, "property"), eq(activitiesTable.entityId, propertyId)),
       caseIds.length ? inArray(activitiesTable.caseId, caseIds) : sql`false`,
-    );
+    ));
   }
+  // The firm-wide feed shows milestones only; a record's own timeline asks for everything.
+  if (!includeRoutine) filters.push(sql`${activitiesTable.title} !~* ${ROUTINE_TITLE_PATTERN}`);
+  const activityFilter = filters.length ? and(...filters) : undefined;
   const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(activitiesTable).where(activityFilter);
   const rows = await db
     .select({
@@ -1014,6 +1043,7 @@ export async function clientDetailView(client: typeof clientsTable.$inferSelect)
       category: item.category,
       status: item.status,
       uploadedAt: item.uploadedAt?.toISOString() ?? null,
+      expiresAt: item.expiresAt ?? null,
       reading: readings.get(item.id) ?? null,
     })),
     documentChecks: documentChecks(client, [...readings.values()]),
@@ -1193,18 +1223,36 @@ router.post("/clients/extract", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Invalid email text" });
     return;
   }
-  const { extracted, model } = await extractEnquiry({
-    emailText: body.data.emailText,
-    subject: body.data.subject ?? null,
-    from: body.data.from ?? null,
-  });
-  const matches = await findClientMatches({
-    email: extracted.client.email,
-    phone: extracted.client.phone,
-    companyNumber: extracted.client.companyNumber,
-    name: extracted.client.name,
-  });
-  res.json(ExtractClientEnquiryResponse.parse({ extracted, model, matches: await matchViews(matches) }));
+  const progressToken = progressTokenFrom(req);
+  progressStart(progressToken, "Starting…");
+  try {
+    const { extracted, model } = await extractEnquiry({
+      emailText: body.data.emailText,
+      subject: body.data.subject ?? null,
+      from: body.data.from ?? null,
+      progressToken,
+    });
+    const matches = await findClientMatches({
+      email: extracted.client.email,
+      phone: extracted.client.phone,
+      companyNumber: extracted.client.companyNumber,
+      name: extracted.client.name,
+    });
+    progressFinish(progressToken);
+    res.json(ExtractClientEnquiryResponse.parse({ extracted, model, matches: await matchViews(matches) }));
+  } catch (error) {
+    progressFinish(progressToken, error instanceof Error ? error.message : "Reading failed");
+    throw error;
+  }
+});
+
+/** Live progress of an AI read the browser started with an x-ai-progress token. */
+router.get("/ai/progress/:token", (req, res): void => {
+  const token = String(req.params.token);
+  const entry = progressGet(token);
+  res.json(GetAiProgressResponse.parse(entry
+    ? { messages: entry.messages, current: entry.done ? null : entry.messages[entry.messages.length - 1] ?? null, done: entry.done, error: entry.error }
+    : { messages: [], current: null, done: false, error: null }));
 });
 
 router.post("/clients/matches", async (req, res): Promise<void> => {
@@ -1556,6 +1604,31 @@ router.post("/settings/email-templates/:key/preview", async (req, res): Promise<
     subject: rendered.subject,
     html: renderChariotEmail({ heading: rendered.heading, paragraphs: rendered.paragraphs, ...fixed }),
   }));
+});
+
+router.get("/settings/submission-step-thresholds", async (_req, res): Promise<void> => {
+  const rows = await db.select().from(submissionStepThresholdsTable);
+  const byKey = new Map(rows.map((row) => [row.stepKey, row.thresholdDays]));
+  res.json(ListSubmissionStepThresholdsResponse.parse(SUBMISSION_STEPS.map((step) => ({ stepKey: step.key, step: step.label, thresholdDays: byKey.get(step.key) ?? null }))));
+});
+
+router.patch("/settings/submission-step-thresholds/:stepKey", async (req, res): Promise<void> => {
+  if (!isFullAccess(res.locals.authUser.role)) {
+    res.status(403).json({ error: "Administrator access required" });
+    return;
+  }
+  const params = UpdateSubmissionStepThresholdParams.safeParse(req.params);
+  const body = UpdateSubmissionStepThresholdBody.safeParse(req.body);
+  const step = params.success ? SUBMISSION_STEPS.find((item) => item.key === params.data.stepKey) : undefined;
+  if (!params.success || !body.success || !step) {
+    res.status(400).json({ error: "Invalid step threshold" });
+    return;
+  }
+  await db
+    .insert(submissionStepThresholdsTable)
+    .values({ stepKey: step.key, thresholdDays: body.data.thresholdDays })
+    .onConflictDoUpdate({ target: submissionStepThresholdsTable.stepKey, set: { thresholdDays: body.data.thresholdDays, updatedAt: new Date() } });
+  res.json(UpdateSubmissionStepThresholdResponse.parse({ stepKey: step.key, step: step.label, thresholdDays: body.data.thresholdDays }));
 });
 
 router.get("/settings/stage-thresholds", async (_req, res): Promise<void> => {
@@ -2027,10 +2100,9 @@ router.patch("/cases/:id", async (req, res): Promise<void> => {
     }
   }
   if (body.data.underwritingCleared === true) {
-    const { maxRound, latestRoundItems } = await latestStageRound(existingCase.id, UNDERWRITING_STAGE_INDEX);
-    const latestRoundComplete = maxRound > 0 && latestRoundItems.every((item) => !item.required || item.complete);
-    if (!latestRoundComplete) {
-      res.status(409).json({ error: "Complete all of the current round's requirements before marking underwriting as complete" });
+    const rounds = await underwritingRoundsComplete(existingCase.id);
+    if (!rounds.hasRounds || !rounds.complete) {
+      res.status(409).json({ error: rounds.hasRounds ? `Finish the current round with ${rounds.openLenders.join(" and ")} before marking underwriting as complete` : "Add the lender's requirements before marking underwriting as complete" });
       return;
     }
   }
@@ -2246,7 +2318,13 @@ router.post("/cases/:id/underwriting/extract", async (req, res): Promise<void> =
     res.status(404).json({ error: "Case not found" });
     return;
   }
-  res.json(ExtractUnderwritingRequirementsResponse.parse(await extractUnderwritingRequirements(body.data.emailText)));
+  const progressToken = progressTokenFrom(req);
+  progressStart(progressToken, "Scanning the email…");
+  try {
+    res.json(ExtractUnderwritingRequirementsResponse.parse(await extractUnderwritingRequirements(body.data.emailText, progressToken)));
+  } finally {
+    progressFinish(progressToken);
+  }
 });
 
 router.post("/cases/:id/underwriting/rounds", async (req, res): Promise<void> => {
@@ -2261,10 +2339,15 @@ router.post("/cases/:id/underwriting/rounds", async (req, res): Promise<void> =>
     res.status(404).json({ error: "Case not found" });
     return;
   }
+  const scope = await resolveSubmissionId(caseRow.id, body.data.submissionId);
+  if (!scope) {
+    res.status(404).json({ error: "Submission not found on this case" });
+    return;
+  }
   try {
     await createUnderwritingRound(
       caseRow,
-      { emailText: body.data.emailText, labels: body.data.requirementLabels },
+      { emailText: body.data.emailText, labels: body.data.requirementLabels, submissionId: scope.id },
       { id: res.locals.authUser.id, displayName: res.locals.authUser.displayName },
     );
   } catch (error) {
@@ -2283,7 +2366,7 @@ router.post("/cases/:id/underwriting/rounds", async (req, res): Promise<void> =>
 });
 
 /** Everything the lender asked for is provided and sent back: closes the round and its task. */
-router.post("/cases/:id/underwriting/rounds/:round/sent", async (req, res): Promise<void> => {
+router.post("/cases/:id/underwriting/rounds/:roundId/sent", async (req, res): Promise<void> => {
   const params = MarkUnderwritingRoundSentParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Invalid round" });
@@ -2295,7 +2378,7 @@ router.post("/cases/:id/underwriting/rounds/:round/sent", async (req, res): Prom
     return;
   }
   try {
-    const row = await markRoundSent(caseRow, params.data.round, { id: res.locals.authUser.id, displayName: res.locals.authUser.displayName });
+    const row = await markRoundSent(caseRow, params.data.roundId, { id: res.locals.authUser.id, displayName: res.locals.authUser.displayName });
     if (!row) {
       res.status(404).json({ error: "Round not found" });
       return;
@@ -2360,7 +2443,7 @@ router.post("/cases/:id/restore", async (req, res): Promise<void> => {
   res.json(RestoreCaseResponse.parse(await caseView(updated)));
 });
 
-router.get("/cases/:id/stress-test", async (req, res): Promise<void> => {
+router.get(["/cases/:id/stress-test", "/cases/:id/submissions/:submissionId/stress-test"], async (req, res): Promise<void> => {
   const params = GetCaseStressTestParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Invalid case" });
@@ -2374,7 +2457,12 @@ router.get("/cases/:id/stress-test", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Case not found" });
     return;
   }
-  const row = await ensureCaseStressTest(caseRow);
+  const scope = await resolveSubmissionId(caseRow.id, submissionIdFromQuery(req));
+  if (!scope) {
+    res.status(404).json({ error: "Submission not found on this case" });
+    return;
+  }
+  const row = await ensureCaseStressTest(caseRow, scope.id);
   res.json(GetCaseStressTestResponse.parse(await stressTestView(row)));
 });
 
@@ -2401,11 +2489,17 @@ router.patch("/cases/:id/stress-test", async (req, res): Promise<void> => {
       return;
     }
   }
-  await ensureCaseStressTest(caseRow);
+  const { submissionId: requestedSubmission, ...patch } = body.data;
+  const scope = await resolveSubmissionId(caseRow.id, requestedSubmission);
+  if (!scope) {
+    res.status(404).json({ error: "Submission not found on this case" });
+    return;
+  }
+  await ensureCaseStressTest(caseRow, scope.id);
   const [updated] = await db
     .update(caseStressTestsTable)
-    .set(body.data)
-    .where(eq(caseStressTestsTable.caseId, caseRow.id))
+    .set(patch)
+    .where(and(eq(caseStressTestsTable.caseId, caseRow.id), submissionScope(caseStressTestsTable, scope.id)))
     .returning();
   if (!updated) {
     res.status(404).json({ error: "Stress test not found" });
@@ -2429,7 +2523,12 @@ router.post("/cases/:id/stress-test/apply-property-value", async (req, res): Pro
     return;
   }
 
-  const stressTest = await ensureCaseStressTest(caseRow);
+  const scope = await resolveSubmissionId(caseRow.id, submissionIdFromQuery(req));
+  if (!scope) {
+    res.status(404).json({ error: "Submission not found on this case" });
+    return;
+  }
+  const stressTest = await ensureCaseStressTest(caseRow, scope.id);
   const propertyValue = Number(stressTest.propertyValue ?? 0);
   if (propertyValue <= 0 || !stressTestPasses(stressTest)) {
     res.status(409).json({ error: "Only a passing stress test can set the case property value" });
@@ -2505,15 +2604,15 @@ router.post("/cases/:id/lender-offer/extract", async (req, res): Promise<void> =
   try {
     const result = await runOpenRouterWorkflow<
       { filename: string; contentType: string },
-      { offerAddress?: unknown; offerClientName?: unknown; offerPropertyValue?: unknown }
+      { offerAddress?: unknown; offerClientName?: unknown; offerPropertyValue?: unknown; offerLoanAmount?: unknown }
     >({
       workflow: "extract_lender_offer_details",
       schemaName: "LenderOfferExtractionResponse",
       context: { filename: document.name, contentType: document.contentType ?? "application/octet-stream" },
       systemInstruction: [
-        "Read the attached lender offer document and extract the offer's property address, client name, and property value.",
-        "Return only a JSON object with exactly these keys: offerAddress, offerClientName, offerPropertyValue.",
-        "offerAddress and offerClientName must be strings. offerPropertyValue must be a number in the document's currency, without symbols or thousands separators.",
+        "Read the attached lender offer document and extract the offer's property address, client name, property value and the loan amount being offered.",
+        "Return only a JSON object with exactly these keys: offerAddress, offerClientName, offerPropertyValue, offerLoanAmount.",
+        "offerAddress and offerClientName must be strings. offerPropertyValue and offerLoanAmount must be numbers in the document's currency, without symbols or thousands separators.",
         "Do not infer missing values. If a value cannot be read confidently, return an empty string for text or null for the numeric value.",
       ].join(" "),
       document: {
@@ -2536,10 +2635,12 @@ router.post("/cases/:id/lender-offer/extract", async (req, res): Promise<void> =
       res.status(422).json({ error: "The lender offer did not contain all three required values" });
       return;
     }
+    const offerLoanAmountRaw = typeof data?.offerLoanAmount === "number" ? data.offerLoanAmount : Number(data?.offerLoanAmount);
     res.json(ExtractCaseLenderOfferDetailsResponse.parse({
       offerAddress,
       offerClientName,
       offerPropertyValue,
+      offerLoanAmount: Number.isFinite(offerLoanAmountRaw) && offerLoanAmountRaw > 0 ? offerLoanAmountRaw : null,
       model: result.model ?? null,
     }));
   } catch (error) {
@@ -2635,7 +2736,7 @@ router.post("/cases/:id/completion/prepare", async (req, res): Promise<void> => 
   }
 });
 
-router.get("/cases/:id/lender-offer", async (req, res): Promise<void> => {
+router.get(["/cases/:id/lender-offer", "/cases/:id/submissions/:submissionId/lender-offer"], async (req, res): Promise<void> => {
   const params = GetCaseLenderOfferReviewParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Invalid case" });
@@ -2649,11 +2750,12 @@ router.get("/cases/:id/lender-offer", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Case not found" });
     return;
   }
-  const [review] = await db
-    .select()
-    .from(lenderOfferReviewsTable)
-    .where(eq(lenderOfferReviewsTable.caseId, caseRow.id));
-  res.json(GetCaseLenderOfferReviewResponse.parse(await lenderOfferReviewView(caseRow, review ?? null)));
+  const scope = await resolveSubmissionId(caseRow.id, submissionIdFromQuery(req));
+  if (!scope) {
+    res.status(404).json({ error: "Submission not found on this case" });
+    return;
+  }
+  res.json(GetCaseLenderOfferReviewResponse.parse(await lenderOfferReviewView(caseRow, await reviewFor(caseRow.id, scope.id), scope.id)));
 });
 
 router.post("/cases/:id/lender-offer", async (req, res): Promise<void> => {
@@ -2686,9 +2788,15 @@ router.post("/cases/:id/lender-offer", async (req, res): Promise<void> => {
     return;
   }
 
+  const scope = await resolveSubmissionId(caseRow.id, body.data.submissionId);
+  if (!scope) {
+    res.status(404).json({ error: "Submission not found on this case" });
+    return;
+  }
   const offerAddress = body.data.offerAddress.trim();
   const offerClientName = body.data.offerClientName.trim();
   const offerPropertyValue = body.data.offerPropertyValue;
+  const offerLoanAmount = body.data.offerLoanAmount != null && body.data.offerLoanAmount > 0 ? body.data.offerLoanAmount : null;
   const expectedClientName = await clientName(caseRow.clientId);
   const addressMatches = normalizeOfferText(offerAddress) === normalizeOfferText(caseRow.propertyAddress);
   const nameMatches = normalizeOfferText(offerClientName) === normalizeOfferText(expectedClientName);
@@ -2700,22 +2808,25 @@ router.post("/cases/:id/lender-offer", async (req, res): Promise<void> => {
     .insert(lenderOfferReviewsTable)
     .values({
       caseId: caseRow.id,
+      submissionId: scope.id,
       documentId: document.id,
       offerAddress,
       offerClientName,
       offerPropertyValue,
+      offerLoanAmount,
       addressMatches,
       nameMatches,
       valueMatches,
       reviewedAt,
     })
     .onConflictDoUpdate({
-      target: lenderOfferReviewsTable.caseId,
+      target: [lenderOfferReviewsTable.caseId, lenderOfferReviewsTable.submissionId],
       set: {
         documentId: document.id,
         offerAddress,
         offerClientName,
         offerPropertyValue,
+        offerLoanAmount,
         addressMatches,
         nameMatches,
         valueMatches,
@@ -2743,11 +2854,7 @@ router.post("/cases/:id/lender-offer", async (req, res): Promise<void> => {
     actorName: res.locals.authUser.displayName,
   });
 
-  const [savedReview] = await db
-    .select()
-    .from(lenderOfferReviewsTable)
-    .where(eq(lenderOfferReviewsTable.caseId, caseRow.id));
-  res.json(ReviewCaseLenderOfferResponse.parse(await lenderOfferReviewView(caseRow, savedReview ?? null)));
+  res.json(ReviewCaseLenderOfferResponse.parse(await lenderOfferReviewView(caseRow, await reviewFor(caseRow.id, scope.id), scope.id)));
 });
 
 router.post("/cases/:id/valuation", async (req, res): Promise<void> => {
@@ -2834,7 +2941,7 @@ export async function stageBlockers(
     incompleteLabels.push("Mark underwriting as complete");
   }
   if (caseRow.stageIndex === STRESS_TEST_STAGE_INDEX) {
-    const stressTest = await ensureCaseStressTest(caseRow);
+    const stressTest = await ensureCaseStressTest(caseRow, (await resolveSubmissionId(caseRow.id, null))?.id ?? null);
     if (!stressTestPasses(stressTest)) {
       incompleteLabels.push("Pass the stress test");
     }
@@ -2905,7 +3012,8 @@ export async function advanceCaseStage(
     .where(eq(casesTable.id, caseRow.id))
     .returning();
   if (updated && nextIndex === STRESS_TEST_STAGE_INDEX) {
-    await ensureCaseStressTest(updated);
+    // Pre-create the test for the lender being proceeded with (the primary open submission).
+    await ensureCaseStressTest(updated, (await resolveSubmissionId(updated.id, null))?.id ?? null);
   }
   // Leaving Submission details means advanced information is done: the client is now active
   // and any step-3 placeholder tasks still open are closed.
@@ -2932,15 +3040,9 @@ export async function advanceCaseStage(
     title: `${stages[nextIndex]} — ${caseRef}`,
     notes: handoffNotes,
   }).catch((error) => log.warn({ err: error, caseId: caseRow.id }, "Stage task was not created"));
-  if (nextIndex === SUBMISSION_STAGE_INDEX) {
-    await createSubmissionStepTasks({
-      caseId: caseRow.id,
-      clientId: caseRow.clientId,
-      reference: caseRef,
-      notes: handoffNotes,
-      defaults: assigneeDefaults,
-    }).catch((error) => log.warn({ err: error, caseId: caseRow.id }, "Submission step tasks were not created"));
-  }
+  // The new stage task's steps are synced now, which also pops the first
+  // Submission step task for whoever Settings hands that step to.
+  await syncCaseChecklists(caseRow.id);
   const entryEmail = stageEntryEmail[stages[nextIndex]];
   if (entryEmail) {
     const client = await clientContact(caseRow.clientId);

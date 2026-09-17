@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { AiProgressButton } from "@/components/ai-progress-button";
 import { BackButton } from "@/components/back-button";
 import { useNavTitle } from "@/lib/nav-history";
 import { stageClasses } from "@/lib/stages";
@@ -55,6 +56,7 @@ import { DatePicker } from "@/components/date-picker";
 import { Checkbox } from "@/components/ui/checkbox";
 import { apiErrorMessage } from "@/components/add/utils";
 import { UnderwritingPanel } from "@/components/case/underwriting-rounds";
+import { LenderScope, defaultSubmissionId } from "@/components/case/lender-scope";
 import { useAuth } from "@/components/auth-provider";
 import {
   Dialog,
@@ -188,15 +190,17 @@ function CompletionPanel({
                   : "Editable staff review"}
             </p>
           </div>
-          <Button
+          <AiProgressButton
             type="button"
             size="sm"
             variant="outline"
             onClick={requestSummary}
-            disabled={disabled || prepare.isPending}
+            disabled={disabled}
+            busy={prepare.isPending}
+            kind="lender_offer"
           >
-            {prepare.isPending ? "Reading..." : "Read offer again"}
-          </Button>
+            Read offer again
+          </AiProgressButton>
         </div>
 
         <Field>
@@ -319,6 +323,8 @@ export default function CaseDetail() {
   const [lastStageIndex, setLastStageIndex] = useState<number | null>(null);
 
   const [isAddReqOpen, setIsAddReqOpen] = useState(false);
+  // Which lender the underwriting / stress test / offer panels are about (cases can be with several).
+  const [scopeSubmissionId, setScopeSubmissionId] = useState<number | null>(null);
   const [newReqLabel, setNewReqLabel] = useState("");
   const addRequirement = useAddCaseRequirement();
   const updateRequirement = useUpdateCaseRequirement();
@@ -447,6 +453,7 @@ export default function CaseDetail() {
   const stageReqs = caseItem.requirements.filter(
     (r) => r.stageIndex === viewingStageIndex,
   );
+  const focusSubmissionId = scopeSubmissionId ?? defaultSubmissionId(caseItem.submissions);
   const stageReqRounds = Array.from(
     new Set(stageReqs.map((r) => r.round)),
   ).sort((a, b) => a - b);
@@ -587,14 +594,14 @@ export default function CaseDetail() {
   };
 
   const underwritingRounds = caseItem.underwritingRounds;
-  const handleMarkRoundSent = (round: number) => {
+  const handleMarkRoundSent = (roundId: number) => {
     markRoundSent.mutate(
-      { id, round },
+      { id, roundId },
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getGetCaseQueryKey(id) });
           qc.invalidateQueries({ queryKey: getListTasksQueryKey() });
-          toast.add({ title: `Round ${round} marked as sent to the lender`, type: "success" });
+          toast.add({ title: "Round marked as sent to the lender", type: "success" });
         },
         onError: (error) =>
           toast.add({ title: "Couldn't mark the round as sent", description: apiErrorMessage(error, "Tick every item the lender asked for first."), type: "error" }),
@@ -874,6 +881,9 @@ export default function CaseDetail() {
                     </CardTitle>
                   )}
                   <CardAction className="flex flex-wrap items-center justify-end gap-2">
+                    {isUnderwritingStage || isLenderOfferStage ? (
+                      <LenderScope submissions={caseItem.submissions} value={focusSubmissionId} onChange={setScopeSubmissionId} />
+                    ) : null}
                     {isViewingCurrentStage &&
                       caseItem.status !== "completed" &&
                       !isSubmissionStage && !isAdviceStage && !isDetailsStage && (
@@ -949,6 +959,7 @@ export default function CaseDetail() {
                   ) : isLenderOfferStage ? (
                     <LenderOfferPanel
                       caseId={id}
+                      submissionId={focusSubmissionId}
                       clientId={caseItem.clientId}
                       offerSent={Boolean(
                         offerSentRequirement?.complete ||
@@ -979,6 +990,7 @@ export default function CaseDetail() {
                       {isUnderwritingStage ? (
                         <UnderwritingPanel
                           caseId={id}
+                          submissionId={focusSubmissionId}
                           rounds={underwritingRounds}
                           underwritingCleared={caseItem.underwritingCleared}
                           canEdit={isViewingCurrentStage && caseItem.status !== "completed"}
@@ -1100,6 +1112,8 @@ export default function CaseDetail() {
             {isStressTestStage && (
               <StressTestPanel
                 caseId={id}
+                submissionId={focusSubmissionId}
+                scope={<LenderScope submissions={caseItem.submissions} value={focusSubmissionId} onChange={setScopeSubmissionId} />}
                 className="lg:min-h-0 lg:flex-1"
                 action={
                   isViewingCurrentStage &&

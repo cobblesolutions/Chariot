@@ -7,6 +7,8 @@
  */
 
 export interface LenderOfferExtractionResponse {
+  /** The loan amount stated on the offer */
+  offerLoanAmount?: number | null;
   offerAddress: string;
   offerClientName: string;
   offerPropertyValue: number;

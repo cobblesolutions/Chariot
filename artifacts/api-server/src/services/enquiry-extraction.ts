@@ -1,6 +1,7 @@
 import { CLIENT_SOURCES, ENQUIRY_TYPES, type ClientSource, type EnquiryType } from "@workspace/db";
 import { runOpenRouterWorkflow } from "../integrations/openrouter";
 import { logger } from "../lib/logger";
+import { progressReport } from "./ai-progress";
 
 /**
  * What we try to read out of an enquiry email. Every field is optional — the
@@ -86,11 +87,34 @@ Enquiry: "type" is one of ${ENQUIRY_TYPES.map((t) => `"${t}"`).join(", ")}. "tim
  * falls back to simple heuristics so the intake form is always pre-filled
  * with something the worker can correct.
  */
+/** Progress lines as the model's answer arrives, keyed by the JSON key that just appeared. */
+const PROGRESS_LABELS: Record<string, string> = {
+  client: "Working out who is asking…",
+  name: "Reading the name…",
+  email: "Reading the contact details…",
+  companyName: "Looking for a limited company…",
+  currentAddress: "Reading where they live…",
+  employmentStatus: "Reading their work and income…",
+  property: "Finding the property…",
+  address: "Reading the property address…",
+  value: "Reading the value and the loan…",
+  matterType: "Deciding what kind of mortgage this is…",
+  currentLender: "Reading the existing mortgage…",
+  enquiry: "Working out what they want…",
+  timescale: "Reading the timescale…",
+  summary: "Writing the summary…",
+  source: "Checking how they came to us…",
+  introducerName: "Noting who referred them…",
+};
+
 export async function extractEnquiry(input: {
   emailText: string;
   subject?: string | null;
   from?: string | null;
+  /** Browser progress token (x-ai-progress), when a person is waiting on this read. */
+  progressToken?: string | null;
 }): Promise<ExtractionResult> {
+  progressReport(input.progressToken, "Scanning the email…");
   const heuristic = heuristicExtract(input);
   try {
     const result = await runOpenRouterWorkflow<{ subject: string | null; from: string | null; email: string }, Partial<ExtractedEnquiry>>({
@@ -98,7 +122,9 @@ export async function extractEnquiry(input: {
       schemaName: "EnquiryExtraction",
       systemInstruction: SYSTEM_INSTRUCTION,
       context: { subject: input.subject ?? null, from: input.from ?? null, email: input.emailText },
+      progress: { token: input.progressToken, labels: PROGRESS_LABELS },
     });
+    progressReport(input.progressToken, "Checking for existing clients…");
     if (result.status === "completed" && result.data) {
       return { extracted: mergeExtraction(normaliseAi(result.data), heuristic), model: result.model ?? null };
     }

@@ -48,7 +48,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Empty,
-  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -190,6 +189,13 @@ export function SubmissionLenders({
                 <Star className={cn("size-3.5 fill-current", colour.text)} />
               )}
               <span className="truncate">{s.lenderName}</span>
+              {s.stepFlagged ? (
+                <span
+                  className="size-2 shrink-0 rounded-full bg-red-500"
+                  title={`${s.stepDays} days waiting for "${s.currentStepLabel}" (limit ${s.stepThresholdDays})`}
+                  aria-label="Step overdue"
+                />
+              ) : null}
               {s.status === "offered" ? (
                 <Badge
                   className="bg-emerald-50 text-emerald-700"
@@ -253,9 +259,6 @@ export function SubmissionLenders({
               <Landmark />
             </EmptyMedia>
             <EmptyTitle>No lender yet</EmptyTitle>
-            <EmptyDescription>
-              Add the lender (or lenders) this case is being submitted to.
-            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (
@@ -598,9 +601,6 @@ function LenderFlow({
                     placeholder="e.g. LND-2026-00123"
                     disabled={!editable}
                   />
-                  <FieldDescription className="mt-2">
-                    Saved when you press Enter or leave the field.
-                  </FieldDescription>
                 </StepCard>
               );
 
@@ -699,8 +699,7 @@ function LenderFlow({
                         />
                       </InputGroup>
                       <FieldDescription>
-                        One valuation for the case — replaces the property value
-                        and feeds the stress test.
+                        Replaces the property value in the stress test.
                       </FieldDescription>
                     </Field>
                     <label

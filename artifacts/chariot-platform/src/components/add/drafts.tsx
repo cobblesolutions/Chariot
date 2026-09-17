@@ -179,9 +179,8 @@ export function AddDrafts({
           <Group
             id="add-awaiting"
             title="Awaiting acceptance"
-            hint="Basic details are in. Accept to send the welcome email, or decline."
             count={groups.awaiting.length}
-            empty={filtering ? "No enquiries match." : "No enquiries waiting. New ones land here."}
+            empty={filtering ? "No enquiries match." : "No enquiries waiting."}
           >
             {groups.awaiting.map(({ client, latest }) => (
               <Row
@@ -207,9 +206,8 @@ export function AddDrafts({
           <Group
             id="add-advanced"
             title="Advanced information"
-            hint="Accepted. Client details, property and case still being completed."
             count={groups.advanced.length}
-            empty={filtering ? "No clients match." : "Nothing here. Every accepted client is set up and every case has moved on."}
+            empty={filtering ? "No clients match." : "Nothing here."}
           >
             {groups.advanced.map(({ client, cases: clientCases, latest }) => (
               <Row
@@ -279,27 +277,22 @@ export function AddDrafts({
 function Group({
   id,
   title,
-  hint,
   count,
   empty,
   children,
 }: {
   id: string;
   title: string;
-  hint: string;
   count: number;
   empty: string;
   children: ReactNode;
 }) {
   return (
     <section id={id} className="scroll-mt-6 space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {title}
-          <span className="font-normal">{count}</span>
-        </h2>
-        <p className="hidden text-xs text-muted-foreground sm:block">{hint}</p>
-      </div>
+      <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+        <span className="font-normal">{count}</span>
+      </h2>
       {count === 0 ? (
         <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">{empty}</p>
       ) : (

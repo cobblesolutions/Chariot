@@ -92,7 +92,6 @@ export function ThreadInfoPanel({
       key: "pinned",
       icon: Pin,
       title: "Pinned",
-      description: "Keep at the top of the list",
       checked: thread.pinned,
       toggle: () => actions.togglePinned(thread),
     },
@@ -100,7 +99,6 @@ export function ThreadInfoPanel({
       key: "muted",
       icon: BellOff,
       title: "Muted",
-      description: "No badge counts for this thread",
       checked: thread.muted,
       toggle: () => actions.toggleMuted(thread),
     },
@@ -108,7 +106,6 @@ export function ThreadInfoPanel({
       key: "archived",
       icon: Archive,
       title: "Archived",
-      description: "Hidden from the inbox views",
       checked: thread.archived,
       toggle: () => actions.toggleArchived(thread),
     },
@@ -233,7 +230,7 @@ export function ThreadInfoPanel({
           <Section title={`Shared files · ${files.length}`}>
             {files.length === 0 ? (
               <p className="px-1 text-sm text-muted-foreground">
-                Files sent in this thread will show up here.
+                No files yet.
               </p>
             ) : (
               <ItemGroup className="gap-1" data-testid="shared-files">
@@ -287,9 +284,6 @@ export function ThreadInfoPanel({
                   </ItemMedia>
                   <ItemContent className="gap-0">
                     <ItemTitle className="text-sm">{setting.title}</ItemTitle>
-                    <ItemDescription className="text-xs">
-                      {setting.description}
-                    </ItemDescription>
                   </ItemContent>
                   <ItemActions>
                     <Switch

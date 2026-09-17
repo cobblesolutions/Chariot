@@ -217,13 +217,7 @@ export function ImportPropertiesDialog({
               label="Review task goes to"
             />
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Tip: the template has one example row showing every accepted
-            column. Dates can be YYYY-MM-DD or DD/MM/YYYY; money can include £
-            and commas.
-          </p>
-        )}
+        ) : null}
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

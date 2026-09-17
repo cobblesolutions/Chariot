@@ -17,4 +17,8 @@ page?: number;
  */
 pageSize?: number;
 propertyId?: number;
+/**
+ * Also return routine activity (reminders, uploads, reference changes) that the milestone feed hides by default
+ */
+includeRoutine?: boolean;
 };

@@ -1,3 +1,6 @@
+import { keyProgress, progressReport } from "../services/ai-progress";
+import { streamJsonCompletion, type JsonMessageContent } from "./openrouter-stream";
+
 export type AiWorkflow =
   | "extract_client_enquiry"
   | "extract_client_instruction"
@@ -24,6 +27,11 @@ export interface AiRequest<TContext> {
     contentType: string;
     bytes: Buffer;
   };
+  /**
+   * Live progress for the browser: the token it polls, and what to say when
+   * each JSON key first appears in the model's answer (see services/ai-progress.ts).
+   */
+  progress?: { token: string | null | undefined; labels?: Record<string, string> };
 }
 
 export interface AiResult<T> {
@@ -54,10 +62,10 @@ export async function runOpenRouterWorkflow<TContext, TResult>(
     return { status: "disabled" };
   }
   const model = modelFor(request.tier ?? "standard");
-  const userContent = request.document
+  const userContent: JsonMessageContent = request.document
     ? [
         {
-          type: "text",
+          type: "text" as const,
           text: JSON.stringify({
             workflow: request.workflow,
             schema: request.schemaName,
@@ -65,7 +73,7 @@ export async function runOpenRouterWorkflow<TContext, TResult>(
           }),
         },
         {
-          type: "file",
+          type: "file" as const,
           file: {
             filename: request.document.filename,
             file_data: `data:${request.document.contentType};base64,${request.document.bytes.toString("base64")}`,
@@ -77,36 +85,17 @@ export async function runOpenRouterWorkflow<TContext, TResult>(
         schema: request.schemaName,
         context: request.context,
       });
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "X-Title": "Chariot Financial Solutions",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: request.systemInstruction },
-        { role: "user", content: userContent },
-      ],
-    }),
+  progressReport(request.progress?.token, "Sending to the model…");
+  const { data } = await streamJsonCompletion({
+    apiKey,
+    model,
+    system: request.systemInstruction,
+    user: userContent,
+    ...keyProgress(request.progress?.token, request.progress?.labels ?? {}),
   });
-  if (!response.ok) {
-    throw new Error(`OpenRouter request failed with status ${response.status}`);
-  }
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("OpenRouter returned no structured result");
-  }
   return {
     status: "completed",
-    data: JSON.parse(content) as TResult,
+    data: data as TResult,
     model,
   };
 }

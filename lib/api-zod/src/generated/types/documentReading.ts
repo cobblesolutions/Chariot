@@ -21,4 +21,6 @@ export interface DocumentReading {
   /** Client fields this reading filled in. */
   appliedFields: string[];
   readAt: Date;
+  /** What the reader is doing right now */
+  progress?: string | null;
 }

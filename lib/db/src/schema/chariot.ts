@@ -12,6 +12,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  unique,
 } from "drizzle-orm/pg-core";
 
 const money = (name: string) =>
@@ -755,6 +756,8 @@ export const caseStressTestsTable = pgTable(
     caseId: integer("case_id")
       .notNull()
       .references(() => casesTable.id, { onDelete: "cascade" }),
+    /** One stress test per lender submission (null = case-level, pre-submissions). */
+    submissionId: integer("submission_id").references(() => caseSubmissionsTable.id, { onDelete: "set null" }),
     lenderId: integer("lender_id").references(() => lendersTable.id),
     monthlyRent: money("monthly_rent"),
     propertyValue: money("property_value"),
@@ -782,7 +785,7 @@ export const caseStressTestsTable = pgTable(
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (table) => [uniqueIndex("case_stress_tests_case_idx").on(table.caseId)],
+  (table) => [unique("case_stress_tests_case_sub").on(table.caseId, table.submissionId).nullsNotDistinct()],
 );
 
 export const requirementsTable = pgTable(
@@ -792,6 +795,8 @@ export const requirementsTable = pgTable(
     caseId: integer("case_id")
       .notNull()
       .references(() => casesTable.id, { onDelete: "cascade" }),
+    /** Set for stages from Submission on, where each lender submission has its own requirements. */
+    submissionId: integer("submission_id").references(() => caseSubmissionsTable.id, { onDelete: "set null" }),
     stageIndex: integer("stage_index").notNull(),
     label: text("label").notNull(),
     complete: boolean("complete").notNull().default(false),
@@ -802,7 +807,7 @@ export const requirementsTable = pgTable(
     completedBy: text("completed_by"),
   },
   (table) => [
-    uniqueIndex("case_requirements_case_label_round_idx").on(table.caseId, table.label, table.round),
+    unique("case_requirements_case_sub_label_round").on(table.caseId, table.submissionId, table.label, table.round).nullsNotDistinct(),
   ],
 );
 
@@ -824,6 +829,8 @@ export const underwritingRoundsTable = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    /** The lender submission this round is with; null for cases from before submissions existed. */
+    submissionId: integer("submission_id").references(() => caseSubmissionsTable.id, { onDelete: "set null" }),
     /** The case handler's task whose checkboxes are this round's requirements. */
     taskId: integer("task_id").references(() => tasksTable.id, { onDelete: "set null" }),
     /** Everything provided and sent back to the lender; the next round may start. */
@@ -968,6 +975,8 @@ export const documentsTable = pgTable("documents", {
   ),
   status: text("status").notNull().default("required"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
+  /** Set by staff on documents that go stale (ID, payslips, statements); the tile is flagged once it passes. */
+  expiresAt: date("expires_at", { mode: "string" }),
 }, (table) => [
   index("documents_client_idx").on(table.clientId),
   index("documents_case_idx").on(table.caseId),
@@ -1008,6 +1017,10 @@ export const lenderOfferReviewsTable = pgTable(
     caseId: integer("case_id")
       .notNull()
       .references(() => casesTable.id, { onDelete: "cascade" }),
+    /** One review per lender submission (null = case-level, pre-submissions). */
+    submissionId: integer("submission_id").references(() => caseSubmissionsTable.id, { onDelete: "set null" }),
+    /** The loan the offer is for; the broker fee percentage is taken from this when present. */
+    offerLoanAmount: money("offer_loan_amount"),
     documentId: integer("document_id")
       .notNull()
       .references(() => documentsTable.id, { onDelete: "cascade" }),
@@ -1017,6 +1030,12 @@ export const lenderOfferReviewsTable = pgTable(
     addressMatches: boolean("address_matches").notNull().default(false),
     nameMatches: boolean("name_matches").notNull().default(false),
     valueMatches: boolean("value_matches").notNull().default(false),
+    /** Scope step 12: when the offer went to the client (with the invoice) and the lender was told. */
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
+    notifiedByUserId: integer("notified_by_user_id").references(() => appUsersTable.id, { onDelete: "set null" }),
+    clientEmailStatus: text("client_email_status"),
+    lenderEmailStatus: text("lender_email_status"),
+    invoiceId: integer("invoice_id").references(() => invoicesTable.id, { onDelete: "set null" }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1029,7 +1048,7 @@ export const lenderOfferReviewsTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex("lender_offer_reviews_case_idx").on(table.caseId),
+    unique("lender_offer_reviews_case_sub").on(table.caseId, table.submissionId).nullsNotDistinct(),
     index("lender_offer_reviews_document_idx").on(table.documentId),
   ],
 );
@@ -1404,4 +1423,20 @@ export const alertsTable = pgTable(
     uniqueIndex("alerts_dedupe_key_idx").on(table.dedupeKey),
     index("alerts_open_idx").on(table.resolvedAt, table.assignedUserId),
   ],
+);
+
+/**
+ * Red flags per submission step (scope: "on every step"): days a lender
+ * submission may sit at a step before it is flagged and an alert is raised.
+ */
+export const submissionStepThresholdsTable = pgTable(
+  "submission_step_thresholds",
+  {
+    id: serial("id").primaryKey(),
+    /** dip | caseNumber | fee | valuationDate | valuationCompleted | decision */
+    stepKey: text("step_key").notNull(),
+    thresholdDays: integer("threshold_days"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+  },
+  (table) => [uniqueIndex("submission_step_thresholds_step_idx").on(table.stepKey)],
 );

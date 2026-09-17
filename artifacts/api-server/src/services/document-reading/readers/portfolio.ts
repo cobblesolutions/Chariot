@@ -338,6 +338,13 @@ export const portfolioReader: DocumentReader<PortfolioReading> = {
   key: "portfolio",
   categories: ["portfolio"],
   systemInstruction: SYSTEM_INSTRUCTION,
+  progressLabels: {
+    properties: "Reading the properties one by one…",
+    totalValue: "Totalling the portfolio value…",
+    totalBorrowing: "Totalling the borrowing…",
+    totalMonthlyRent: "Totalling the rent…",
+    confidence: "Weighing up how sure it is…",
+  },
   normalise,
   heuristic,
   merge,

@@ -7,7 +7,6 @@ import type { CaseDetail } from "@workspace/api-client-react";
 import { ListTodo } from "lucide-react";
 import {
   Empty,
-  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -118,11 +117,6 @@ export const CaseTasksPanel = forwardRef<QuickAddHandle, CaseTasksPanelProps>(
                 <EmptyTitle>
                   {showCompleted ? "No tasks found" : "No active tasks"}
                 </EmptyTitle>
-                <EmptyDescription>
-                  {showCompleted
-                    ? "Nothing has been logged against this case yet."
-                    : "Everything assigned on this case is done."}
-                </EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (

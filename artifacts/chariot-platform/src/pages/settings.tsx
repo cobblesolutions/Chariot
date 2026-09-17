@@ -30,29 +30,16 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { UsersTab } from "@/components/settings/users-tab";
 import { TermsOfBusinessTab } from "@/components/settings/terms-of-business-tab";
+import { SubmissionStepThresholds } from "@/components/settings/submission-step-thresholds";
 import { useSearch } from "wouter";
 
 const assigneeSections: Array<{
   section: DefaultAssigneeSection;
   label: string;
-  description: string;
 }> = [
-  {
-    section: "client",
-    label: "Client",
-    description: "Receives the onboarding task when a client is created.",
-  },
-  {
-    section: "property",
-    label: "Property",
-    description: "Receives the review task when a property is added.",
-  },
-  {
-    section: "case",
-    label: "Case",
-    description:
-      "Owns new cases. Also the fallback for any pipeline stage below that has no one of its own.",
-  },
+  { section: "client", label: "Client" },
+  { section: "property", label: "Property" },
+  { section: "case", label: "Case" },
 ];
 
 const ROLE_DEFAULT_VALUE = "__none__";
@@ -62,7 +49,6 @@ const roleDefaultLabel = (role: StaffRole) =>
 
 function AssigneeRow({
   label,
-  description,
   leadingLabel,
   value,
   onChange,
@@ -73,7 +59,6 @@ function AssigneeRow({
   dot,
 }: {
   label: string;
-  description: string;
   leadingLabel: string;
   value: string;
   onChange: (value: string) => void;
@@ -93,10 +78,7 @@ function AssigneeRow({
         {dot && (
           <span className={`mt-1.5 size-2.5 shrink-0 rounded-full ${dot}`} />
         )}
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">{label}</p>
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </div>
+        <p className="min-w-0 text-sm font-medium text-foreground">{label}</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <AssigneePicker
@@ -192,29 +174,21 @@ function DefaultAssigneesTab({ isAdmin }: { isAdmin: boolean }) {
   return (
     <TabsContent value="default-assignees" className="space-y-6">
       <p className="text-sm text-muted-foreground">
-        Who is assigned by default at each point of the journey. Staff can
-        still pick someone else on the Add page. Anything left on its default
-        inherits from the level above, ending with the first active member of
-        the owning role.
+        Defaults inherit from the level above; staff can still pick someone
+        else on the Add page.
       </p>
 
       <section className="space-y-2">
-        <div>
-          <h2 className="text-sm font-semibold">Adding records</h2>
-          <p className="text-xs text-muted-foreground">
-            Task owners when a client, property or case is created.
-          </p>
-        </div>
+        <h2 className="text-sm font-semibold">Adding records</h2>
         <Card className="gap-0 overflow-hidden py-0">
           {isLoading ? (
             loading
           ) : (
             <div className="divide-y">
-              {assigneeSections.map(({ section, label, description }) => (
+              {assigneeSections.map(({ section, label }) => (
                 <AssigneeRow
                   key={section}
                   label={label}
-                  description={description}
                   leadingLabel={roleDefaultLabel("case_manager")}
                   {...rowProps(section)}
                 />
@@ -225,15 +199,7 @@ function DefaultAssigneesTab({ isAdmin }: { isAdmin: boolean }) {
       </section>
 
       <section className="space-y-2">
-        <div>
-          <h2 className="text-sm font-semibold">Pipeline stages</h2>
-          <p className="text-xs text-muted-foreground">
-            Who receives the handoff task when a case enters each stage. Within
-            Submission, every step can also go to its own person, who then gets
-            a dedicated task for that step; steps left on the stage default are
-            covered by the stage task.
-          </p>
-        </div>
+        <h2 className="text-sm font-semibold">Pipeline stages</h2>
         <Card className="gap-0 overflow-hidden py-0">
           {isLoading ? (
             loading
@@ -243,11 +209,6 @@ function DefaultAssigneesTab({ isAdmin }: { isAdmin: boolean }) {
                 <div key={stage} className="divide-y">
                   <AssigneeRow
                     label={stage}
-                    description={
-                      stageIndex === 0
-                        ? "The adviser: receives the advice task when a new case is opened."
-                        : `Receives the handoff task when a case reaches ${stage}.`
-                    }
                     leadingLabel={stageLeadingLabel(stageIndex)}
                     dot={stageClasses(stageIndex).bg}
                     {...rowProps(stageSection(stageIndex))}
@@ -258,7 +219,6 @@ function DefaultAssigneesTab({ isAdmin }: { isAdmin: boolean }) {
                         key={step.section}
                         indent
                         label={step.label}
-                        description={step.description}
                         leadingLabel={stepLeadingLabel}
                         {...rowProps(step.section)}
                       />
@@ -455,6 +415,7 @@ export default function SettingsPage() {
               </div>
             )}
           </Card>
+          <SubmissionStepThresholds isAdmin={isAdmin} />
         </TabsContent>
       </Tabs>
     </div>

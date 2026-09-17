@@ -33,6 +33,7 @@ import { stageName } from "../services/stages";
 import {
   ChecklistStepLockedError,
   STAGE_HANDOFF_KIND,
+  SUBMISSION_STEP_KIND,
   applyChecklistItemToCase,
   checklistStepLock,
   syncCaseChecklists,
@@ -95,6 +96,33 @@ async function completeStageHandoff(
   return outcome.incomplete
     ? { error: `${refOf(caseRow)} can't leave ${stage} yet — finish the steps on the case first`, incomplete: outcome.incomplete }
     : { error: `${stage} is finished from the case page: ${outcome.error.toLowerCase()}` };
+}
+
+/**
+ * A Submission step task is one step of the case: completing it by hand
+ * records the step (fee confirmed, decision requested…) or is refused when
+ * the step needs something recorded on the case first. Returns the refusal.
+ */
+async function completeStepTask(task: TaskRow, user: { id: number; displayName: string }): Promise<{ error: string } | null> {
+  if (task.kind !== SUBMISSION_STEP_KIND || task.caseId == null) return null;
+  const items = await db
+    .select({ id: taskChecklistItemsTable.id, sourceKey: taskChecklistItemsTable.sourceKey, title: taskChecklistItemsTable.title, done: taskChecklistItemsTable.done })
+    .from(taskChecklistItemsTable)
+    .where(and(eq(taskChecklistItemsTable.taskId, task.id), eq(taskChecklistItemsTable.done, false)));
+  for (const item of items) {
+    if (!item.sourceKey) continue;
+    const lock = checklistStepLock(item.sourceKey, item.title);
+    if (lock) return { error: `${lock} — this task closes itself once it is recorded.` };
+    try {
+      await applyChecklistItemToCase(task, { sourceKey: item.sourceKey, title: item.title, done: true }, { userId: user.id, displayName: user.displayName });
+    } catch (error) {
+      if (error instanceof ChecklistStepLockedError) return { error: error.message };
+      throw error;
+    }
+    await db.update(taskChecklistItemsTable).set({ done: true }).where(eq(taskChecklistItemsTable.id, item.id));
+  }
+  await syncCaseChecklists(task.caseId);
+  return null;
 }
 
 /** Column values that move a task into or out of `done`. */
@@ -172,7 +200,7 @@ router.post("/tasks/bulk", async (req, res): Promise<void> => {
   if (parsed.data.status === "done") {
     for (const row of rows) {
       if (row.status === "done") continue;
-      const refusal = await completeStageHandoff(row, user);
+      const refusal = (await completeStageHandoff(row, user)) ?? (await completeStepTask(row, user));
       if (refusal) {
         res.status(409).json({ ...refusal, error: `${row.title}: ${refusal.error}` });
         return;
@@ -260,7 +288,7 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   const status =
     body.data.status ?? (body.data.completed === true ? "done" : body.data.completed === false ? "todo" : undefined);
   if (status === "done" && existing.status !== "done") {
-    const refusal = await completeStageHandoff(existing, user);
+    const refusal = (await completeStageHandoff(existing, user)) ?? (await completeStepTask(existing, user));
     if (refusal) {
       res.status(409).json(refusal);
       return;

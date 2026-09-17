@@ -117,11 +117,7 @@ export function EventDialog({
         <DialogHeader>
           <DialogTitle>{event ? "Edit event" : "New event"}</DialogTitle>
           <DialogDescription>
-            {mirrored
-              ? `${mirrored}. Change the date here and the case updates with it.`
-              : event
-                ? "Update the details of this event."
-                : "Add a valuation, completion, renewal or anything else to the calendar."}
+            {mirrored ? `${mirrored}. Changing the date here updates the case.` : null}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>

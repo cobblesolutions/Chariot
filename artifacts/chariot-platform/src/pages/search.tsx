@@ -18,7 +18,6 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { Item, ItemGroup, ItemSeparator } from "@/components/ui/item";
-import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -88,10 +87,6 @@ export default function SearchPage() {
       <div className="mx-auto max-w-page space-y-6">
         <header className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Search</h1>
-          <p className="text-sm text-muted-foreground">
-            Every case, client, property, task, message, event, lender, staff
-            member, activity, document, invoice and renewal — by any detail.
-          </p>
         </header>
 
         <div className="space-y-3">
@@ -144,11 +139,6 @@ export default function SearchPage() {
                   ? `Type at least ${MIN_QUERY_LENGTH} characters`
                   : "What are you looking for?"}
               </EmptyTitle>
-              <EmptyDescription>
-                Several words narrow the search: every word has to appear
-                somewhere in the record. Press <Kbd>Ctrl</Kbd> <Kbd>K</Kbd>{" "}
-                anywhere in the app for the quick search.
-              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
@@ -174,9 +164,7 @@ export default function SearchPage() {
                 <SearchX />
               </EmptyMedia>
               <EmptyTitle>Search failed</EmptyTitle>
-              <EmptyDescription>
-                Something went wrong reaching the server. Try again in a moment.
-              </EmptyDescription>
+              <EmptyDescription>Try again in a moment.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         )}
@@ -188,11 +176,6 @@ export default function SearchPage() {
                 <SearchX />
               </EmptyMedia>
               <EmptyTitle>No matches for “{query}”</EmptyTitle>
-              <EmptyDescription>
-                {types.length > 0
-                  ? "Nothing in the selected record types. Try searching everything, or fewer words."
-                  : "Check the spelling, or try fewer or different words."}
-              </EmptyDescription>
               {types.length > 0 && (
                 <Button
                   variant="outline"
@@ -274,7 +257,6 @@ export default function SearchPage() {
                     {hidden > 0 && (
                       <p className="border-t px-4 py-2 text-xs text-muted-foreground">
                         Showing the first {group.items.length} of {group.total}.
-                        Add another word to narrow it down.
                       </p>
                     )}
                   </CardContent>

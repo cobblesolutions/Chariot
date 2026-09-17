@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/select";
 import { DatePicker } from "@/components/date-picker";
 import { AddressCombobox } from "@/components/address-combobox";
-import type { PlaceAddress } from "@workspace/api-client-react";
+import { CompanyNameCombobox } from "@/components/company-name-combobox";
+import type { CompaniesHouseCompany, PlaceAddress } from "@workspace/api-client-react";
 import { cn } from "@/lib/utils";
 
 const NONE = "__none__";
@@ -20,7 +21,14 @@ const NONE = "__none__";
 export type InlineOption = { value: string; label: string } | string;
 
 export type InlineFieldKind =
-  "text" | "textarea" | "number" | "money" | "date" | "select" | "address";
+  | "text"
+  | "textarea"
+  | "number"
+  | "money"
+  | "date"
+  | "select"
+  | "address"
+  | "company";
 
 export interface InlineFieldProps {
   label: string;
@@ -43,6 +51,11 @@ export interface InlineFieldProps {
    * postcode) instead of just the street line.
    */
   onSaveAddress?: (address: PlaceAddress) => Promise<unknown>;
+  /**
+   * `kind: "company"` only: persist the whole Companies House record (name,
+   * number, registered office) instead of just the typed name.
+   */
+  onSaveCompany?: (company: CompaniesHouseCompany) => Promise<unknown>;
   disabled?: boolean;
 }
 
@@ -62,6 +75,7 @@ export function InlineField({
   options = [],
   onSave,
   onSaveAddress,
+  onSaveCompany,
   disabled,
 }: InlineFieldProps) {
   const current = value ?? "";
@@ -153,6 +167,27 @@ export function InlineField({
             onBlur={onBlur}
             onKeyDown={onKeyDown}
             aria-label={label}
+          />
+        );
+        break;
+      case "company":
+        editor = (
+          <CompanyNameCombobox
+            autoFocus
+            value={draft}
+            onChange={setDraft}
+            onSelect={(company) => {
+              skipBlur.current = true;
+              if (onSaveCompany) {
+                void commit(company.name, () => onSaveCompany(company));
+              } else {
+                void commit(company.name);
+              }
+            }}
+            onBlur={onBlur}
+            onKeyDown={onKeyDown}
+            aria-label={label}
+            className={cn("w-full", alignment)}
           />
         );
         break;

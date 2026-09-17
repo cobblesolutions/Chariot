@@ -37,7 +37,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyContent, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -495,8 +495,7 @@ export default function ClientDetail() {
                         taskMutations.createTask({ ...input, clientId: client.id }, { onSuccess: () => reset() })
                       }
                     />
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs text-muted-foreground">Tasks about this client and their cases.</p>
+                    <div className="flex justify-end">
                       <Button variant="ghost" size="xs" onClick={() => setShowDoneTasks((value) => !value)}>
                         {showDoneTasks ? "Hide completed" : "Show completed"}
                       </Button>
@@ -508,7 +507,6 @@ export default function ClientDetail() {
                             <ListTodo />
                           </EmptyMedia>
                           <EmptyTitle>No open tasks</EmptyTitle>
-                          <EmptyDescription>Add one above — it will be linked to this client.</EmptyDescription>
                         </EmptyHeader>
                       </Empty>
                     ) : (

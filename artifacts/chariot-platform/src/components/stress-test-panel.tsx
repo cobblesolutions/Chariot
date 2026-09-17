@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   useGetCase,
   useGetCaseStressTest,
+  useGetSubmissionStressTest,
+  getGetSubmissionStressTestQueryKey,
   useUpdateCaseStressTest,
   useApplyCaseStressTestPropertyValue,
   useListLenders,
@@ -300,21 +302,34 @@ function CommaInput({
 
 export function StressTestPanel({
   caseId,
+  submissionId = null,
+  scope,
   className,
   action,
 }: {
   caseId: number;
+  /** The lender submission the test is for; the primary open one when null. */
+  submissionId?: number | null;
+  /** The lender picker, shown beside the page action when the case is with several lenders. */
+  scope?: React.ReactNode;
   className?: string;
   /** Page-level control shown top-right (e.g. advance the stage). */
   action?: React.ReactNode;
 }) {
   const qc = useQueryClient();
-  const { data: record, isLoading } = useGetCaseStressTest(caseId, {
-    query: {
-      enabled: !!caseId,
-      queryKey: getGetCaseStressTestQueryKey(caseId),
-    },
+  // The case-level route follows the primary lender; a specific lender has its own route.
+  const caseLevel = useGetCaseStressTest(caseId, {
+    query: { enabled: !!caseId && submissionId == null, queryKey: getGetCaseStressTestQueryKey(caseId) },
   });
+  const perLender = useGetSubmissionStressTest(caseId, submissionId ?? 0, {
+    query: { enabled: !!caseId && submissionId != null, queryKey: getGetSubmissionStressTestQueryKey(caseId, submissionId ?? 0) },
+  });
+  const record = submissionId != null ? perLender.data : caseLevel.data;
+  const isLoading = submissionId != null ? perLender.isLoading : caseLevel.isLoading;
+  const invalidateRecord = () => {
+    qc.invalidateQueries({ queryKey: getGetCaseStressTestQueryKey(caseId) });
+    if (submissionId != null) qc.invalidateQueries({ queryKey: getGetSubmissionStressTestQueryKey(caseId, submissionId) });
+  };
   const { data: lenders = [] } = useListLenders();
   const { data: caseItem } = useGetCase(caseId, {
     query: { enabled: !!caseId, queryKey: getGetCaseQueryKey(caseId) },
@@ -497,13 +512,11 @@ export function StressTestPanel({
     setAutoSaveState("saving");
     const timer = window.setTimeout(() => {
       updateStressTest.mutate(
-        { id: caseId, data: stressTestPayload },
+        { id: caseId, data: { ...stressTestPayload, submissionId: submissionId ?? null } },
         {
           onSuccess: () => {
             setAutoSaveState("saved");
-            qc.invalidateQueries({
-              queryKey: getGetCaseStressTestQueryKey(caseId),
-            });
+            invalidateRecord();
           },
           onError: () => {
             setAutoSaveState("error");
@@ -514,7 +527,7 @@ export function StressTestPanel({
     }, 600);
 
     return () => window.clearTimeout(timer);
-  }, [caseId, loadedForId, qc, record, stressTestPayload, updateStressTest]);
+  }, [caseId, submissionId, loadedForId, qc, record, stressTestPayload, updateStressTest]);
 
   const handleApplyPropertyValue = () => {
     if (
@@ -525,7 +538,7 @@ export function StressTestPanel({
     )
       return;
     applyPropertyValue.mutate(
-      { id: caseId },
+      { id: caseId, data: { submissionId: submissionId ?? null } },
       {
         onSuccess: () => {
           toast.add({
@@ -670,6 +683,7 @@ export function StressTestPanel({
                 : "Save value to case"}
             </Button>
           )}
+          {scope}
           {action}
         </CardAction>
       </CardHeader>

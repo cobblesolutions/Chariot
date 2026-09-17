@@ -7,6 +7,10 @@
  */
 
 export interface LenderOfferReviewInput {
+  /** The lender submission the offer is from; the primary open one when omitted. */
+  submissionId?: number | null;
+  /** The loan on the offer */
+  offerLoanAmount?: number | null;
   documentId: number;
   offerAddress: string;
   offerClientName: string;

@@ -50,7 +50,6 @@ import {
 } from "@/components/ui/collapsible";
 import {
   Empty,
-  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -1141,13 +1140,6 @@ export default function TasksPage() {
                             ? "Nothing matches"
                             : `Nothing in ${activeView.label.toLowerCase()}`}
                         </EmptyTitle>
-                        <EmptyDescription>
-                          {search || priorities.size || activeFilterCount
-                            ? "Try clearing the search or filters."
-                            : view === "done"
-                              ? "Completed tasks will show up here."
-                              : "Press N to add a task."}
-                        </EmptyDescription>
                       </EmptyHeader>
                     </Empty>
                   ) : (

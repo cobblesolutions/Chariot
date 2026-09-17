@@ -24,6 +24,7 @@ import type {
   AddRequirementInput,
   AddUnderwritingRoundInput,
   AdvanceInput,
+  AiProgress,
   Alert,
   AlertEvaluation,
   AlertSummary,
@@ -162,6 +163,9 @@ import type {
   StaffUser,
   StageThreshold,
   SubmissionDetailsState,
+  SubmissionScopeInput,
+  SubmissionStepThreshold,
+  SubmissionStepThresholdInput,
   Task,
   TaskBulkUpdate,
   TaskChecklistItem,
@@ -2171,6 +2175,83 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getCreateClientMutationOptions(options));
     }
 
+export const getGetAiProgressUrl = (token: string,) => {
+
+
+
+
+  return `/api/ai/progress/${token}`
+}
+
+/**
+ * @summary Live progress of an AI read the browser started with an x-ai-progress header (email extraction, document reads).
+ */
+export const getAiProgress = async (token: string, options?: Parameters<typeof customFetch>[1]): Promise<AiProgress> => {
+
+  return customFetch<AiProgress>(getGetAiProgressUrl(token),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAiProgressQueryKey = (token: string,) => {
+    return [
+    `/api/ai/progress/${token}`
+    ] as const;
+    }
+
+
+export const getGetAiProgressQueryOptions = <TData = Awaited<ReturnType<typeof getAiProgress>>, TError = ErrorType<unknown>>(token: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiProgress>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAiProgressQueryKey(token);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAiProgress>>> = ({ signal }) => getAiProgress(token, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: token !== null && token !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAiProgress>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAiProgressQueryResult = NonNullable<Awaited<ReturnType<typeof getAiProgress>>>
+export type GetAiProgressQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Live progress of an AI read the browser started with an x-ai-progress header (email extraction, document reads).
+ */
+
+export function useGetAiProgress<TData = Awaited<ReturnType<typeof getAiProgress>>, TError = ErrorType<unknown>>(
+ token: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAiProgress>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAiProgressQueryOptions(token,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getExtractClientEnquiryUrl = () => {
 
 
@@ -4123,6 +4204,85 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       return useMutation(getDeleteCaseSubmissionMutationOptions(options));
     }
 
+export const getGetSubmissionStressTestUrl = (id: number,
+    submissionId: number,) => {
+
+
+
+
+  return `/api/cases/${id}/submissions/${submissionId}/stress-test`
+}
+
+/**
+ * The stress test for one lender submission (the case-level route follows the primary open submission).
+ */
+export const getSubmissionStressTest = async (id: number,
+    submissionId: number, options?: Parameters<typeof customFetch>[1]): Promise<CaseStressTest> => {
+
+  return customFetch<CaseStressTest>(getGetSubmissionStressTestUrl(id,submissionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSubmissionStressTestQueryKey = (id: number,
+    submissionId: number,) => {
+    return [
+    `/api/cases/${id}/submissions/${submissionId}/stress-test`
+    ] as const;
+    }
+
+
+export const getGetSubmissionStressTestQueryOptions = <TData = Awaited<ReturnType<typeof getSubmissionStressTest>>, TError = ErrorType<void>>(id: number,
+    submissionId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubmissionStressTest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSubmissionStressTestQueryKey(id,submissionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSubmissionStressTest>>> = ({ signal }) => getSubmissionStressTest(id,submissionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined && submissionId !== null && submissionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSubmissionStressTest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSubmissionStressTestQueryResult = NonNullable<Awaited<ReturnType<typeof getSubmissionStressTest>>>
+export type GetSubmissionStressTestQueryError = ErrorType<void>
+
+
+
+export function useGetSubmissionStressTest<TData = Awaited<ReturnType<typeof getSubmissionStressTest>>, TError = ErrorType<void>>(
+ id: number,
+    submissionId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubmissionStressTest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSubmissionStressTestQueryOptions(id,submissionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export const getGetCaseStressTestUrl = (id: number,) => {
 
 
@@ -4268,14 +4428,15 @@ export const getApplyCaseStressTestPropertyValueUrl = (id: number,) => {
   return `/api/cases/${id}/stress-test/apply-property-value`
 }
 
-export const applyCaseStressTestPropertyValue = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<Case> => {
+export const applyCaseStressTestPropertyValue = async (id: number,
+    submissionScopeInput?: SubmissionScopeInput, options?: Parameters<typeof customFetch>[1]): Promise<Case> => {
 
   return customFetch<Case>(getApplyCaseStressTestPropertyValueUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submissionScopeInput)
   }
 );}
 
@@ -4284,8 +4445,8 @@ export const applyCaseStressTestPropertyValue = async (id: number, options?: Par
 
 
 export const getApplyCaseStressTestPropertyValueMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyCaseStressTestPropertyValue>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof applyCaseStressTestPropertyValue>>, TError,{id: number}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyCaseStressTestPropertyValue>>, TError,{id: number;data?: BodyType<SubmissionScopeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applyCaseStressTestPropertyValue>>, TError,{id: number;data?: BodyType<SubmissionScopeInput>}, TContext> => {
 
 const mutationKey = ['applyCaseStressTestPropertyValue'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -4297,10 +4458,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyCaseStressTestPropertyValue>>, {id: number}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applyCaseStressTestPropertyValue>>, {id: number;data?: BodyType<SubmissionScopeInput>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  applyCaseStressTestPropertyValue(id,requestOptions)
+          return  applyCaseStressTestPropertyValue(id,data,requestOptions)
         }
 
 
@@ -4311,19 +4472,169 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ApplyCaseStressTestPropertyValueMutationResult = NonNullable<Awaited<ReturnType<typeof applyCaseStressTestPropertyValue>>>
-
+    export type ApplyCaseStressTestPropertyValueMutationBody = BodyType<SubmissionScopeInput> | undefined
     export type ApplyCaseStressTestPropertyValueMutationError = ErrorType<void>
 
     export const useApplyCaseStressTestPropertyValue = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyCaseStressTestPropertyValue>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applyCaseStressTestPropertyValue>>, TError,{id: number;data?: BodyType<SubmissionScopeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof applyCaseStressTestPropertyValue>>,
         TError,
-        {id: number},
+        {id: number;data?: BodyType<SubmissionScopeInput>},
         TContext
       > => {
       return useMutation(getApplyCaseStressTestPropertyValueMutationOptions(options));
     }
+
+export const getNotifyLenderOfferUrl = (id: number,) => {
+
+
+
+
+  return `/api/cases/${id}/lender-offer/notify`
+}
+
+/**
+ * The offer moment (scope step 12). Issues the client's invoice from the fee agreed on the case (drafting it if
+ * none exists), emails the client the offer document with the invoice, and emails the lender's contacts that the
+ * offer was received. Ticks "Offer sent to client". Administrators only (it issues an invoice).
+ */
+export const notifyLenderOffer = async (id: number,
+    submissionScopeInput?: SubmissionScopeInput, options?: Parameters<typeof customFetch>[1]): Promise<LenderOfferReviewResponse> => {
+
+  return customFetch<LenderOfferReviewResponse>(getNotifyLenderOfferUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submissionScopeInput)
+  }
+);}
+
+
+
+
+
+export const getNotifyLenderOfferMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof notifyLenderOffer>>, TError,{id: number;data?: BodyType<SubmissionScopeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof notifyLenderOffer>>, TError,{id: number;data?: BodyType<SubmissionScopeInput>}, TContext> => {
+
+const mutationKey = ['notifyLenderOffer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof notifyLenderOffer>>, {id: number;data?: BodyType<SubmissionScopeInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  notifyLenderOffer(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type NotifyLenderOfferMutationResult = NonNullable<Awaited<ReturnType<typeof notifyLenderOffer>>>
+    export type NotifyLenderOfferMutationBody = BodyType<SubmissionScopeInput> | undefined
+    export type NotifyLenderOfferMutationError = ErrorType<void>
+
+    export const useNotifyLenderOffer = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof notifyLenderOffer>>, TError,{id: number;data?: BodyType<SubmissionScopeInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof notifyLenderOffer>>,
+        TError,
+        {id: number;data?: BodyType<SubmissionScopeInput>},
+        TContext
+      > => {
+      return useMutation(getNotifyLenderOfferMutationOptions(options));
+    }
+
+export const getGetSubmissionLenderOfferReviewUrl = (id: number,
+    submissionId: number,) => {
+
+
+
+
+  return `/api/cases/${id}/submissions/${submissionId}/lender-offer`
+}
+
+/**
+ * The offer review for one lender submission (the case-level route follows the primary open submission).
+ */
+export const getSubmissionLenderOfferReview = async (id: number,
+    submissionId: number, options?: Parameters<typeof customFetch>[1]): Promise<LenderOfferReviewResponse> => {
+
+  return customFetch<LenderOfferReviewResponse>(getGetSubmissionLenderOfferReviewUrl(id,submissionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSubmissionLenderOfferReviewQueryKey = (id: number,
+    submissionId: number,) => {
+    return [
+    `/api/cases/${id}/submissions/${submissionId}/lender-offer`
+    ] as const;
+    }
+
+
+export const getGetSubmissionLenderOfferReviewQueryOptions = <TData = Awaited<ReturnType<typeof getSubmissionLenderOfferReview>>, TError = ErrorType<void>>(id: number,
+    submissionId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubmissionLenderOfferReview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSubmissionLenderOfferReviewQueryKey(id,submissionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSubmissionLenderOfferReview>>> = ({ signal }) => getSubmissionLenderOfferReview(id,submissionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined && submissionId !== null && submissionId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSubmissionLenderOfferReview>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSubmissionLenderOfferReviewQueryResult = NonNullable<Awaited<ReturnType<typeof getSubmissionLenderOfferReview>>>
+export type GetSubmissionLenderOfferReviewQueryError = ErrorType<void>
+
+
+
+export function useGetSubmissionLenderOfferReview<TData = Awaited<ReturnType<typeof getSubmissionLenderOfferReview>>, TError = ErrorType<void>>(
+ id: number,
+    submissionId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubmissionLenderOfferReview>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSubmissionLenderOfferReviewQueryOptions(id,submissionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetCaseLenderOfferReviewUrl = (id: number,) => {
 
@@ -5556,21 +5867,21 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     }
 
 export const getMarkUnderwritingRoundSentUrl = (id: number,
-    round: number,) => {
+    roundId: number,) => {
 
 
 
 
-  return `/api/cases/${id}/underwriting/rounds/${round}/sent`
+  return `/api/cases/${id}/underwriting/rounds/${roundId}/sent`
 }
 
 /**
- * Everything the lender asked for in this round has been provided and sent back; closes the round and its task. The next round may then start.
+ * Everything the lender asked for in this round has been provided and sent back; closes the round and its task. The next round (with that lender) may then start.
  */
 export const markUnderwritingRoundSent = async (id: number,
-    round: number, options?: Parameters<typeof customFetch>[1]): Promise<CaseDetail> => {
+    roundId: number, options?: Parameters<typeof customFetch>[1]): Promise<CaseDetail> => {
 
-  return customFetch<CaseDetail>(getMarkUnderwritingRoundSentUrl(id,round),
+  return customFetch<CaseDetail>(getMarkUnderwritingRoundSentUrl(id,roundId),
   {
     ...options,
     method: 'POST'
@@ -5584,8 +5895,8 @@ export const markUnderwritingRoundSent = async (id: number,
 
 
 export const getMarkUnderwritingRoundSentMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, TError,{id: number;round: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, TError,{id: number;round: number}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, TError,{id: number;roundId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, TError,{id: number;roundId: number}, TContext> => {
 
 const mutationKey = ['markUnderwritingRoundSent'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -5597,10 +5908,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, {id: number;round: number}> = (props) => {
-          const {id,round} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, {id: number;roundId: number}> = (props) => {
+          const {id,roundId} = props ?? {};
 
-          return  markUnderwritingRoundSent(id,round,requestOptions)
+          return  markUnderwritingRoundSent(id,roundId,requestOptions)
         }
 
 
@@ -5615,11 +5926,11 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type MarkUnderwritingRoundSentMutationError = ErrorType<void>
 
     export const useMarkUnderwritingRoundSent = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, TError,{id: number;round: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof markUnderwritingRoundSent>>, TError,{id: number;roundId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof markUnderwritingRoundSent>>,
         TError,
-        {id: number;round: number},
+        {id: number;roundId: number},
         TContext
       > => {
       return useMutation(getMarkUnderwritingRoundSentMutationOptions(options));
@@ -7521,6 +7832,146 @@ export function useViewPortalCaseTermsOfBusiness<TData = Awaited<ReturnType<type
 
 
 
+
+export const getListSubmissionStepThresholdsUrl = () => {
+
+
+
+
+  return `/api/settings/submission-step-thresholds`
+}
+
+/**
+ * Days a lender submission may sit at each step (DIP, case number, fee, valuation date, valuation, decision) before it is flagged red.
+ */
+export const listSubmissionStepThresholds = async ( options?: Parameters<typeof customFetch>[1]): Promise<SubmissionStepThreshold[]> => {
+
+  return customFetch<SubmissionStepThreshold[]>(getListSubmissionStepThresholdsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSubmissionStepThresholdsQueryKey = () => {
+    return [
+    `/api/settings/submission-step-thresholds`
+    ] as const;
+    }
+
+
+export const getListSubmissionStepThresholdsQueryOptions = <TData = Awaited<ReturnType<typeof listSubmissionStepThresholds>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSubmissionStepThresholds>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSubmissionStepThresholdsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSubmissionStepThresholds>>> = ({ signal }) => listSubmissionStepThresholds({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSubmissionStepThresholds>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSubmissionStepThresholdsQueryResult = NonNullable<Awaited<ReturnType<typeof listSubmissionStepThresholds>>>
+export type ListSubmissionStepThresholdsQueryError = ErrorType<unknown>
+
+
+
+export function useListSubmissionStepThresholds<TData = Awaited<ReturnType<typeof listSubmissionStepThresholds>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSubmissionStepThresholds>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSubmissionStepThresholdsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateSubmissionStepThresholdUrl = (stepKey: string,) => {
+
+
+
+
+  return `/api/settings/submission-step-thresholds/${stepKey}`
+}
+
+export const updateSubmissionStepThreshold = async (stepKey: string,
+    submissionStepThresholdInput: SubmissionStepThresholdInput, options?: Parameters<typeof customFetch>[1]): Promise<SubmissionStepThreshold> => {
+
+  return customFetch<SubmissionStepThreshold>(getUpdateSubmissionStepThresholdUrl(stepKey),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(submissionStepThresholdInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateSubmissionStepThresholdMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSubmissionStepThreshold>>, TError,{stepKey: string;data: BodyType<SubmissionStepThresholdInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSubmissionStepThreshold>>, TError,{stepKey: string;data: BodyType<SubmissionStepThresholdInput>}, TContext> => {
+
+const mutationKey = ['updateSubmissionStepThreshold'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSubmissionStepThreshold>>, {stepKey: string;data: BodyType<SubmissionStepThresholdInput>}> = (props) => {
+          const {stepKey,data} = props ?? {};
+
+          return  updateSubmissionStepThreshold(stepKey,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSubmissionStepThresholdMutationResult = NonNullable<Awaited<ReturnType<typeof updateSubmissionStepThreshold>>>
+    export type UpdateSubmissionStepThresholdMutationBody = BodyType<SubmissionStepThresholdInput>
+    export type UpdateSubmissionStepThresholdMutationError = ErrorType<void>
+
+    export const useUpdateSubmissionStepThreshold = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSubmissionStepThreshold>>, TError,{stepKey: string;data: BodyType<SubmissionStepThresholdInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSubmissionStepThreshold>>,
+        TError,
+        {stepKey: string;data: BodyType<SubmissionStepThresholdInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateSubmissionStepThresholdMutationOptions(options));
+    }
 
 export const getListStageThresholdsUrl = () => {
 

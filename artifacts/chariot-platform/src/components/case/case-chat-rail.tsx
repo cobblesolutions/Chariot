@@ -37,7 +37,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   Empty,
-  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -652,9 +651,6 @@ export function CaseChatRail({
                 <MessageSquare />
               </EmptyMedia>
               <EmptyTitle>No conversations</EmptyTitle>
-              <EmptyDescription>
-                Start one to discuss this case with the team.
-              </EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : selected.kind === "case" ? (

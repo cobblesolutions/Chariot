@@ -135,8 +135,7 @@ export function LinkPropertyDialog({
         <DialogHeader>
           <DialogTitle>Use an existing property</DialogTitle>
           <DialogDescription>
-            Pick a property already in the register to add it to {clientName}.
-            Properties in use on another client's open case can't be moved.
+            Properties on another client's open case can't be moved.
           </DialogDescription>
         </DialogHeader>
 

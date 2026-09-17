@@ -6,13 +6,13 @@ import { requireStaff } from "../auth/session";
 import { documentStorage } from "../services/document-storage";
 import { syncClientOnboardingDocument } from "../services/client-onboarding";
 import { syncCaseChecklists, syncClientChecklists } from "../services/task-checklists";
-import { queueDocumentReading, readDocument } from "../services/document-reading";
+import { readDocument } from "../services/document-reading";
 
 const router: IRouter = Router();
 const allowed = new Set(["application/pdf", "image/jpeg", "image/png", "image/tiff", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain", "text/csv", "audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/webm", "audio/ogg", "audio/aac", "audio/x-m4a"]);
 const safeName = (name: string) => name.replace(/[\r\n\\/]/g, "_").slice(0, 255) || "document";
 function validMime(value: string) { return allowed.has(value.toLowerCase()) && !/(executable|javascript|x-msdownload|x-sh)/i.test(value); }
-function view(row: typeof documentsTable.$inferSelect) { return { id: row.id, name: row.name, category: row.category, status: row.status, clientId: row.clientId, caseId: row.caseId, contentType: row.contentType, byteSize: row.byteSize, uploadedAt: row.uploadedAt?.toISOString() ?? null }; }
+function view(row: typeof documentsTable.$inferSelect) { return { id: row.id, name: row.name, category: row.category, status: row.status, clientId: row.clientId, caseId: row.caseId, contentType: row.contentType, byteSize: row.byteSize, uploadedAt: row.uploadedAt?.toISOString() ?? null, expiresAt: row.expiresAt ?? null }; }
 async function upload(req: any, res: any, clientOnly = false) {
   const clientId = Number(req.header("x-client-id")); const caseIdValue = req.header("x-case-id"); const category = req.header("x-document-category") ?? "general"; const filename = safeName(req.header("x-filename") ?? "upload"); const contentType = (req.header("x-content-type") ?? req.header("content-type") ?? "").split(";")[0];
   if (!Number.isInteger(clientId) || clientId < 1 || !validMime(contentType) || !Buffer.isBuffer(req.body)) { res.status(400).json({ error: "Valid client id, filename and business document MIME type are required" }); return; }
@@ -50,8 +50,7 @@ async function upload(req: any, res: any, clientOnly = false) {
     await syncClientOnboardingDocument(clientId, category, res.locals.authUser.id);
     await syncClientChecklists(clientId);
     if (caseId) await syncCaseChecklists(caseId);
-    // The document reading system extracts what it can (e.g. income from a payslip) in the background.
-    queueDocumentReading(row!.id, res.locals.authUser.displayName);
+    // Reading is on demand (the Read button / POST /documents/:id/read): an upload must not spend model credit by itself.
     res.status(201).json(api.UploadDocumentResponse.parse(view(row!)));
   } catch (error) {
     res.status(400).json({ error: error instanceof Error ? error.message : "Document upload failed" });

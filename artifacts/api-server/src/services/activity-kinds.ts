@@ -68,3 +68,40 @@ const MATCHERS: Array<[RegExp, ActivityKind]> = [
 export function classifyActivityTitle(title: string): ActivityKind {
   return MATCHERS.find(([re]) => re.test(title))?.[1] ?? "update";
 }
+
+/**
+ * Routine activities are housekeeping and intermediate steps — references
+ * being set, reminders re-sent, drafts created, documents uploaded — that a
+ * record's own timeline wants but the firm-wide activity page hides by
+ * default so it reads as milestones. Kept as one POSIX-compatible pattern
+ * so the API can filter in SQL (`title !~* pattern`) and pagination still
+ * counts correctly; do not use JS-only regex syntax in it.
+ */
+export const ROUTINE_TITLE_PATTERN = [
+  "case number set",
+  "pipeline reordered",
+  "details prefilled",
+  "welcome email",
+  "onboarding reminder",
+  "terms of business (sent for signature|template published|signature request voided)",
+  "email template",
+  "document (uploaded|read)",
+  "review [0-9]+ propert",
+  "requirement added",
+  "underwriting round added",
+  "stress test",
+  "valuation (figure recorded|reopened)",
+  "renewal updated",
+  "invoice created",
+  "lender offer details reviewed",
+  "submission reopened",
+  "property added",
+  "advice re-sent",
+  "details re-sent",
+]
+  .map((prefix) => `^(${prefix})`)
+  .join("|");
+
+const ROUTINE_TITLE = new RegExp(ROUTINE_TITLE_PATTERN, "i");
+
+export const isRoutineActivityTitle = (title: string) => ROUTINE_TITLE.test(title);

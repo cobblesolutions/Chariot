@@ -1,6 +1,7 @@
 import { eq, inArray } from "drizzle-orm";
 import { db, documentReadingsTable, documentsTable, type DocumentReadingStatus } from "@workspace/db";
 import { logger } from "../../lib/logger";
+import { progressCurrent, progressFinish, progressReport, progressStart } from "../ai-progress";
 import { extractFileContent } from "../assistant/core";
 import { documentStorage } from "../document-storage";
 import { documentModelEnabled, readWithModel } from "./model";
@@ -21,6 +22,8 @@ export { documentChecks, type DocumentCheck } from "./checks";
  */
 const READERS: DocumentReader[] = [identityReader, bankStatementsReader, proofOfIncomeReader, creditReportReader, portfolioReader];
 
+export const progressToken = (documentId: number) => `document:${documentId}`;
+
 export function readerForCategory(category: string): DocumentReader | null {
   return READERS.find((reader) => reader.categories.includes(category)) ?? null;
 }
@@ -37,6 +40,8 @@ export interface DocumentReadingView {
   error: string | null;
   appliedFields: string[];
   readAt: string;
+  /** What the reader is doing right now, while status is pending. */
+  progress: string | null;
 }
 
 export function readingView(row: typeof documentReadingsTable.$inferSelect): DocumentReadingView {
@@ -49,6 +54,7 @@ export function readingView(row: typeof documentReadingsTable.$inferSelect): Doc
     error: row.error,
     appliedFields: Array.isArray(row.appliedFields) ? (row.appliedFields as string[]) : [],
     readAt: row.updatedAt.toISOString(),
+    progress: row.status === "pending" ? progressCurrent(progressToken(row.documentId)) : null,
   };
 }
 
@@ -85,7 +91,10 @@ export async function readDocument(documentId: number, actorName = "System"): Pr
       set: { reader: reader.key, status: "pending", error: null, updatedAt: new Date() },
     });
 
+  const token = progressToken(documentId);
+  progressStart(token, "Opening the file…");
   const finish = async (patch: Partial<typeof documentReadingsTable.$inferInsert>) => {
+    progressFinish(token, patch.error ?? null);
     const [row] = await db.update(documentReadingsTable)
       .set({ ...patch, updatedAt: new Date() })
       .where(eq(documentReadingsTable.documentId, documentId))
@@ -97,6 +106,7 @@ export async function readDocument(documentId: number, actorName = "System"): Pr
     if (!document.objectPath) return finish({ status: "unsupported", error: "No file is stored for this document" });
     const bytes = await documentStorage.get(document.objectPath);
     const contentType = document.contentType ?? "application/octet-stream";
+    progressReport(token, contentType.startsWith("image/") ? "Preparing the image…" : XLSX_TYPES.has(contentType) ? "Reading the spreadsheet…" : "Extracting the text…");
     // Spreadsheets (portfolio schedules) become CSV text so the text readers can take them.
     const extracted = XLSX_TYPES.has(contentType) || /\.xlsx?$/i.test(document.name)
       ? { kind: "text" as const, text: xlsxToCsv(bytes), truncated: false }
@@ -107,6 +117,7 @@ export async function readDocument(documentId: number, actorName = "System"): Pr
     }
     const content: ReadableContent = extracted;
 
+    progressReport(token, "Looking for the usual patterns…");
     const heuristic = content.kind === "text" ? reader.heuristic(content.text, document) : null;
     let data: Record<string, unknown> | null = null;
     let source: "ai" | "heuristic" | null = null;
@@ -117,7 +128,9 @@ export async function readDocument(documentId: number, actorName = "System"): Pr
           systemInstruction: reader.systemInstruction,
           content,
           context: { reader: reader.key, filename: document.name, contentType: document.contentType },
+          progress: { token, labels: reader.progressLabels ?? {} },
         });
+        progressReport(token, "Checking the answer against the text…");
         const ai = reader.normalise(result.data);
         data = heuristic ? reader.merge(ai, heuristic) : ai;
         source = "ai";
@@ -134,6 +147,7 @@ export async function readDocument(documentId: number, actorName = "System"): Pr
       source = "heuristic";
     }
     // `apply` may annotate `data` (e.g. the ids of properties it created), so it is stored afterwards.
+    progressReport(token, "Filling in the record…");
     const appliedFields = await reader.apply(document, data, actorName);
     return finish({ status: "completed", source, model, data, error: null, appliedFields });
   } catch (error) {

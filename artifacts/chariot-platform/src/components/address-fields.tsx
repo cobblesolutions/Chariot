@@ -22,6 +22,12 @@ export interface AddressFieldsProps {
   disabled?: boolean;
   /** Extra classes per line, e.g. the "read from a document" highlight. */
   classNames?: Partial<Record<keyof AddressValue, string | undefined>>;
+  /**
+   * `row`: the three fields sit as siblings on the parent's grid, the street
+   * line two columns wide, city and postcode one each. `stacked` (default):
+   * street line above a city/postcode pair.
+   */
+  layout?: "stacked" | "row";
 }
 
 /**
@@ -37,11 +43,13 @@ export function AddressFields({
   required,
   disabled,
   classNames,
+  layout = "stacked",
 }: AddressFieldsProps) {
   const set = (patch: Partial<AddressValue>) => onChange({ ...value, ...patch });
+  const row = layout === "row";
   return (
     <>
-      <Field>
+      <Field className={cn(row && "sm:col-span-2")}>
         <FieldLabel htmlFor={`${idPrefix}-address`}>
           {label}
           {required ? <RequiredDot /> : null}
@@ -64,7 +72,7 @@ export function AddressFields({
           className={cn("w-full", classNames?.address)}
         />
       </Field>
-      <div className="grid grid-cols-2 gap-4">
+      <div className={cn(row ? "contents" : "grid grid-cols-2 gap-4")}>
         <Field>
           <FieldLabel htmlFor={`${idPrefix}-city`}>City</FieldLabel>
           <Input

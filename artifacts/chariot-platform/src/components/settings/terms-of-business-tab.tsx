@@ -252,10 +252,7 @@ export function TermsOfBusinessTab({ isAdmin }: { isAdmin: boolean }) {
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:gap-0">
           {/* Left: the editor — one card per thing to edit */}
           <div className="min-w-0 space-y-3 xl:pr-6">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-muted-foreground">
-                Write the document in sections. Where a value should come from the case, click <b>Insert value</b>.
-              </p>
+            <div className="flex justify-end">
               <InsertValueMenu placeholders={placeholders} fields={doc.fields} onInsert={insertToken} disabled={!isAdmin} />
             </div>
 
@@ -333,18 +330,23 @@ export function TermsOfBusinessTab({ isAdmin }: { isAdmin: boolean }) {
           </div>
 
           {/* Right: the preview, on its own "desk" behind a rail */}
-          <div className="min-w-0 xl:border-l xl:pl-6">
-            <div className="rounded-xl border border-dashed bg-muted/50 p-4 xl:sticky xl:top-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Eye className="size-3.5" /> Preview
+          <div className="min-w-0 xl:border-l-2 xl:border-border xl:pl-6">
+            {/* Sticks to the viewport and fills it; only the page inside scrolls. */}
+            <Card className="gap-0 overflow-hidden py-0 xl:sticky xl:top-4 xl:flex xl:h-[calc(100dvh-2rem)] xl:flex-col">
+              <div className="flex items-center justify-between gap-2 border-b bg-muted/40 px-4 py-2.5">
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <Eye className="size-4 text-muted-foreground" /> Preview
+                  <span className="text-xs font-normal text-muted-foreground">· updates as you type</span>
                 </p>
                 <Badge variant="outline" className="bg-background font-normal text-muted-foreground">Sample case · not a real client</Badge>
               </div>
-              <div className="max-h-[calc(100dvh-8rem)] overflow-y-auto pr-1">
+              <div className="max-h-[70dvh] overflow-y-auto bg-[#E4ECE9] p-5 xl:max-h-none xl:min-h-0 xl:flex-1 dark:bg-[#0f1f1b]">
                 <DocumentPreview doc={doc} placeholders={placeholders} version={nextVersion} />
               </div>
-            </div>
+              <div className="border-t bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
+                Highlighted words are replaced with each case's own values. The signature and date are filled in by DocuSign.
+              </div>
+            </Card>
           </div>
         </div>
       ) : null}
@@ -370,20 +372,18 @@ export function TermsOfBusinessTab({ isAdmin }: { isAdmin: boolean }) {
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-xs text-muted-foreground">Kept so a case can always show the version it signed.</p>
           </div>
         </Card>
       ) : null}
-      <p className="px-1 text-xs text-muted-foreground">
-        Each case has its own Terms of Business: staff answer the questions on the case, preview the document, and send it for signature.
-        The signed copy is filed in the case automatically and the case cannot proceed until it is back.{!isAdmin ? " Only an administrator can publish changes." : ""}
-      </p>
+      {!isAdmin ? (
+        <p className="px-1 text-xs text-muted-foreground">Only an administrator can publish changes.</p>
+      ) : null}
 
       <ConfirmDialog
         open={resetOpen}
         onOpenChange={setResetOpen}
         title="Reset to the built-in template?"
-        description="Replaces the text and questions in the editor with Chariot's built-in Terms of Business. Nothing is published until you click Publish."
+        description="Replaces the editor text and questions. Nothing is published until you click Publish."
         actionLabel="Reset"
         onConfirm={() => {
           if (data) setDoc(toDoc({ title: data.defaults.title, body: data.defaults.body, fields: data.defaults.fields }));
@@ -564,20 +564,20 @@ function DocumentPreview({ doc, placeholders, version }: { doc: Doc; placeholder
   }, [placeholders, doc.fields, version]);
   const firm = values.get("firmName") ?? "Chariot";
   return (
-    <div className="rounded-sm border border-neutral-200 bg-white px-8 py-7 text-[13px] leading-relaxed text-neutral-800 shadow-md dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-200">
-      <p className="text-[10px] tracking-[0.15em] text-neutral-500">{firm.toUpperCase()}</p>
-      <h3 className="mt-2 text-2xl font-bold text-neutral-900 dark:text-neutral-50"><TokenText text={doc.title || "Untitled"} values={values} /></h3>
+    <div className="mx-auto max-w-[680px] rounded-sm border border-neutral-300/60 bg-white px-9 py-8 text-[13px] leading-relaxed text-neutral-800 shadow-lg dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-200">
+      <img src="/chariot-logo.png" alt={firm} className="h-8 w-auto" />
+      <h3 className="mt-5 text-2xl font-bold text-neutral-900 dark:text-neutral-50"><TokenText text={doc.title || "Untitled"} values={values} /></h3>
       <p className="mt-1 text-xs text-neutral-500">Prepared for {values.get("clientName")} · {values.get("date")} · Version {version}</p>
-      <hr className="my-4 border-neutral-200 dark:border-neutral-800" />
+      <hr className="my-4 border-t-2 border-[#064B3E]/70" />
       {doc.intro.trim() ? <Blocks text={doc.intro} values={values} /> : null}
       {doc.sections.map((section, index) => (
         <div key={index} className="mt-4">
-          {section.heading.trim() ? <h4 className="mb-1 text-sm font-bold text-neutral-900 dark:text-neutral-50"><TokenText text={section.heading} values={values} /></h4> : null}
+          {section.heading.trim() ? <h4 className="mb-1 text-sm font-bold text-[#064B3E] dark:text-emerald-300"><TokenText text={section.heading} values={values} /></h4> : null}
           <Blocks text={section.text} values={values} />
         </div>
       ))}
-      <hr className="my-5 border-neutral-200 dark:border-neutral-800" />
-      <p className="text-sm font-bold text-neutral-900 dark:text-neutral-50">Agreement</p>
+      <hr className="my-5 border-[#cfe0db] dark:border-neutral-800" />
+      <p className="text-sm font-bold text-[#064B3E] dark:text-emerald-300">Agreement</p>
       <p className="mt-1">I confirm that I have read and understood these terms and agree to be bound by them.</p>
       <div className="mt-8 grid grid-cols-2 gap-6">
         <div className="border-t border-neutral-800 pt-1 dark:border-neutral-300">
@@ -588,7 +588,6 @@ function DocumentPreview({ doc, placeholders, version }: { doc: Doc; placeholder
           <p className="text-[10px] text-neutral-500">Date</p>
         </div>
       </div>
-      <p className="mt-6 text-[10px] text-neutral-400">The signature and date are filled in by DocuSign. Highlighted words are replaced with each case's own values.</p>
     </div>
   );
 }
@@ -611,12 +610,7 @@ function FieldsEditor({
   return (
     <div className="space-y-2">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium">Questions answered per case</p>
-          <p className="text-xs text-muted-foreground">
-            Anything that changes case by case and is not already on the case record. Each answer can be dropped into the text with Insert value.
-          </p>
-        </div>
+        <p className="text-sm font-medium">Questions answered per case</p>
         {!disabled ? (
           <Button type="button" variant="outline" size="sm" onClick={() => onChange([...fields, { key: "", label: "", type: "text", required: true }])}>
             <Plus /> Add question
@@ -878,7 +872,7 @@ function DocusignCard({ isAdmin, signature }: { isAdmin: boolean; signature: Sig
         open={disconnectOpen}
         onOpenChange={setDisconnectOpen}
         title="Disconnect DocuSign?"
-        description="No new documents can be sent for signature, and ones already out cannot be tracked, until an administrator connects an account again."
+        description="Documents can't be sent or tracked until an account is connected again."
         actionLabel="Disconnect"
         destructive
         onConfirm={() =>

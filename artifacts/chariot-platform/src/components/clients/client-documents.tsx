@@ -12,7 +12,7 @@ import {
 import { CircleDashed, FileText, Upload } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
@@ -120,6 +120,7 @@ export function ClientDocuments({ client }: { client: ClientDetail }) {
             isUpdating={uploading}
             documents={client.documents}
             onDocumentDeleted={refresh}
+            onDocumentUpdated={refresh}
           />
         )}
       </section>
@@ -148,7 +149,6 @@ export function ClientDocuments({ client }: { client: ClientDetail }) {
                 <FileText />
               </EmptyMedia>
               <EmptyTitle>Nothing else on file</EmptyTitle>
-              <EmptyDescription>Upload a file above and it will be kept against this client.</EmptyDescription>
             </EmptyHeader>
           </Empty>
         ) : (

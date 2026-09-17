@@ -227,7 +227,7 @@ function SentView({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Void the signature request?</DialogTitle>
-            <DialogDescription>The client's DocuSign link stops working. You can change the details and send the document again.</DialogDescription>
+            <DialogDescription>The client's DocuSign link stops working.</DialogDescription>
           </DialogHeader>
           <Field>
             <FieldLabel>Reason (shown to the client)</FieldLabel>

@@ -38,7 +38,7 @@ export async function reconcileCasePortfolioRequirement(caseId: number, lenderId
       label: portfolioRequirementLabel,
       round: 1,
     }).onConflictDoUpdate({
-      target: [requirementsTable.caseId, requirementsTable.label, requirementsTable.round],
+      target: [requirementsTable.caseId, requirementsTable.submissionId, requirementsTable.label, requirementsTable.round],
       set: { stageIndex },
     });
   });

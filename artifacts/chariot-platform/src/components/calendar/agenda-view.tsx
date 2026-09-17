@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import {
   Empty,
   EmptyContent,
-  EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
@@ -55,9 +54,6 @@ export function AgendaView({
             <CalendarDays />
           </EmptyMedia>
           <EmptyTitle>Nothing scheduled</EmptyTitle>
-          <EmptyDescription>
-            There are no events in this period yet.
-          </EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
           <Button

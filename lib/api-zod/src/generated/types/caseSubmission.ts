@@ -30,4 +30,17 @@ export interface CaseSubmission {
   /** @nullable */
   closeReason: string | null;
   createdAt: Date;
+  /**
+     * The first incomplete step (dip | caseNumber | fee | valuationDate | valuationCompleted | decision); null when all are done.
+     * @nullable
+     */
+  currentStep: string | null;
+  /** @nullable */
+  currentStepLabel: string | null;
+  /** Days the submission has sat at the current step. */
+  stepDays: number;
+  /** @nullable */
+  stepThresholdDays: number | null;
+  /** True when stepDays has reached the threshold set in Settings. */
+  stepFlagged: boolean;
 }

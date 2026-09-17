@@ -30,8 +30,8 @@ import { apiErrorMessage } from "./utils";
 
 type TemplateKey = "client_welcome" | "advice_email";
 const TITLES: Record<TemplateKey, { title: string; blurb: string }> = {
-  client_welcome: { title: "Welcome email", blurb: 'Sent when an enquiry is accepted. Change the words here — the logo, colours and the "Set up portal access" button are fixed.' },
-  advice_email: { title: "Advice email", blurb: "Sent with the recommendation. The advice table and the Approve / Further discussion buttons are fixed; the words around them are yours." },
+  client_welcome: { title: "Welcome email", blurb: 'Sent when an enquiry is accepted. The logo, colours and "Set up portal access" button are fixed.' },
+  advice_email: { title: "Advice email", blurb: "Sent with the recommendation. The advice table and Approve / Further discussion buttons are fixed." },
 };
 /** The email shell is laid out at this width; the preview scales it down to fit. */
 const EMAIL_WIDTH = 600;
@@ -223,9 +223,6 @@ export function WelcomeTemplateDialog({
                   onChange={(event) => setBody(event.target.value)}
                   className="min-h-64 font-sans text-sm leading-relaxed"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Leave a blank line between paragraphs. Click a placeholder to insert it where the cursor is.
-                </p>
               </Field>
               <div className="flex flex-wrap gap-1.5">
                 {(template.data?.placeholders ?? []).map((item) => (
@@ -290,7 +287,7 @@ export function WelcomeTemplateDialog({
           open={resetOpen}
           onOpenChange={setResetOpen}
           title="Reset to the default text?"
-          description="Your wording is discarded and the built-in welcome email is used again."
+          description="Your wording is discarded."
           actionLabel="Reset"
           destructive
           onConfirm={handleReset}

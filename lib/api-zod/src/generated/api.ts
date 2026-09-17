@@ -231,6 +231,9 @@ export const RespondApprovalByTokenResponse = zod.object({
 })
 
 
+export const listPortalDocumentsResponseExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
 export const ListPortalDocumentsResponseItem = zod.object({
   "id": zod.int(),
   "name": zod.string(),
@@ -241,6 +244,7 @@ export const ListPortalDocumentsResponseItem = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(listPortalDocumentsResponseExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -249,7 +253,8 @@ export const ListPortalDocumentsResponseItem = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 export const ListPortalDocumentsResponse = zod.array(ListPortalDocumentsResponseItem)
@@ -507,12 +512,13 @@ export const listActivitiesQueryPageDefault = 1;
 export const listActivitiesQueryPageSizeDefault = 25;
 export const listActivitiesQueryPageSizeMax = 25;
 
-
+export const listActivitiesQueryIncludeRoutineDefault = false;
 
 export const ListActivitiesQueryParams = zod.object({
   "page": zod.coerce.number().int().min(1).default(listActivitiesQueryPageDefault),
   "pageSize": zod.coerce.number().int().min(1).max(listActivitiesQueryPageSizeMax).default(listActivitiesQueryPageSizeDefault),
-  "propertyId": zod.coerce.number().int().optional()
+  "propertyId": zod.coerce.number().int().optional(),
+  "includeRoutine": zod.coerce.boolean().default(listActivitiesQueryIncludeRoutineDefault).describe('Also return routine activity (reminders, uploads, reference changes) that the milestone feed hides by default')
 })
 
 export const ListActivitiesResponse = zod.object({
@@ -808,6 +814,21 @@ export const CreateClientResponse = zod.object({
 
 
 /**
+ * @summary Live progress of an AI read the browser started with an x-ai-progress header (email extraction, document reads).
+ */
+export const GetAiProgressParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const GetAiProgressResponse = zod.object({
+  "messages": zod.array(zod.string()),
+  "current": zod.string().nullable().describe('The latest message while the read is still running.'),
+  "done": zod.boolean(),
+  "error": zod.string().nullable()
+})
+
+
+/**
  * Read a pasted enquiry email and suggest client, property and enquiry fields plus possible existing-client matches. Nothing is written.
  */
 export const extractClientEnquiryBodyEmailTextMax = 40000;
@@ -1051,6 +1072,7 @@ export const AcceptClientEnquiryParams = zod.object({
 
 export const acceptClientEnquiryResponseOneNextFollowUpAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const acceptClientEnquiryResponseOneDateOfBirthRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const acceptClientEnquiryResponseTwoDocumentsItemExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const acceptClientEnquiryResponseTwoPropertiesItemPurchaseDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const acceptClientEnquiryResponseTwoPropertiesItemCurrentRateEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
@@ -1150,6 +1172,7 @@ export const AcceptClientEnquiryResponse = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(acceptClientEnquiryResponseTwoDocumentsItemExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -1158,7 +1181,8 @@ export const AcceptClientEnquiryResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })),
   "properties": zod.array(zod.object({
@@ -1238,7 +1262,10 @@ export const AcceptClientEnquiryResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -1268,6 +1295,7 @@ export const DeclineClientEnquiryBody = zod.object({
 
 export const declineClientEnquiryResponseOneNextFollowUpAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const declineClientEnquiryResponseOneDateOfBirthRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const declineClientEnquiryResponseTwoDocumentsItemExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const declineClientEnquiryResponseTwoPropertiesItemPurchaseDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const declineClientEnquiryResponseTwoPropertiesItemCurrentRateEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
@@ -1367,6 +1395,7 @@ export const DeclineClientEnquiryResponse = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(declineClientEnquiryResponseTwoDocumentsItemExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -1375,7 +1404,8 @@ export const DeclineClientEnquiryResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })),
   "properties": zod.array(zod.object({
@@ -1455,7 +1485,10 @@ export const DeclineClientEnquiryResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -1477,6 +1510,7 @@ export const ReopenClientEnquiryParams = zod.object({
 
 export const reopenClientEnquiryResponseOneNextFollowUpAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const reopenClientEnquiryResponseOneDateOfBirthRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const reopenClientEnquiryResponseTwoDocumentsItemExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const reopenClientEnquiryResponseTwoPropertiesItemPurchaseDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const reopenClientEnquiryResponseTwoPropertiesItemCurrentRateEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
@@ -1576,6 +1610,7 @@ export const ReopenClientEnquiryResponse = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(reopenClientEnquiryResponseTwoDocumentsItemExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -1584,7 +1619,8 @@ export const ReopenClientEnquiryResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })),
   "properties": zod.array(zod.object({
@@ -1664,7 +1700,10 @@ export const ReopenClientEnquiryResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -1998,6 +2037,7 @@ export const GetClientParams = zod.object({
 
 export const getClientResponseOneNextFollowUpAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getClientResponseOneDateOfBirthRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getClientResponseTwoDocumentsItemExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getClientResponseTwoPropertiesItemPurchaseDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getClientResponseTwoPropertiesItemCurrentRateEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
@@ -2097,6 +2137,7 @@ export const GetClientResponse = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(getClientResponseTwoDocumentsItemExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -2105,7 +2146,8 @@ export const GetClientResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })),
   "properties": zod.array(zod.object({
@@ -2185,7 +2227,10 @@ export const GetClientResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -2259,6 +2304,7 @@ export const UpdateClientBody = zod.object({
 
 export const updateClientResponseOneNextFollowUpAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const updateClientResponseOneDateOfBirthRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const updateClientResponseTwoDocumentsItemExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const updateClientResponseTwoPropertiesItemPurchaseDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const updateClientResponseTwoPropertiesItemCurrentRateEndDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
@@ -2358,6 +2404,7 @@ export const UpdateClientResponse = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(updateClientResponseTwoDocumentsItemExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -2366,7 +2413,8 @@ export const UpdateClientResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })),
   "properties": zod.array(zod.object({
@@ -2446,7 +2494,10 @@ export const UpdateClientResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -2581,7 +2632,10 @@ export const ListCasesResponseItem = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -2662,7 +2716,10 @@ export const CreateCaseResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -2729,7 +2786,10 @@ export const GetCaseResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -2769,7 +2829,12 @@ export const GetCaseResponse = zod.object({
   "notes": zod.string(),
   "closedAt": zod.coerce.date().nullable(),
   "closeReason": zod.string().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "currentStep": zod.string().nullable().describe('The first incomplete step (dip | caseNumber | fee | valuationDate | valuationCompleted | decision); null when all are done.'),
+  "currentStepLabel": zod.string().nullable(),
+  "stepDays": zod.int().describe('Days the submission has sat at the current step.'),
+  "stepThresholdDays": zod.int().nullable(),
+  "stepFlagged": zod.boolean().describe('True when stepDays has reached the threshold set in Settings.')
 })).describe('Every lender this case has been submitted to, primary first. The case\'s own lender fields mirror the primary submission.'),
   "stages": zod.array(zod.string()),
   "requirements": zod.array(zod.object({
@@ -2800,6 +2865,7 @@ export const GetCaseResponse = zod.object({
   "checklistTotal": zod.int(),
   "checklistDone": zod.int(),
   "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "headline": zod.string().describe('What the task reads as - for an open stage hand-off task the next unfinished step (\"Record the Barclays case number\"), otherwise the title.'),
   "commentCount": zod.int(),
   "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
   "propertyId": zod.int().nullable()
@@ -2916,7 +2982,10 @@ export const UpdateCaseResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -2961,7 +3030,12 @@ export const CreateCaseSubmissionResponse = zod.object({
   "notes": zod.string(),
   "closedAt": zod.coerce.date().nullable(),
   "closeReason": zod.string().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "currentStep": zod.string().nullable().describe('The first incomplete step (dip | caseNumber | fee | valuationDate | valuationCompleted | decision); null when all are done.'),
+  "currentStepLabel": zod.string().nullable(),
+  "stepDays": zod.int().describe('Days the submission has sat at the current step.'),
+  "stepThresholdDays": zod.int().nullable(),
+  "stepFlagged": zod.boolean().describe('True when stepDays has reached the threshold set in Settings.')
 })
 
 
@@ -3001,7 +3075,12 @@ export const UpdateCaseSubmissionResponse = zod.object({
   "notes": zod.string(),
   "closedAt": zod.coerce.date().nullable(),
   "closeReason": zod.string().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "currentStep": zod.string().nullable().describe('The first incomplete step (dip | caseNumber | fee | valuationDate | valuationCompleted | decision); null when all are done.'),
+  "currentStepLabel": zod.string().nullable(),
+  "stepDays": zod.int().describe('Days the submission has sat at the current step.'),
+  "stepThresholdDays": zod.int().nullable(),
+  "stepFlagged": zod.boolean().describe('True when stepDays has reached the threshold set in Settings.')
 })
 
 
@@ -3016,12 +3095,44 @@ export const DeleteCaseSubmissionParams = zod.object({
 export const DeleteCaseSubmissionResponse = zod.void()
 
 
+/**
+ * The stress test for one lender submission (the case-level route follows the primary open submission).
+ */
+export const GetSubmissionStressTestParams = zod.object({
+  "id": zod.coerce.number().int(),
+  "submissionId": zod.coerce.number().int()
+})
+
+export const GetSubmissionStressTestResponse = zod.object({
+  "id": zod.int(),
+  "submissionId": zod.int().nullable().describe('The lender submission this stress test is for.'),
+  "caseId": zod.int(),
+  "lenderId": zod.int().nullish(),
+  "lenderName": zod.string().nullish(),
+  "monthlyRent": zod.number().nullish(),
+  "propertyValue": zod.number().nullish(),
+  "stressRate": zod.number().nullish(),
+  "payRate": zod.number().nullish(),
+  "stressAtPayRate": zod.boolean(),
+  "stressMargin": zod.number(),
+  "icrMultiplier": zod.number(),
+  "targetLtv": zod.number(),
+  "arrFeeMode": zod.enum(['none', 'pct', 'fixed']),
+  "arrFeePct": zod.number().nullish(),
+  "arrFeeFixed": zod.number().nullish(),
+  "stressBasis": zod.enum(['total', 'net']),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
 export const GetCaseStressTestParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
 export const GetCaseStressTestResponse = zod.object({
   "id": zod.int(),
+  "submissionId": zod.int().nullable().describe('The lender submission this stress test is for.'),
   "caseId": zod.int(),
   "lenderId": zod.int().nullish(),
   "lenderName": zod.string().nullish(),
@@ -3047,6 +3158,7 @@ export const UpdateCaseStressTestParams = zod.object({
 })
 
 export const UpdateCaseStressTestBody = zod.object({
+  "submissionId": zod.int().nullish().describe('The lender submission the stress test is for; the primary open one when omitted.'),
   "lenderId": zod.int().nullish(),
   "monthlyRent": zod.number().nullish(),
   "propertyValue": zod.number().nullish(),
@@ -3064,6 +3176,7 @@ export const UpdateCaseStressTestBody = zod.object({
 
 export const UpdateCaseStressTestResponse = zod.object({
   "id": zod.int(),
+  "submissionId": zod.int().nullable().describe('The lender submission this stress test is for.'),
   "caseId": zod.int(),
   "lenderId": zod.int().nullish(),
   "lenderName": zod.string().nullish(),
@@ -3086,6 +3199,10 @@ export const UpdateCaseStressTestResponse = zod.object({
 
 export const ApplyCaseStressTestPropertyValueParams = zod.object({
   "id": zod.coerce.number().int()
+})
+
+export const ApplyCaseStressTestPropertyValueBody = zod.object({
+  "submissionId": zod.int().nullish().describe('The lender submission in view; the primary open one when omitted.')
 })
 
 export const ApplyCaseStressTestPropertyValueResponse = zod.object({
@@ -3136,7 +3253,10 @@ export const ApplyCaseStressTestPropertyValueResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -3151,6 +3271,101 @@ export const ApplyCaseStressTestPropertyValueResponse = zod.object({
 })
 
 
+/**
+ * The offer moment (scope step 12). Issues the client's invoice from the fee agreed on the case (drafting it if
+ * none exists), emails the client the offer document with the invoice, and emails the lender's contacts that the
+ * offer was received. Ticks "Offer sent to client". Administrators only (it issues an invoice).
+ */
+export const NotifyLenderOfferParams = zod.object({
+  "id": zod.coerce.number().int()
+})
+
+export const NotifyLenderOfferBody = zod.object({
+  "submissionId": zod.int().nullish().describe('The lender submission in view; the primary open one when omitted.')
+})
+
+export const NotifyLenderOfferResponse = zod.object({
+  "document": zod.object({
+  "id": zod.int(),
+  "name": zod.string()
+}).nullable(),
+  "submissionId": zod.int().nullable(),
+  "offerLoanAmount": zod.number().nullable(),
+  "expectedLoanAmount": zod.number().describe('The loan on the case'),
+  "notifiedAt": zod.coerce.date().nullable().describe('When the offer was sent to the client and the lender told.'),
+  "notifiedBy": zod.string().nullable(),
+  "clientEmailStatus": zod.string().nullable().describe('sent | disabled | failed'),
+  "lenderEmailStatus": zod.string().nullable().describe('sent | disabled | failed | no_contact'),
+  "lenderContacts": zod.array(zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+})).describe('Who at the lender will be told (contacts with an email address).'),
+  "feeSummary": zod.string().nullable().describe('The agreed broker fee as it will be invoiced'),
+  "invoice": zod.object({
+  "id": zod.int(),
+  "invoiceNumber": zod.string(),
+  "status": zod.string(),
+  "total": zod.number()
+}).nullable(),
+  "expectedAddress": zod.string(),
+  "expectedClientName": zod.string(),
+  "expectedPropertyValue": zod.number(),
+  "offerAddress": zod.string().nullable(),
+  "offerClientName": zod.string().nullable(),
+  "offerPropertyValue": zod.number().nullable(),
+  "addressMatches": zod.boolean(),
+  "nameMatches": zod.boolean(),
+  "valueMatches": zod.boolean(),
+  "allMatched": zod.boolean(),
+  "reviewedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * The offer review for one lender submission (the case-level route follows the primary open submission).
+ */
+export const GetSubmissionLenderOfferReviewParams = zod.object({
+  "id": zod.coerce.number().int(),
+  "submissionId": zod.coerce.number().int()
+})
+
+export const GetSubmissionLenderOfferReviewResponse = zod.object({
+  "document": zod.object({
+  "id": zod.int(),
+  "name": zod.string()
+}).nullable(),
+  "submissionId": zod.int().nullable(),
+  "offerLoanAmount": zod.number().nullable(),
+  "expectedLoanAmount": zod.number().describe('The loan on the case'),
+  "notifiedAt": zod.coerce.date().nullable().describe('When the offer was sent to the client and the lender told.'),
+  "notifiedBy": zod.string().nullable(),
+  "clientEmailStatus": zod.string().nullable().describe('sent | disabled | failed'),
+  "lenderEmailStatus": zod.string().nullable().describe('sent | disabled | failed | no_contact'),
+  "lenderContacts": zod.array(zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+})).describe('Who at the lender will be told (contacts with an email address).'),
+  "feeSummary": zod.string().nullable().describe('The agreed broker fee as it will be invoiced'),
+  "invoice": zod.object({
+  "id": zod.int(),
+  "invoiceNumber": zod.string(),
+  "status": zod.string(),
+  "total": zod.number()
+}).nullable(),
+  "expectedAddress": zod.string(),
+  "expectedClientName": zod.string(),
+  "expectedPropertyValue": zod.number(),
+  "offerAddress": zod.string().nullable(),
+  "offerClientName": zod.string().nullable(),
+  "offerPropertyValue": zod.number().nullable(),
+  "addressMatches": zod.boolean(),
+  "nameMatches": zod.boolean(),
+  "valueMatches": zod.boolean(),
+  "allMatched": zod.boolean(),
+  "reviewedAt": zod.coerce.date().nullable()
+})
+
+
 export const GetCaseLenderOfferReviewParams = zod.object({
   "id": zod.coerce.number().int()
 })
@@ -3159,6 +3374,24 @@ export const GetCaseLenderOfferReviewResponse = zod.object({
   "document": zod.object({
   "id": zod.int(),
   "name": zod.string()
+}).nullable(),
+  "submissionId": zod.int().nullable(),
+  "offerLoanAmount": zod.number().nullable(),
+  "expectedLoanAmount": zod.number().describe('The loan on the case'),
+  "notifiedAt": zod.coerce.date().nullable().describe('When the offer was sent to the client and the lender told.'),
+  "notifiedBy": zod.string().nullable(),
+  "clientEmailStatus": zod.string().nullable().describe('sent | disabled | failed'),
+  "lenderEmailStatus": zod.string().nullable().describe('sent | disabled | failed | no_contact'),
+  "lenderContacts": zod.array(zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+})).describe('Who at the lender will be told (contacts with an email address).'),
+  "feeSummary": zod.string().nullable().describe('The agreed broker fee as it will be invoiced'),
+  "invoice": zod.object({
+  "id": zod.int(),
+  "invoiceNumber": zod.string(),
+  "status": zod.string(),
+  "total": zod.number()
 }).nullable(),
   "expectedAddress": zod.string(),
   "expectedClientName": zod.string(),
@@ -3179,6 +3412,8 @@ export const ReviewCaseLenderOfferParams = zod.object({
 })
 
 export const ReviewCaseLenderOfferBody = zod.object({
+  "submissionId": zod.int().nullish().describe('The lender submission the offer is from; the primary open one when omitted.'),
+  "offerLoanAmount": zod.number().nullish().describe('The loan on the offer'),
   "documentId": zod.int(),
   "offerAddress": zod.string(),
   "offerClientName": zod.string(),
@@ -3189,6 +3424,24 @@ export const ReviewCaseLenderOfferResponse = zod.object({
   "document": zod.object({
   "id": zod.int(),
   "name": zod.string()
+}).nullable(),
+  "submissionId": zod.int().nullable(),
+  "offerLoanAmount": zod.number().nullable(),
+  "expectedLoanAmount": zod.number().describe('The loan on the case'),
+  "notifiedAt": zod.coerce.date().nullable().describe('When the offer was sent to the client and the lender told.'),
+  "notifiedBy": zod.string().nullable(),
+  "clientEmailStatus": zod.string().nullable().describe('sent | disabled | failed'),
+  "lenderEmailStatus": zod.string().nullable().describe('sent | disabled | failed | no_contact'),
+  "lenderContacts": zod.array(zod.object({
+  "name": zod.string(),
+  "email": zod.string()
+})).describe('Who at the lender will be told (contacts with an email address).'),
+  "feeSummary": zod.string().nullable().describe('The agreed broker fee as it will be invoiced'),
+  "invoice": zod.object({
+  "id": zod.int(),
+  "invoiceNumber": zod.string(),
+  "status": zod.string(),
+  "total": zod.number()
 }).nullable(),
   "expectedAddress": zod.string(),
   "expectedClientName": zod.string(),
@@ -3213,6 +3466,7 @@ export const ExtractCaseLenderOfferDetailsBody = zod.object({
 })
 
 export const ExtractCaseLenderOfferDetailsResponse = zod.object({
+  "offerLoanAmount": zod.number().nullish().describe('The loan amount stated on the offer'),
   "offerAddress": zod.string(),
   "offerClientName": zod.string(),
   "offerPropertyValue": zod.number(),
@@ -3296,7 +3550,10 @@ export const SetCaseValuationCompletedResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -3373,7 +3630,10 @@ export const AdvanceCaseResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -3413,7 +3673,12 @@ export const AdvanceCaseResponse = zod.object({
   "notes": zod.string(),
   "closedAt": zod.coerce.date().nullable(),
   "closeReason": zod.string().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "currentStep": zod.string().nullable().describe('The first incomplete step (dip | caseNumber | fee | valuationDate | valuationCompleted | decision); null when all are done.'),
+  "currentStepLabel": zod.string().nullable(),
+  "stepDays": zod.int().describe('Days the submission has sat at the current step.'),
+  "stepThresholdDays": zod.int().nullable(),
+  "stepFlagged": zod.boolean().describe('True when stepDays has reached the threshold set in Settings.')
 })).describe('Every lender this case has been submitted to, primary first. The case\'s own lender fields mirror the primary submission.'),
   "stages": zod.array(zod.string()),
   "requirements": zod.array(zod.object({
@@ -3444,6 +3709,7 @@ export const AdvanceCaseResponse = zod.object({
   "checklistTotal": zod.int(),
   "checklistDone": zod.int(),
   "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "headline": zod.string().describe('What the task reads as - for an open stage hand-off task the next unfinished step (\"Record the Barclays case number\"), otherwise the title.'),
   "commentCount": zod.int(),
   "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
   "propertyId": zod.int().nullable()
@@ -3534,7 +3800,10 @@ export const ConfirmCaseServiceLevelResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -3574,7 +3843,12 @@ export const ConfirmCaseServiceLevelResponse = zod.object({
   "notes": zod.string(),
   "closedAt": zod.coerce.date().nullable(),
   "closeReason": zod.string().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "currentStep": zod.string().nullable().describe('The first incomplete step (dip | caseNumber | fee | valuationDate | valuationCompleted | decision); null when all are done.'),
+  "currentStepLabel": zod.string().nullable(),
+  "stepDays": zod.int().describe('Days the submission has sat at the current step.'),
+  "stepThresholdDays": zod.int().nullable(),
+  "stepFlagged": zod.boolean().describe('True when stepDays has reached the threshold set in Settings.')
 })).describe('Every lender this case has been submitted to, primary first. The case\'s own lender fields mirror the primary submission.'),
   "stages": zod.array(zod.string()),
   "requirements": zod.array(zod.object({
@@ -3605,6 +3879,7 @@ export const ConfirmCaseServiceLevelResponse = zod.object({
   "checklistTotal": zod.int(),
   "checklistDone": zod.int(),
   "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "headline": zod.string().describe('What the task reads as - for an open stage hand-off task the next unfinished step (\"Record the Barclays case number\"), otherwise the title.'),
   "commentCount": zod.int(),
   "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
   "propertyId": zod.int().nullable()
@@ -4058,6 +4333,7 @@ export const addUnderwritingRoundBodyRequirementLabelsItemMax = 200;
 
 
 export const AddUnderwritingRoundBody = zod.object({
+  "submissionId": zod.int().nullish().describe('The lender submission the round is with; the primary open one when omitted.'),
   "emailText": zod.string().min(1).max(addUnderwritingRoundBodyEmailTextMax),
   "requirementLabels": zod.array(zod.string().min(1).max(addUnderwritingRoundBodyRequirementLabelsItemMax)).min(1)
 })
@@ -4110,7 +4386,10 @@ export const AddUnderwritingRoundResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -4150,7 +4429,12 @@ export const AddUnderwritingRoundResponse = zod.object({
   "notes": zod.string(),
   "closedAt": zod.coerce.date().nullable(),
   "closeReason": zod.string().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "currentStep": zod.string().nullable().describe('The first incomplete step (dip | caseNumber | fee | valuationDate | valuationCompleted | decision); null when all are done.'),
+  "currentStepLabel": zod.string().nullable(),
+  "stepDays": zod.int().describe('Days the submission has sat at the current step.'),
+  "stepThresholdDays": zod.int().nullable(),
+  "stepFlagged": zod.boolean().describe('True when stepDays has reached the threshold set in Settings.')
 })).describe('Every lender this case has been submitted to, primary first. The case\'s own lender fields mirror the primary submission.'),
   "stages": zod.array(zod.string()),
   "requirements": zod.array(zod.object({
@@ -4181,6 +4465,7 @@ export const AddUnderwritingRoundResponse = zod.object({
   "checklistTotal": zod.int(),
   "checklistDone": zod.int(),
   "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "headline": zod.string().describe('What the task reads as - for an open stage hand-off task the next unfinished step (\"Record the Barclays case number\"), otherwise the title.'),
   "commentCount": zod.int(),
   "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
   "propertyId": zod.int().nullable()
@@ -4217,11 +4502,11 @@ export const AddUnderwritingRoundResponse = zod.object({
 
 
 /**
- * Everything the lender asked for in this round has been provided and sent back; closes the round and its task. The next round may then start.
+ * Everything the lender asked for in this round has been provided and sent back; closes the round and its task. The next round (with that lender) may then start.
  */
 export const MarkUnderwritingRoundSentParams = zod.object({
   "id": zod.coerce.number().int(),
-  "round": zod.coerce.number().int()
+  "roundId": zod.coerce.number().int()
 })
 
 export const MarkUnderwritingRoundSentResponse = zod.object({
@@ -4272,7 +4557,10 @@ export const MarkUnderwritingRoundSentResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -4312,7 +4600,12 @@ export const MarkUnderwritingRoundSentResponse = zod.object({
   "notes": zod.string(),
   "closedAt": zod.coerce.date().nullable(),
   "closeReason": zod.string().nullable(),
-  "createdAt": zod.coerce.date()
+  "createdAt": zod.coerce.date(),
+  "currentStep": zod.string().nullable().describe('The first incomplete step (dip | caseNumber | fee | valuationDate | valuationCompleted | decision); null when all are done.'),
+  "currentStepLabel": zod.string().nullable(),
+  "stepDays": zod.int().describe('Days the submission has sat at the current step.'),
+  "stepThresholdDays": zod.int().nullable(),
+  "stepFlagged": zod.boolean().describe('True when stepDays has reached the threshold set in Settings.')
 })).describe('Every lender this case has been submitted to, primary first. The case\'s own lender fields mirror the primary submission.'),
   "stages": zod.array(zod.string()),
   "requirements": zod.array(zod.object({
@@ -4343,6 +4636,7 @@ export const MarkUnderwritingRoundSentResponse = zod.object({
   "checklistTotal": zod.int(),
   "checklistDone": zod.int(),
   "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "headline": zod.string().describe('What the task reads as - for an open stage hand-off task the next unfinished step (\"Record the Barclays case number\"), otherwise the title.'),
   "commentCount": zod.int(),
   "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
   "propertyId": zod.int().nullable()
@@ -4430,7 +4724,10 @@ export const ArchiveCaseResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -4497,7 +4794,10 @@ export const RestoreCaseResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -6136,6 +6436,35 @@ export const ViewPortalCaseTermsOfBusinessParams = zod.object({
 export const ViewPortalCaseTermsOfBusinessResponse = zod.unknown()
 
 
+/**
+ * Days a lender submission may sit at each step (DIP, case number, fee, valuation date, valuation, decision) before it is flagged red.
+ */
+export const ListSubmissionStepThresholdsResponseItem = zod.object({
+  "stepKey": zod.string(),
+  "step": zod.string(),
+  "thresholdDays": zod.int().nullable()
+})
+export const ListSubmissionStepThresholdsResponse = zod.array(ListSubmissionStepThresholdsResponseItem)
+
+
+export const UpdateSubmissionStepThresholdParams = zod.object({
+  "stepKey": zod.coerce.string()
+})
+
+
+
+
+export const UpdateSubmissionStepThresholdBody = zod.object({
+  "thresholdDays": zod.int().min(1).nullable()
+})
+
+export const UpdateSubmissionStepThresholdResponse = zod.object({
+  "stepKey": zod.string(),
+  "step": zod.string(),
+  "thresholdDays": zod.int().nullable()
+})
+
+
 export const ListStageThresholdsResponseItem = zod.object({
   "stageIndex": zod.int(),
   "stage": zod.string(),
@@ -6301,6 +6630,7 @@ export const ListTasksResponseItem = zod.object({
   "checklistTotal": zod.int(),
   "checklistDone": zod.int(),
   "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "headline": zod.string().describe('What the task reads as - for an open stage hand-off task the next unfinished step (\"Record the Barclays case number\"), otherwise the title.'),
   "commentCount": zod.int(),
   "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
   "propertyId": zod.int().nullable()
@@ -6344,6 +6674,7 @@ export const CreateTaskResponse = zod.object({
   "checklistTotal": zod.int(),
   "checklistDone": zod.int(),
   "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "headline": zod.string().describe('What the task reads as - for an open stage hand-off task the next unfinished step (\"Record the Barclays case number\"), otherwise the title.'),
   "commentCount": zod.int(),
   "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
   "propertyId": zod.int().nullable()
@@ -6385,6 +6716,7 @@ export const BulkUpdateTasksResponseItem = zod.object({
   "checklistTotal": zod.int(),
   "checklistDone": zod.int(),
   "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "headline": zod.string().describe('What the task reads as - for an open stage hand-off task the next unfinished step (\"Record the Barclays case number\"), otherwise the title.'),
   "commentCount": zod.int(),
   "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
   "propertyId": zod.int().nullable()
@@ -6427,6 +6759,7 @@ export const GetTaskResponse = zod.object({
   "checklistTotal": zod.int(),
   "checklistDone": zod.int(),
   "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "headline": zod.string().describe('What the task reads as - for an open stage hand-off task the next unfinished step (\"Record the Barclays case number\"), otherwise the title.'),
   "commentCount": zod.int(),
   "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
   "propertyId": zod.int().nullable()
@@ -6494,6 +6827,7 @@ export const UpdateTaskResponse = zod.object({
   "checklistTotal": zod.int(),
   "checklistDone": zod.int(),
   "checklistNext": zod.string().nullable().describe('Title of the first unfinished checklist step, i.e. what the task is up to; null when there is none.'),
+  "headline": zod.string().describe('What the task reads as - for an open stage hand-off task the next unfinished step (\"Record the Barclays case number\"), otherwise the title.'),
   "commentCount": zod.int(),
   "kind": zod.string().nullable().describe('Why the task exists (client_onboarding, property_review, case_submission, stage_handoff, submission_step, property_import); null for manual tasks.'),
   "propertyId": zod.int().nullable()
@@ -6908,7 +7242,10 @@ export const GetPropertyResponse = zod.object({
   "bankDecisionRequested": zod.boolean(),
   "underwritingCleared": zod.boolean(),
   "underwritingRounds": zod.array(zod.object({
-  "round": zod.int(),
+  "id": zod.int(),
+  "round": zod.int().describe('Numbered per lender submission.'),
+  "submissionId": zod.int().nullable(),
+  "lenderName": zod.string().nullable(),
   "emailText": zod.string(),
   "createdAt": zod.coerce.date(),
   "sentAt": zod.coerce.date().nullable().describe('When everything was provided and sent back to the lender.'),
@@ -8042,6 +8379,9 @@ export const ListDocumentsQueryParams = zod.object({
   "status": zod.coerce.string().optional()
 })
 
+export const listDocumentsResponseExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
 export const ListDocumentsResponseItem = zod.object({
   "id": zod.int(),
   "name": zod.string(),
@@ -8052,6 +8392,7 @@ export const ListDocumentsResponseItem = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(listDocumentsResponseExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -8060,7 +8401,8 @@ export const ListDocumentsResponseItem = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 export const ListDocumentsResponse = zod.array(ListDocumentsResponseItem)
@@ -8079,6 +8421,9 @@ export const CreateDocumentMetadataBody = zod.object({
   "status": zod.string().optional()
 })
 
+export const createDocumentMetadataResponseExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
 export const CreateDocumentMetadataResponse = zod.object({
   "id": zod.int(),
   "name": zod.string(),
@@ -8089,6 +8434,7 @@ export const CreateDocumentMetadataResponse = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(createDocumentMetadataResponseExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -8097,9 +8443,13 @@ export const CreateDocumentMetadataResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
+
+
+export const uploadDocumentResponseExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
 
 export const UploadDocumentResponse = zod.object({
@@ -8112,6 +8462,7 @@ export const UploadDocumentResponse = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(uploadDocumentResponseExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -8120,7 +8471,8 @@ export const UploadDocumentResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 
@@ -8131,12 +8483,17 @@ export const UpdateDocumentParams = zod.object({
 
 
 
+export const updateDocumentBodyExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
 
 export const UpdateDocumentBody = zod.object({
   "category": zod.string().min(1).optional(),
-  "status": zod.string().min(1).optional()
+  "status": zod.string().min(1).optional(),
+  "expiresAt": zod.string().regex(updateDocumentBodyExpiresAtRegExp).nullish().describe('YYYY-MM-DD; null clears it.')
 })
+
+export const updateDocumentResponseExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
 
 export const UpdateDocumentResponse = zod.object({
   "id": zod.int(),
@@ -8148,6 +8505,7 @@ export const UpdateDocumentResponse = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(updateDocumentResponseExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -8156,7 +8514,8 @@ export const UpdateDocumentResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 
@@ -8175,6 +8534,9 @@ export const ReadDocumentParams = zod.object({
   "id": zod.coerce.number().int()
 })
 
+export const readDocumentResponseExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+
+
 export const ReadDocumentResponse = zod.object({
   "id": zod.int(),
   "name": zod.string(),
@@ -8185,6 +8547,7 @@ export const ReadDocumentResponse = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(readDocumentResponseExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -8193,7 +8556,8 @@ export const ReadDocumentResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 
@@ -8203,6 +8567,9 @@ export const DownloadDocumentParams = zod.object({
 })
 
 export const DownloadDocumentResponse = zod.unknown()
+
+
+export const uploadPortalDocumentResponseExpiresAtRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 
 
 export const UploadPortalDocumentResponse = zod.object({
@@ -8215,6 +8582,7 @@ export const UploadPortalDocumentResponse = zod.object({
   "contentType": zod.string().nullish(),
   "byteSize": zod.int().nullish(),
   "uploadedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.string().regex(uploadPortalDocumentResponseExpiresAtRegExp).nullish().describe('Staff-set date after which the document no longer counts (ID, payslips, statements).'),
   "reading": zod.object({
   "reader": zod.string().describe('Which extractor ran, e.g. proof_of_income.'),
   "status": zod.enum(['pending', 'completed', 'failed', 'unsupported']),
@@ -8223,7 +8591,8 @@ export const UploadPortalDocumentResponse = zod.object({
   "data": zod.record(zod.string(), zod.unknown()).nullable().describe('The reader\'s structured result; for proof_of_income see ProofOfIncomeReading.'),
   "error": zod.string().nullable(),
   "appliedFields": zod.array(zod.string()).describe('Client fields this reading filled in.'),
-  "readAt": zod.coerce.date()
+  "readAt": zod.coerce.date(),
+  "progress": zod.string().nullish().describe('What the reader is doing right now')
 }).nullish().describe('What the document reading system extracted, when the category has a reader. Omitted on list endpoints.')
 })
 

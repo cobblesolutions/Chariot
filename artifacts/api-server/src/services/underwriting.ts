@@ -1,8 +1,10 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, type SQL } from "drizzle-orm";
 import {
   appUsersTable,
+  caseSubmissionsTable,
   casesTable,
   db,
+  lendersTable,
   requirementsTable,
   taskChecklistItemsTable,
   tasksTable,
@@ -25,10 +27,24 @@ export const UNDERWRITING_STAGE_INDEX = STAGES.indexOf("Underwriting");
 type CaseRow = typeof casesTable.$inferSelect;
 const refOf = (row: CaseRow) => row.displayReference || row.reference;
 
+/** `submission_id = X` or `is null`, for the tables scoped per lender submission. */
+export const submissionScope = (column: { submissionId: any }, submissionId: number | null): SQL =>
+  submissionId == null ? isNull(column.submissionId) : eq(column.submissionId, submissionId);
+
+async function lenderNameForSubmission(submissionId: number | null) {
+  if (submissionId == null) return null;
+  const [row] = await db
+    .select({ name: lendersTable.name })
+    .from(caseSubmissionsTable)
+    .innerJoin(lendersTable, eq(lendersTable.id, caseSubmissionsTable.lenderId))
+    .where(eq(caseSubmissionsTable.id, submissionId));
+  return row?.name ?? null;
+}
+
 const SYSTEM_INSTRUCTION = `You read an email from a UK mortgage lender's underwriting team to a broker. List every document, piece of information or action the lender is asking for, one per item, as short plain-English labels a case handler can tick off (e.g. "3 months' business bank statements", "Explanation of the £4,000 credit on 12 June", "Signed direct debit mandate"). Keep the lender's detail (periods, names, amounts). Do not include greetings, sign-offs or things the lender has already received. Return JSON only: { "requirements": ["..."] }.`;
 
 /** AI over a heuristic: the model when it is active and finds something, the line splitter otherwise. */
-export async function extractUnderwritingRequirements(emailText: string): Promise<{ suggestions: string[]; model: string | null }> {
+export async function extractUnderwritingRequirements(emailText: string, progressToken?: string | null): Promise<{ suggestions: string[]; model: string | null }> {
   const heuristic = heuristicRequirementLines(emailText);
   try {
     const result = await runOpenRouterWorkflow<{ email: string }, { requirements?: unknown }>({
@@ -38,6 +54,7 @@ export async function extractUnderwritingRequirements(emailText: string): Promis
       schemaName: "UnderwritingRequirements",
       systemInstruction: SYSTEM_INSTRUCTION,
       context: { email: emailText },
+      progress: { token: progressToken, labels: { requirements: "Listing what the lender is asking for…" } },
     });
     if (result.status === "completed" && Array.isArray(result.data?.requirements)) {
       const items = [...new Set((result.data.requirements as unknown[]).filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean))];
@@ -83,11 +100,11 @@ export class RoundIncompleteError extends Error {
   }
 }
 
-async function roundRows(caseId: number) {
+async function roundRows(caseId: number, submissionId: number | null) {
   return db
     .select()
     .from(underwritingRoundsTable)
-    .where(eq(underwritingRoundsTable.caseId, caseId))
+    .where(and(eq(underwritingRoundsTable.caseId, caseId), submissionScope(underwritingRoundsTable, submissionId)))
     .orderBy(asc(underwritingRoundsTable.round), asc(underwritingRoundsTable.createdAt));
 }
 
@@ -98,19 +115,20 @@ async function roundRows(caseId: number) {
  */
 export async function createUnderwritingRound(
   caseRow: CaseRow,
-  input: { emailText: string; labels: string[] },
+  input: { emailText: string; labels: string[]; submissionId: number | null },
   actor: { id: number; displayName: string },
 ) {
   const labels = [...new Set(input.labels.map((label) => label.trim()).filter(Boolean))];
   if (labels.length === 0) throw new Error("At least one requirement is required");
-  const existing = await roundRows(caseRow.id);
+  const existing = await roundRows(caseRow.id, input.submissionId);
   const latest = existing[existing.length - 1];
   if (latest && !latest.sentAt) throw new RoundStillOpenError(latest.round);
   const round = (latest?.round ?? 0) + 1;
+  const lenderName = await lenderNameForSubmission(input.submissionId);
 
   const requirements = await db
     .insert(requirementsTable)
-    .values(labels.map((label) => ({ caseId: caseRow.id, stageIndex: UNDERWRITING_STAGE_INDEX, label, round })))
+    .values(labels.map((label) => ({ caseId: caseRow.id, submissionId: input.submissionId, stageIndex: UNDERWRITING_STAGE_INDEX, label, round })))
     .returning();
 
   // The task goes to the case handler (or the case default when there is none).
@@ -119,8 +137,8 @@ export async function createUnderwritingRound(
   const staffUser = handler ?? (fallback?.ok ? fallback.staffUser ?? null : null);
   const task = await createAssignmentTask({
     staffUser,
-    title: `Underwriting round ${round}: ${refOf(caseRow)}`,
-    notes: `The lender asked for ${labels.length} thing${labels.length === 1 ? "" : "s"} on ${new Date().toLocaleDateString("en-GB")}. Tick each one as it is provided, then mark the round as sent to the lender on the case.`,
+    title: `Underwriting round ${round}${lenderName ? ` (${lenderName})` : ""}: ${refOf(caseRow)}`,
+    notes: `${lenderName ?? "The lender"} asked for ${labels.length} thing${labels.length === 1 ? "" : "s"} on ${new Date().toLocaleDateString("en-GB")}. Tick each one as it is provided, then mark the round as sent to the lender on the case.`,
     caseId: caseRow.id,
     clientId: caseRow.clientId,
     kind: UNDERWRITING_ROUND_KIND,
@@ -133,7 +151,7 @@ export async function createUnderwritingRound(
   }
   const [row] = await db
     .insert(underwritingRoundsTable)
-    .values({ caseId: caseRow.id, round, emailText: input.emailText, createdByUserId: actor.id, taskId: task?.id ?? null })
+    .values({ caseId: caseRow.id, submissionId: input.submissionId, round, emailText: input.emailText, createdByUserId: actor.id, taskId: task?.id ?? null })
     .returning();
   // New outstanding items mean underwriting is no longer cleared, if it had been.
   if (caseRow.underwritingCleared) {
@@ -143,7 +161,7 @@ export async function createUnderwritingRound(
     kind: "underwriting",
     caseId: caseRow.id,
     title: "Underwriting round added",
-    detail: `Round ${round} on ${refOf(caseRow)}: ${labels.length} requirement${labels.length === 1 ? "" : "s"} from the lender's email${task ? ` — task for ${task.assignee}` : ""}`,
+    detail: `Round ${round}${lenderName ? ` with ${lenderName}` : ""} on ${refOf(caseRow)}: ${labels.length} requirement${labels.length === 1 ? "" : "s"} from the lender's email${task ? ` — task for ${task.assignee}` : ""}`,
     actorName: actor.displayName,
   });
   await syncCaseChecklists(caseRow.id);
@@ -151,19 +169,24 @@ export async function createUnderwritingRound(
 }
 
 /** Everything asked for is provided and has gone to the lender: closes the round and its task. */
-export async function markRoundSent(caseRow: CaseRow, round: number, actor: { id: number; displayName: string }) {
+export async function markRoundSent(caseRow: CaseRow, roundId: number, actor: { id: number; displayName: string }) {
   const [row] = await db
     .select()
     .from(underwritingRoundsTable)
-    .where(and(eq(underwritingRoundsTable.caseId, caseRow.id), eq(underwritingRoundsTable.round, round)));
+    .where(and(eq(underwritingRoundsTable.caseId, caseRow.id), eq(underwritingRoundsTable.id, roundId)));
   if (!row) return null;
   if (row.sentAt) return row;
   const items = await db
     .select({ complete: requirementsTable.complete, required: requirementsTable.required })
     .from(requirementsTable)
-    .where(and(eq(requirementsTable.caseId, caseRow.id), eq(requirementsTable.stageIndex, UNDERWRITING_STAGE_INDEX), eq(requirementsTable.round, round)));
+    .where(and(
+      eq(requirementsTable.caseId, caseRow.id),
+      eq(requirementsTable.stageIndex, UNDERWRITING_STAGE_INDEX),
+      submissionScope(requirementsTable, row.submissionId),
+      eq(requirementsTable.round, row.round),
+    ));
   const open = items.filter((item) => item.required && !item.complete).length;
-  if (open > 0) throw new RoundIncompleteError(round, open);
+  if (open > 0) throw new RoundIncompleteError(row.round, open);
   const [updated] = await db
     .update(underwritingRoundsTable)
     .set({ sentAt: new Date(), sentByUserId: actor.id })
@@ -173,29 +196,56 @@ export async function markRoundSent(caseRow: CaseRow, round: number, actor: { id
     await db
       .update(tasksTable)
       .set({ status: "done", completedAt: new Date(), completedByUserId: actor.id })
-      .where(and(eq(tasksTable.id, row.taskId), eq(tasksTable.status, "todo")))
-      .catch(() => undefined);
-    await db
-      .update(tasksTable)
-      .set({ status: "done", completedAt: new Date(), completedByUserId: actor.id })
-      .where(and(eq(tasksTable.id, row.taskId), eq(tasksTable.status, "in_progress")));
+      .where(and(eq(tasksTable.id, row.taskId), inArray(tasksTable.status, ["todo", "in_progress"])));
   }
+  const lenderName = await lenderNameForSubmission(row.submissionId);
   await logActivity({
     kind: "underwriting",
     caseId: caseRow.id,
     title: "Underwriting round sent to lender",
-    detail: `Round ${round} on ${refOf(caseRow)}: ${items.length} item${items.length === 1 ? "" : "s"} provided and sent`,
+    detail: `Round ${row.round}${lenderName ? ` to ${lenderName}` : ""} on ${refOf(caseRow)}: ${items.length} item${items.length === 1 ? "" : "s"} provided and sent`,
     actorName: actor.displayName,
   });
   return updated!;
 }
 
-/** Rounds with their requirements, for the case page. */
+/**
+ * "Underwriting complete" needs every lender's latest round finished: for
+ * each submission that has rounds (and the case-level bucket), the latest
+ * round is sent or all its required items are ticked.
+ */
+export async function underwritingRoundsComplete(caseId: number) {
+  const rounds = await db.select().from(underwritingRoundsTable).where(eq(underwritingRoundsTable.caseId, caseId));
+  if (!rounds.length) return { hasRounds: false, complete: false, openLenders: [] as string[] };
+  const latestBySubmission = new Map<number | null, typeof rounds[number]>();
+  for (const row of rounds) {
+    const current = latestBySubmission.get(row.submissionId);
+    if (!current || row.round > current.round) latestBySubmission.set(row.submissionId, row);
+  }
+  const requirements = await db
+    .select({ submissionId: requirementsTable.submissionId, round: requirementsTable.round, complete: requirementsTable.complete, required: requirementsTable.required })
+    .from(requirementsTable)
+    .where(and(eq(requirementsTable.caseId, caseId), eq(requirementsTable.stageIndex, UNDERWRITING_STAGE_INDEX)));
+  const openLenders: string[] = [];
+  for (const [submissionId, latest] of latestBySubmission) {
+    if (latest.sentAt) continue;
+    const items = requirements.filter((r) => r.submissionId === submissionId && r.round === latest.round);
+    if (items.every((r) => !r.required || r.complete)) continue;
+    openLenders.push((await lenderNameForSubmission(submissionId)) ?? "the lender");
+  }
+  return { hasRounds: true, complete: openLenders.length === 0, openLenders };
+}
+
+/** Rounds with their requirements, for the case page (every lender; the page filters by the one in view). */
 export async function underwritingRoundsView(caseId: number) {
-  const rounds = await roundRows(caseId);
+  const rounds = await db
+    .select()
+    .from(underwritingRoundsTable)
+    .where(eq(underwritingRoundsTable.caseId, caseId))
+    .orderBy(asc(underwritingRoundsTable.submissionId), asc(underwritingRoundsTable.round), asc(underwritingRoundsTable.createdAt));
   if (!rounds.length) return [];
   const requirements = await db
-    .select({ id: requirementsTable.id, label: requirementsTable.label, complete: requirementsTable.complete, round: requirementsTable.round })
+    .select({ id: requirementsTable.id, label: requirementsTable.label, complete: requirementsTable.complete, round: requirementsTable.round, submissionId: requirementsTable.submissionId })
     .from(requirementsTable)
     .where(and(eq(requirementsTable.caseId, caseId), eq(requirementsTable.stageIndex, UNDERWRITING_STAGE_INDEX)))
     .orderBy(asc(requirementsTable.id));
@@ -203,13 +253,26 @@ export async function underwritingRoundsView(caseId: number) {
   const names = new Map(userIds.length
     ? (await db.select({ id: appUsersTable.id, displayName: appUsersTable.displayName }).from(appUsersTable).where(inArray(appUsersTable.id, userIds))).map((u) => [u.id, u.displayName])
     : []);
+  const submissionIds = [...new Set(rounds.map((r) => r.submissionId).filter((id): id is number => id != null))];
+  const lenderNames = new Map(submissionIds.length
+    ? (await db
+        .select({ id: caseSubmissionsTable.id, name: lendersTable.name })
+        .from(caseSubmissionsTable)
+        .innerJoin(lendersTable, eq(lendersTable.id, caseSubmissionsTable.lenderId))
+        .where(inArray(caseSubmissionsTable.id, submissionIds))).map((sub) => [sub.id, sub.name])
+    : []);
   return rounds.map((row) => ({
+    id: row.id,
     round: row.round,
+    submissionId: row.submissionId ?? null,
+    lenderName: row.submissionId != null ? lenderNames.get(row.submissionId) ?? null : null,
     emailText: row.emailText,
     createdAt: row.createdAt.toISOString(),
     sentAt: row.sentAt?.toISOString() ?? null,
     sentBy: row.sentByUserId != null ? names.get(row.sentByUserId) ?? null : null,
     taskId: row.taskId ?? null,
-    requirements: requirements.filter((item) => item.round === row.round).map((item) => ({ id: item.id, label: item.label, complete: item.complete })),
+    requirements: requirements
+      .filter((item) => item.round === row.round && item.submissionId === row.submissionId)
+      .map((item) => ({ id: item.id, label: item.label, complete: item.complete })),
   }));
 }

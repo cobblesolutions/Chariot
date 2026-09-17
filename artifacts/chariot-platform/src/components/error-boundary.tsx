@@ -43,10 +43,6 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
         <h1 className="text-xl font-semibold text-gray-900">
           Something went wrong
         </h1>
-        <p className="mt-2 text-sm text-gray-600">
-          This part of the app hit an error. The rest of the app is still
-          running.
-        </p>
         {/* Dev only: messages can carry API responses and other internals. */}
         {import.meta.env.DEV ? (
           <pre className="mt-4 overflow-x-auto rounded-md bg-gray-100 p-3 text-left text-xs text-gray-800">

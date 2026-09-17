@@ -544,12 +544,7 @@ export function UsersTab({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <TabsContent value="users" className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-muted-foreground">
-          Staff who can sign in to Chariot. New users get an email link to
-          choose their password; deactivated users are signed out and can no
-          longer log in, but stay on past records.
-        </p>
+      <div className="flex justify-end">
         <Button onClick={() => setAdding(true)} className="shrink-0">
           <Plus />
           Add user
@@ -689,7 +684,7 @@ export function UsersTab({ isAdmin }: { isAdmin: boolean }) {
           if (!open) setDeactivating(null);
         }}
         title={`Deactivate ${deactivating?.displayName}?`}
-        description="They will be signed out immediately and unable to log in. Their name stays on existing cases, tasks and messages. You can reactivate them later."
+        description="They are signed out immediately. You can reactivate them later."
         actionLabel="Deactivate"
         destructive
         onConfirm={() => {

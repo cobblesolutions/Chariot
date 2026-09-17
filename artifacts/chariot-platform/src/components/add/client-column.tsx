@@ -22,8 +22,8 @@ import { DatePicker } from "@/components/date-picker";
 import { OnboardingList } from "@/components/onboarding-list";
 import { UploadProgress } from "@/components/upload-progress";
 import { documentUploadHeaders, useUpload } from "@/lib/upload";
-import { FormSection, FormSections, countFilled } from "./form-section";
-import { CompanyNameCombobox } from "./company-name-combobox";
+import { FormSection, FormSections, countFilled, span } from "./form-section";
+import { CompanyNameCombobox } from "@/components/company-name-combobox";
 import { AddressFields } from "@/components/address-fields";
 import { OptionSelect } from "./option-select";
 import { NationalitySelect } from "./nationality-select";
@@ -220,7 +220,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
   // Readers run in the background after an upload; poll until every readable
   // document has a result so the reading lines and checks fill in by themselves.
   const readingPending = client.documents.some(
-    (document) => READABLE_CATEGORIES.has(document.category) && (!document.reading || document.reading.status === "pending"),
+    (document) => READABLE_CATEGORIES.has(document.category) && document.reading?.status === "pending",
   );
   useEffect(() => {
     if (!readingPending) return;
@@ -389,6 +389,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
   };
 
   const onboarding = client.onboarding;
+  const showReferrer = draft.source === "referral" || draft.source === "introducer" || !!draft.introducerName;
   // The one hidden input serves both the onboarding list and proof of income;
   // the progress line sits under whichever section started the upload.
   const uploadingIncome = documentCategoryRef.current === "proof_income";
@@ -411,7 +412,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
       {anyFromDocument ? (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           <span aria-hidden className="inline-block size-3 rounded-sm border border-yellow-400 bg-yellow-50 dark:border-yellow-600 dark:bg-yellow-950/40" />
-          Yellow fields were read from the client's documents — check them; editing clears the colour.
+          Yellow fields were read from documents — check them.
         </p>
       ) : null}
       <FormSections>
@@ -434,6 +435,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
             documents={client.documents}
             onReadingChanged={invalidateClient}
             onDocumentDeleted={invalidateClient}
+            onDocumentUpdated={invalidateClient}
           />
           <DocumentChecks checks={client.documentChecks} />
         </FormSection>
@@ -449,7 +451,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
           ])}
           total={4}
         >
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,3fr)] gap-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3">
             <Field>
               <FieldLabel>Title</FieldLabel>
               <OptionSelect
@@ -486,31 +488,30 @@ function ClientForm({ client }: { client: ClientDetail }) {
               autoComplete="off"
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field>
-              <FieldLabel htmlFor="add-client-phone">
-                Phone Number <RequiredDot />
-              </FieldLabel>
-              <Input
-                id="add-client-phone"
-                value={draft.phone}
-                onChange={onInput("phone")}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="add-client-alt-phone">
-                Alternative Phone
-              </FieldLabel>
-              <Input
-                id="add-client-alt-phone"
-                value={draft.alternativePhone}
-                onChange={onInput("alternativePhone")}
-              />
-            </Field>
-          </div>
+          <Field>
+            <FieldLabel htmlFor="add-client-phone">
+              Phone Number <RequiredDot />
+            </FieldLabel>
+            <Input
+              id="add-client-phone"
+              value={draft.phone}
+              onChange={onInput("phone")}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="add-client-alt-phone">
+              Alternative Phone
+            </FieldLabel>
+            <Input
+              id="add-client-alt-phone"
+              value={draft.alternativePhone}
+              onChange={onInput("alternativePhone")}
+            />
+          </Field>
           <AddressFields
             idPrefix="add-client"
             label="Current Address"
+            layout="row"
             required
             value={{
               address: draft.currentAddress,
@@ -534,6 +535,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
           <AddressFields
             idPrefix="add-client-prev"
             label="Previous Address"
+            layout="row"
             placeholder="If at the current address for under 3 years"
             value={{
               address: draft.previousAddress,
@@ -559,6 +561,7 @@ function ClientForm({ client }: { client: ClientDetail }) {
         <FormSection
           id="personal"
           title="Personal"
+          cols={2}
           filled={countFilled([
             draft.dateOfBirth,
             draft.nationality,
@@ -567,7 +570,6 @@ function ClientForm({ client }: { client: ClientDetail }) {
           ])}
           total={4}
         >
-          <div className="grid grid-cols-2 gap-4">
             <Field>
               <FieldLabel>
                 Date of Birth <RequiredDot />
@@ -611,115 +613,12 @@ function ClientForm({ client }: { client: ClientDetail }) {
                 onChange={onInput("dependants")}
               />
             </Field>
-          </div>
-        </FormSection>
-
-        <FormSection
-          id="employment"
-          title="Employment & income"
-          filled={countFilled([
-            draft.employmentStatus,
-            draft.employerName,
-            draft.jobTitle,
-            draft.annualIncome,
-            draft.monthlyCommitments,
-          ])}
-          total={5}
-        >
-          <IncomeEvidence
-            client={client}
-            draft={{
-              annualIncome: draft.annualIncome,
-              employerName: draft.employerName,
-              jobTitle: draft.jobTitle,
-              employmentStatus: draft.employmentStatus,
-            }}
-            onApply={(values) => setDraft((current) => ({ ...current, ...values }))}
-            onUpload={() => {
-              documentCategoryRef.current = "proof_income";
-              documentInputRef.current?.click();
-            }}
-            onRefresh={invalidateClient}
-          />
-          {uploadingIncome ? <UploadProgress progress={documentUpload.progress} /> : null}
-          <Field>
-            <FieldLabel>
-              Employment Status <RequiredDot />
-            </FieldLabel>
-            <OptionSelect
-              value={draft.employmentStatus}
-              onChange={setField("employmentStatus")}
-              options={EMPLOYMENT_STATUSES}
-              className={fieldClass("employmentStatus")}
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field>
-              <FieldLabel htmlFor="add-client-employer">Employer</FieldLabel>
-              <Input
-                id="add-client-employer"
-                value={draft.employerName}
-                onChange={onInput("employerName")}
-                className={fieldClass("employerName")}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="add-client-job">Job Title</FieldLabel>
-              <Input
-                id="add-client-job"
-                value={draft.jobTitle}
-                onChange={onInput("jobTitle")}
-                className={fieldClass("jobTitle")}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="add-client-income">
-                Annual Income (£) <RequiredDot />
-              </FieldLabel>
-              <CommaInput
-                id="add-client-income"
-                value={draft.annualIncome}
-                onChange={setField("annualIncome")}
-                className={fieldClass("annualIncome")}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="add-client-other-income">
-                Other Income (£/yr)
-              </FieldLabel>
-              <CommaInput
-                id="add-client-other-income"
-                value={draft.otherIncome}
-                onChange={setField("otherIncome")}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="add-client-commitments">
-                Monthly Commitments (£)
-              </FieldLabel>
-              <CommaInput
-                id="add-client-commitments"
-                value={draft.monthlyCommitments}
-                onChange={setField("monthlyCommitments")}
-                className={fieldClass("monthlyCommitments")}
-              />
-            </Field>
-          </div>
-          <Field>
-            <FieldLabel htmlFor="add-client-credit">Credit History</FieldLabel>
-            <Textarea
-              id="add-client-credit"
-              value={draft.creditHistoryNotes}
-              onChange={onInput("creditHistoryNotes")}
-              placeholder="Defaults, CCJs, missed payments, IVAs…"
-              className={cn("min-h-[60px]", fieldClass("creditHistoryNotes"))}
-            />
-          </Field>
         </FormSection>
 
         <FormSection
           id="company"
           title="Company"
+          cols={2}
           filled={countFilled([
             draft.companyName,
             draft.companyNumber,
@@ -779,13 +678,115 @@ function ClientForm({ client }: { client: ClientDetail }) {
         </FormSection>
 
         <FormSection
+          id="employment"
+          title="Employment & income"
+          filled={countFilled([
+            draft.employmentStatus,
+            draft.employerName,
+            draft.jobTitle,
+            draft.annualIncome,
+            draft.monthlyCommitments,
+          ])}
+          total={5}
+        >
+          <div className={span.full}>
+          <IncomeEvidence
+            client={client}
+            draft={{
+              annualIncome: draft.annualIncome,
+              employerName: draft.employerName,
+              jobTitle: draft.jobTitle,
+              employmentStatus: draft.employmentStatus,
+            }}
+            onApply={(values) => setDraft((current) => ({ ...current, ...values }))}
+            onUpload={() => {
+              documentCategoryRef.current = "proof_income";
+              documentInputRef.current?.click();
+            }}
+            onRefresh={invalidateClient}
+          />
+          {uploadingIncome ? <UploadProgress progress={documentUpload.progress} /> : null}
+          </div>
+          <Field>
+            <FieldLabel>
+              Employment Status <RequiredDot />
+            </FieldLabel>
+            <OptionSelect
+              value={draft.employmentStatus}
+              onChange={setField("employmentStatus")}
+              options={EMPLOYMENT_STATUSES}
+              className={fieldClass("employmentStatus")}
+            />
+          </Field>
+            <Field>
+              <FieldLabel htmlFor="add-client-employer">Employer</FieldLabel>
+              <Input
+                id="add-client-employer"
+                value={draft.employerName}
+                onChange={onInput("employerName")}
+                className={fieldClass("employerName")}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="add-client-job">Job Title</FieldLabel>
+              <Input
+                id="add-client-job"
+                value={draft.jobTitle}
+                onChange={onInput("jobTitle")}
+                className={fieldClass("jobTitle")}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="add-client-income">
+                Annual Income (£) <RequiredDot />
+              </FieldLabel>
+              <CommaInput
+                id="add-client-income"
+                value={draft.annualIncome}
+                onChange={setField("annualIncome")}
+                className={fieldClass("annualIncome")}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="add-client-other-income">
+                Other Income (£/yr)
+              </FieldLabel>
+              <CommaInput
+                id="add-client-other-income"
+                value={draft.otherIncome}
+                onChange={setField("otherIncome")}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="add-client-commitments">
+                Monthly Commitments (£)
+              </FieldLabel>
+              <CommaInput
+                id="add-client-commitments"
+                value={draft.monthlyCommitments}
+                onChange={setField("monthlyCommitments")}
+                className={fieldClass("monthlyCommitments")}
+              />
+            </Field>
+          <Field className={span.half}>
+            <FieldLabel htmlFor="add-client-credit">Credit History</FieldLabel>
+            <Textarea
+              id="add-client-credit"
+              value={draft.creditHistoryNotes}
+              onChange={onInput("creditHistoryNotes")}
+              placeholder="Defaults, CCJs, missed payments, IVAs…"
+              className={cn("min-h-9", fieldClass("creditHistoryNotes"))}
+            />
+          </Field>
+        </FormSection>
+
+        <FormSection
           id="enquiry"
           title="Enquiry"
+          cols={3}
           filled={countFilled([draft.source, draft.enquiryType, draft.enquirySummary])}
           total={3}
-          hint="How they came to us and what they asked for — read from the email, or filled in at step 1."
         >
-          <div className="grid grid-cols-2 gap-4">
             <Field>
               <FieldLabel>Source</FieldLabel>
               <OptionSelect
@@ -806,9 +807,18 @@ function ClientForm({ client }: { client: ClientDetail }) {
                 className={fieldClass("enquiryType")}
               />
             </Field>
-          </div>
-          {draft.source === "referral" || draft.source === "introducer" || draft.introducerName ? (
-            <div className="grid grid-cols-2 gap-4">
+          <Field>
+            <FieldLabel htmlFor="add-client-enquiry-timescale">Timescale</FieldLabel>
+            <Input
+              id="add-client-enquiry-timescale"
+              value={draft.enquiryTimescale}
+              onChange={onInput("enquiryTimescale")}
+              placeholder="e.g. exchange by end of October"
+              className={fieldClass("enquiryTimescale")}
+            />
+          </Field>
+          {showReferrer ? (
+            <>
               <Field>
                 <FieldLabel htmlFor="add-client-introducer">Referred by</FieldLabel>
                 <Input
@@ -827,30 +837,20 @@ function ClientForm({ client }: { client: ClientDetail }) {
                   className={fieldClass("introducerContact")}
                 />
               </Field>
-            </div>
+            </>
           ) : null}
-          <Field>
+          <Field className={span.full}>
             <FieldLabel htmlFor="add-client-enquiry-summary">In short</FieldLabel>
             <Textarea
               id="add-client-enquiry-summary"
               value={draft.enquirySummary}
               onChange={onInput("enquirySummary")}
               placeholder="What they asked for, in a sentence or two"
-              className={cn("min-h-[60px]", fieldClass("enquirySummary"))}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="add-client-enquiry-timescale">Timescale</FieldLabel>
-            <Input
-              id="add-client-enquiry-timescale"
-              value={draft.enquiryTimescale}
-              onChange={onInput("enquiryTimescale")}
-              placeholder="e.g. exchange by end of October"
-              className={fieldClass("enquiryTimescale")}
+              className={cn("min-h-9", fieldClass("enquirySummary"))}
             />
           </Field>
           {client.enquiryEmailText ? (
-            <details className="text-sm">
+            <details className={cn("text-sm", span.full)}>
               <summary className="cursor-pointer text-muted-foreground">Original email</summary>
               <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-3 font-mono text-xs">
                 {client.enquiryEmailText}
@@ -859,15 +859,15 @@ function ClientForm({ client }: { client: ClientDetail }) {
           ) : null}
         </FormSection>
 
-        <FormSection id="notes" title="Notes">
-          <Field>
+        <FormSection id="notes" title="Notes" cols={1} stretch>
+          <Field className={span.full}>
             <FieldLabel htmlFor="add-client-notes">Notes</FieldLabel>
             <Textarea
               id="add-client-notes"
               value={draft.notes}
               onChange={onInput("notes")}
               placeholder="Anything else the team should know"
-              className="min-h-[80px]"
+              className="min-h-9"
             />
           </Field>
         </FormSection>

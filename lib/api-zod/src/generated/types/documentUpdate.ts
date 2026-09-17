@@ -11,4 +11,9 @@ export interface DocumentUpdate {
   category?: string;
   /** @minLength 1 */
   status?: string;
+  /**
+     * YYYY-MM-DD; null clears it.
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  expiresAt?: string | null;
 }

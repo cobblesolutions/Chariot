@@ -10,6 +10,8 @@ import type { CaseStressTestStressBasis } from './caseStressTestStressBasis';
 
 export interface CaseStressTest {
   id: number;
+  /** The lender submission this stress test is for. */
+  submissionId: number | null;
   caseId: number;
   lenderId?: number | null;
   lenderName?: string | null;

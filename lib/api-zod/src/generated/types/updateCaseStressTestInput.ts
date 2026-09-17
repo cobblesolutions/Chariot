@@ -9,6 +9,8 @@ import type { UpdateCaseStressTestInputArrFeeMode } from './updateCaseStressTest
 import type { UpdateCaseStressTestInputStressBasis } from './updateCaseStressTestInputStressBasis';
 
 export interface UpdateCaseStressTestInput {
+  /** The lender submission the stress test is for; the primary open one when omitted. */
+  submissionId?: number | null;
   lenderId?: number | null;
   monthlyRent?: number | null;
   propertyValue?: number | null;

@@ -536,13 +536,18 @@ function BoardCard({
               task.status === "done" && "text-muted-foreground line-through",
             )}
           >
-            {task.title}
+            {task.headline}
           </ItemTitle>
-          {task.caseReference && (
+          {task.headline !== task.title ? (
+            <ItemDescription className="truncate text-xs">
+              {task.title}
+              {task.clientName ? ` · ${task.clientName}` : ""}
+            </ItemDescription>
+          ) : task.caseReference ? (
             <ItemDescription className="truncate text-xs">
               {task.caseReference} · {task.clientName}
             </ItemDescription>
-          )}
+          ) : null}
           <div className="flex items-center gap-3">
             <DueLabel task={task} />
             <PriorityFlag priority={task.priority} />
@@ -559,7 +564,7 @@ function BoardCard({
                 <span className="tabular-nums">
                   {task.checklistDone}/{task.checklistTotal}
                 </span>
-                {task.checklistNext && (
+                {task.checklistNext && task.headline === task.title && (
                   <span className="truncate">· {task.checklistNext}</span>
                 )}
               </span>

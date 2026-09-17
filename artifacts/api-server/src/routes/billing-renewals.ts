@@ -7,6 +7,7 @@ import { activitiesTable, calendarEventsTable, casesTable, clientsTable, db, inv
 import { sendChariotEmail } from "../integrations/resend";
 import { renderChariotEmail } from "../integrations/email-template";
 import { renewalReminderDates, syncRenewalCalendarEvents } from "../services/renewal-calendar";
+import { createInvoice } from "../services/invoices";
 
 const router: IRouter = Router();
 router.use(requireStaff);
@@ -47,16 +48,14 @@ router.get("/invoices", async (_req, res) => { const rows = await db.select().fr
 router.post("/invoices", requireAdminBilling, async (req, res): Promise<void> => {
   const body = api.CreateInvoiceBody.safeParse(req.body); if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
   if (!(await validateCaseClient(body.data.clientId, body.data.caseId))) { res.status(409).json({ error: "Selected case does not belong to the selected client" }); return; }
-  const created = await db.transaction(async tx => {
-    await tx.insert(invoiceSequencesTable).values({ id: 1, lastNumber: 0 }).onConflictDoNothing();
-    const sequence = await tx.execute(sql`UPDATE invoice_sequences SET last_number = last_number + 1 WHERE id = 1 RETURNING last_number`);
-    const number = Number(sequence.rows[0]?.last_number); if (!number) throw new Error("Unable to allocate invoice number");
-    const [invoice] = await tx.insert(invoicesTable).values({ invoiceNumber: `CFS-${String(number).padStart(5, "0")}`, clientId: body.data.clientId, caseId: body.data.caseId ?? null, dueDate: day(new Date()), notes: body.data.notes ?? "", createdByUserId: res.locals.authUser.id }).returning();
-    if (!invoice) throw new Error("Invoice was not created");
-    if (body.data.lineItems.length) await tx.insert(invoiceLineItemsTable).values(body.data.lineItems.map((line, sortOrder) => ({ invoiceId: invoice.id, ...line, sortOrder })));
-    return invoice;
+  const created = await createInvoice({
+    clientId: body.data.clientId,
+    caseId: body.data.caseId ?? null,
+    notes: body.data.notes,
+    lineItems: body.data.lineItems,
+    createdByUserId: res.locals.authUser.id,
+    actorName: res.locals.authUser.displayName,
   });
-  await db.insert(activitiesTable).values({ caseId: created.caseId, title: "Invoice created", detail: `${created.invoiceNumber} created as draft`, actorName: res.locals.authUser.displayName, entityType: "invoice", entityId: created.id });
   res.status(201).json(api.CreateInvoiceResponse.parse(await invoiceView(created)));
 });
 router.get("/invoices/:id", async (req, res): Promise<void> => { const p = api.GetInvoiceParams.safeParse(req.params); if (!p.success) { res.status(400).json({ error: "Invalid invoice id" }); return; } const [row] = await db.select().from(invoicesTable).where(eq(invoicesTable.id, p.data.id)); if (!row) { res.status(404).json({ error: "Invoice not found" }); return; } res.json(api.GetInvoiceResponse.parse(await invoiceView(row))); });

@@ -12,7 +12,7 @@ import { isStaffRole } from "../auth/roles";
 import { renderChariotEmail } from "../integrations/email-template";
 import { sendChariotEmail } from "../integrations/resend";
 import { logger } from "../lib/logger";
-import { checklistStepLock } from "./task-checklists";
+import { CLIENT_ONBOARDING_KIND, PROPERTY_REVIEW_KIND, STAGE_HANDOFF_KIND, checklistStepLock } from "./task-checklists";
 
 export const TASK_STATUSES = ["todo", "in_progress", "done"] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
@@ -97,6 +97,35 @@ async function creatorNamesFor(userIds: number[]) {
   return result;
 }
 
+/**
+ * Seeded requirement labels read as states on the case ("Invoice issued");
+ * as the headline of a task they should read as the thing to do.
+ */
+const IMPERATIVE: Record<string, string> = {
+  "Service level confirmed": "Confirm the service level",
+  "Advice sent to client": "Send the advice to the client",
+  "Client approved advice": "Get the client's approval of the advice",
+  "Client instruction recorded": "Record the client's instruction",
+  "Terms of Business signed": "Get the Terms of Business signed",
+  "Required portfolio sent": "Send the required portfolio",
+  "Stress test completed": "Complete the stress test",
+  "Lender offer uploaded": "Upload the lender offer",
+  "Offer details checked": "Check the offer details",
+  "Offer sent to client": "Send the offer to the client",
+  "Invoice issued": "Issue the invoice",
+  "Payment marked as received": "Mark the payment as received",
+};
+const imperative = (label: string) => IMPERATIVE[label] ?? label;
+
+function headlineFor(task: TaskRow, next: string | null) {
+  if (!next || normalizeStatus(task.status) === "done") return task.title;
+  if (task.kind === STAGE_HANDOFF_KIND) return imperative(next);
+  if (task.kind === CLIENT_ONBOARDING_KIND || task.kind === PROPERTY_REVIEW_KIND) {
+    return next === "Onboarding & documents" ? "Complete the onboarding list" : `Fill in ${next}`;
+  }
+  return task.title;
+}
+
 /** API shape of a list of task rows — batches every lookup so a long list costs a fixed number of queries. */
 export async function taskViews(rows: TaskRow[]) {
   const unique = (values: (number | null | undefined)[]) => [...new Set(values.filter((v): v is number => v != null))];
@@ -129,6 +158,9 @@ export async function taskViews(rows: TaskRow[]) {
       checklistTotal: counts?.total ?? 0,
       checklistDone: counts?.done ?? 0,
       checklistNext: counts?.next ?? null,
+      // A stage task *is* its next open step, and an onboarding / property task is its next orange card:
+      // that is what the task reads as everywhere it is shown.
+      headline: headlineFor(task, counts?.next ?? null),
       commentCount: comments.get(task.id) ?? 0,
       kind: task.kind ?? null,
       propertyId: task.propertyId ?? null,

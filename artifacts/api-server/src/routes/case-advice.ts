@@ -39,6 +39,7 @@ import {
 import { prefillFromPrevious, submissionDetailsState } from "../services/submission-details";
 import { needsAdvice, serviceTypeLabel } from "../services/service-types";
 import { extractInstruction } from "../services/instruction-extraction";
+import { progressFinish, progressStart, progressTokenFrom } from "../services/ai-progress";
 import { syncCaseChecklists } from "../services/task-checklists";
 import { caseDetailView } from "./operations";
 
@@ -138,7 +139,13 @@ router.post("/cases/:id/advice/extract", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Case not found" });
     return;
   }
-  res.json(ExtractCaseInstructionResponse.parse(await extractInstruction(body.data.emailText)));
+  const progressToken = progressTokenFrom(req);
+  progressStart(progressToken, "Scanning the email…");
+  try {
+    res.json(ExtractCaseInstructionResponse.parse(await extractInstruction(body.data.emailText, progressToken)));
+  } finally {
+    progressFinish(progressToken);
+  }
 });
 
 router.post("/cases/:id/advice/send", async (req, res): Promise<void> => {

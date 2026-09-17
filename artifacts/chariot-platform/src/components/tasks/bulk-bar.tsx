@@ -178,7 +178,7 @@ export function BulkBar({
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title={`Delete ${count} ${count === 1 ? "task" : "tasks"}?`}
-        description="Checklists and comments on these tasks are removed too. This cannot be undone."
+        description="This cannot be undone."
         actionLabel="Delete"
         destructive
         onConfirm={() => {
